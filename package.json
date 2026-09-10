@@ -60,8 +60,6 @@
   "scripts": {
     "check": "tsc --noEmit && node scripts/validate-skill-package.mjs",
     "test": "node --test tests/*.test.mjs",
-    "benchmark": "node scripts/benchmark-agent.mjs",
-    "benchmark:tasks": "node scripts/evaluate-task-trajectories.mjs",
     "build:cli": "npm run check",
     "release:dry": "npm run build:cli && npm pack --dry-run",
     "release:pack": "npm run build:cli && npm pack",
