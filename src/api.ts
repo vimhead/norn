@@ -460,7 +460,7 @@ export function workflowRefSchema<ParamsSchema extends z.ZodType>(options: NornW
 	NornWorkflowRefInput<ParamsSchema>
 >;
 export function workflowRefSchema(options?: NornWorkflowRefSchemaOptions): z.ZodType {
-	void options;
+	const contributedParams = options?.params ?? emptyWorkflowRefParamsSchema;
 	const targetSchema = z.union([
 		z.string().min(1),
 		z.object({ id: z.string().min(1) }),
@@ -470,7 +470,13 @@ export function workflowRefSchema(options?: NornWorkflowRefSchemaOptions): z.Zod
 		z.object({ workflow: targetSchema, forwardParams: z.record(z.string(), z.unknown()) }),
 	]).transform((reference) => typeof reference === "string"
 		? { workflow: reference, forwardParams: {} }
-		: reference);
+		: reference).meta({
+		"x-norn-workflow-ref": {
+			get contributedParamsSchema() {
+				return z.toJSONSchema(contributedParams, { io: "input" });
+			},
+		},
+	});
 }
 
 export type NornLogRef = {

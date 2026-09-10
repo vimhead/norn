@@ -220,7 +220,11 @@ return run.next(manifest.workflows.implement, {
 
 A reusable workflow can receive a next step. Its caller supplies opaque
 `forwardParams`, which the reusable workflow must spread into `run.next(...)`.
-The `params` schema describes the values it contributes:
+The `params` schema describes the values it contributes. Inspection exposes it
+as `x-norn-workflow-ref.contributedParamsSchema` on the reference's JSON Schema
+node, alongside the existing reference and open-ended `forwardParams` schema.
+The annotation is a standalone input JSON Schema, not additional required fields
+in the caller's reference payload; it does not change validation or merging:
 
 ```ts
 import { artifactRefSchema, workflowRefSchema } from "norn";
