@@ -679,6 +679,33 @@ export type NornInspectedWorkflowInfo = NornRegisteredWorkflowInfo & {
 	readonly gate: NornWorkflowGateInfo | null;
 };
 
+export type NornPluginDiagnostic = {
+	readonly configPath: string;
+	readonly pluginPath: string;
+	readonly pluginId: string | null;
+	readonly workflowId: string | null;
+	readonly stage: "import" | "declaration" | "config" | "implementation" | "duplicate" | "schema";
+	readonly message: string;
+	readonly issues: readonly { readonly path: readonly (string | number)[]; readonly code: string; readonly message: string }[];
+};
+
+export type NornProjectLoadStatus = {
+	readonly isComplete: boolean;
+	readonly diagnostics: readonly NornPluginDiagnostic[];
+};
+
+export type NornWorkflowCatalogInfo = NornProjectLoadStatus & {
+	readonly workflows: readonly NornRegisteredWorkflowInfo[];
+};
+
+export type NornWorkflowInspection = NornProjectLoadStatus & {
+	readonly workflow: NornInspectedWorkflowInfo | null;
+};
+
+export type NornProjectInspection = NornProjectLoadStatus & {
+	readonly project: NornProjectInfo;
+};
+
 export type NornProjectPluginInfo = NornWorkflowPluginInfo & {
 	readonly configSchema: NornJsonSchema | null;
 	readonly config: unknown;

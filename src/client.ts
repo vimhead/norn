@@ -3,17 +3,21 @@ import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import type {
 	DeletedNornRunInfo,
-	NornRegisteredWorkflowInfo,
-	NornInspectedWorkflowInfo,
-	NornProjectInfo,
+	NornPluginDiagnostic,
+	NornProjectInspection,
+	NornWorkflowCatalogInfo,
+	NornWorkflowInspection,
 	NornRunCheckpoint,
 	NornRunInfo,
 	NornRunMetrics,
 	NornWorkflowStateReader,
 } from "./api.ts";
 import { loadNornProject } from "./plugin-loader.ts";
+import { NornProjectLoadError } from "./internal/errors.ts";
 import type { NornRegisteredWorkflow } from "./internal/workflow-registry.ts";
 import type { NornResolvedSeerModeConfig } from "./seer/index.ts";
+
+export { NornProjectLoadError } from "./internal/errors.ts";
 
 export type NornClientInput = {
 	readonly spawnCwd?: string;
@@ -22,11 +26,11 @@ export type NornClientInput = {
 
 export type NornClient = {
 	readonly project: {
-		inspect(): Promise<NornProjectInfo>;
+		inspect(): Promise<NornProjectInspection>;
 	};
 	readonly workflows: {
-		list(options?: { readonly all?: boolean }): Promise<NornRegisteredWorkflowInfo[]>;
-		inspect(workflowId: string): Promise<NornInspectedWorkflowInfo>;
+		list(options?: { readonly all?: boolean }): Promise<NornWorkflowCatalogInfo>;
+		inspect(workflowId: string): Promise<NornWorkflowInspection>;
 		entries(): Promise<readonly NornRegisteredWorkflow[]>;
 	};
 	readonly state: NornWorkflowStateReader;
@@ -54,11 +58,11 @@ export function createNornClient(input: NornClientInput = {}): NornClient {
 	const catalog = new NornWorkflowCatalog(input.spawnCwd ?? process.cwd());
 	const client: NornClient = {
 		project: {
-			inspect: async () => (await processRunner.readJson<{ project: NornProjectInfo }>(["project", "inspect"])).project,
+			inspect: async () => processRunner.readJson<NornProjectInspection>(["project", "inspect"]),
 		},
 		workflows: {
-			list: async (options) => (await processRunner.readJson<{ workflows: NornRegisteredWorkflowInfo[] }>(["workflows", "list", ...(options?.all ? ["--all"] : [])])).workflows,
-			inspect: async (workflowId) => (await processRunner.readJson<{ workflow: NornInspectedWorkflowInfo }>(["workflows", "inspect", workflowId])).workflow,
+			list: async (options) => processRunner.readJson<NornWorkflowCatalogInfo>(["workflows", "list", ...(options?.all ? ["--all"] : [])]),
+			inspect: async (workflowId) => processRunner.readJson<NornWorkflowInspection>(["workflows", "inspect", workflowId]),
 			entries: async () => (await catalog.load()).workflows,
 		},
 		state: catalog.state,
@@ -93,7 +97,10 @@ class NornWorkflowCatalog {
 	constructor(private readonly cwd: string) {}
 
 	load(): ReturnType<typeof loadNornProject> {
-		this.loaded ??= loadNornProject(this.cwd);
+		this.loaded ??= loadNornProject(this.cwd).catch(error => {
+			this.loaded = undefined;
+			throw error;
+		});
 		return this.loaded;
 	}
 }
@@ -107,8 +114,11 @@ class NornProcessRunner {
 
 	async readJson<T>(args: readonly string[], stdin?: string): Promise<T> {
 		const result = await this.spawn(args, stdin);
-		const parsed = JSON.parse(result.stdout) as T | { error?: { message?: string } };
-		if (parsed && typeof parsed === "object" && "error" in parsed) throw new Error(parsed.error?.message ?? "Norn command failed");
+		const parsed = JSON.parse(result.stdout) as T | { error?: { code?: string; message?: string; diagnostics?: NornPluginDiagnostic[] } };
+		if (parsed && typeof parsed === "object" && "error" in parsed) {
+			if (parsed.error?.code === "NORN_PROJECT_INVALID" && Array.isArray(parsed.error.diagnostics)) throw new NornProjectLoadError({ diagnostics: parsed.error.diagnostics });
+			throw new Error(parsed.error?.message ?? "Norn command failed");
+		}
 		if (result.exitCode !== 0) throw new Error(result.stderr || `Norn exited with code ${result.exitCode}`);
 		return parsed as T;
 	}

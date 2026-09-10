@@ -9,8 +9,8 @@ import * as nornApiModule from "./api.ts";
 import * as nornModule from "./index.ts";
 import * as nornSchemaModule from "./schema.ts";
 import * as nornSeerModule from "./seer/index.ts";
-import { isWorkflowPlugin, type NornJsonSchema, type NornProjectPluginInfo, type NornWorkflowPlugin, type NornWorkflowPluginInfo } from "./api.ts";
-import { isNodeError } from "./internal/errors.ts";
+import { isWorkflowPlugin, type NornDispose, type NornPluginDiagnostic, type NornProjectInfo, type NornProjectInspection, type NornProjectPluginInfo, type NornWorkflowCatalogInfo, type NornWorkflowInspection, type NornWorkflowPlugin, type NornWorkflowPluginInfo } from "./api.ts";
+import { errorMessage, isNodeError, NornProjectLoadError } from "./internal/errors.ts";
 import { NornMemoryWorkflowState } from "./internal/state-store.ts";
 import { NornWorkflowRegistry, type NornRegisteredWorkflow } from "./internal/workflow-registry.ts";
 import { schemaType, unwrapSchema } from "./schema.ts";
@@ -66,21 +66,42 @@ type LoadedNornWorkflowPlugin = {
 };
 
 export async function loadNornProject(cwd: string): Promise<NornLoadedProject> {
-	const project = await findNornProject(cwd);
-	const loadedPlugins = await loadWorkflowPlugins(project);
-	const registry = new NornWorkflowRegistry();
-	const state = new NornMemoryWorkflowState();
-	for (const { plugin, info } of loadedPlugins) {
-		const implementation = typeof plugin.implementation === "function"
-			? plugin.implementation({ cwd: project.cwd, state })
-			: plugin.implementation;
-		for (const [key, workflow] of Object.entries(plugin.manifest.workflows)) {
-			const workflowImplementation = implementation.workflows[key];
-			if (!workflowImplementation) throw new Error(`Missing implementation for workflow ${plugin.manifest.id}.${key}`);
-			registry.register(workflow, workflowImplementation, { plugin: workflowPluginInfo(info), configSchema: plugin.manifest.config, config: info.config });
-		}
+	const { project, diagnostics } = await collectNornProject(cwd);
+	if (diagnostics.length > 0) throw new NornProjectLoadError({ diagnostics });
+	return project;
+}
+
+export async function discoverNornProject(cwd: string): Promise<NornProjectInspection & NornWorkflowCatalogInfo> {
+	const { project, diagnostics } = await collectNornProject(cwd);
+	return { project: buildProjectInfo(project), workflows: project.registry.list(), isComplete: diagnostics.length === 0, diagnostics };
+}
+
+export async function inspectNornWorkflow(input: { readonly cwd: string; readonly workflowId: string }): Promise<NornWorkflowInspection> {
+	const { project, diagnostics } = await collectNornProject(input.cwd);
+	const summary = project.registry.list().find(workflow => workflow.id === input.workflowId);
+	if (!summary) {
+		if (diagnostics.length === 0) throw new Error(`Unknown workflow: ${input.workflowId}`);
+		return { workflow: null, isComplete: false, diagnostics };
 	}
-	return { ...project, plugins: loadedPlugins.map(({ plugin }) => plugin), pluginInfos: loadedPlugins.map(({ info }) => info), registry, workflows: registry.launchableEntries(), state };
+	const info = summary.plugin;
+	if (!info?.path || !info.configPath) throw new Error(`Loaded workflow lacks plugin source: ${input.workflowId}`);
+	try {
+		return { workflow: project.registry.inspect(input.workflowId) ?? null, isComplete: diagnostics.length === 0, diagnostics };
+	} catch (error) {
+		return { workflow: null, isComplete: false, diagnostics: [...diagnostics, createPluginDiagnostic({
+			source: { configPath: info.configPath, pluginPath: info.path, pluginId: info.id },
+			workflowId: input.workflowId, stage: "schema", error,
+		})] };
+	}
+}
+
+function buildProjectInfo(project: NornLoadedProject): NornProjectInfo {
+	return {
+		cwd: project.cwd, projectPath: project.projectPath, projectRoot: project.projectRoot,
+		configPath: project.configPath, configRoot: project.configRoot,
+		configFiles: project.configFiles.map(file => file.path), plugins: project.pluginInfos,
+		seerMode: project.seerMode ?? null,
+	};
 }
 
 export async function findNornProject(cwd: string): Promise<NornProject> {
@@ -164,33 +185,137 @@ function createProjectConfigEntry(projectFile: NornProjectConfigFile): NornConfi
 	};
 }
 
-async function loadWorkflowPlugins(project: NornProject): Promise<LoadedNornWorkflowPlugin[]> {
-	const plugins: LoadedNornWorkflowPlugin[] = [];
-	const pluginIds = new Set<string>();
+type NornPluginSource = Pick<NornPluginDiagnostic, "configPath" | "pluginPath" | "pluginId">;
+type ImportedNornPlugin = { readonly plugin: NornWorkflowPlugin; readonly source: NornPluginSource };
+
+async function collectNornProject(cwd: string): Promise<{ readonly project: NornLoadedProject; readonly diagnostics: NornPluginDiagnostic[] }> {
+	const project = await findNornProject(cwd);
+	const imported = await importWorkflowPlugins(project);
+	const diagnostics = [...imported.diagnostics];
+	const registry = new NornWorkflowRegistry();
+	const state = new NornMemoryWorkflowState();
+	const loaded: LoadedNornWorkflowPlugin[] = [];
+	const conflicts = collectPluginConflicts(imported.plugins);
+	for (const candidate of imported.plugins) {
+		const pluginConflicts = conflicts.get(candidate);
+		if (pluginConflicts) {
+			diagnostics.push(...pluginConflicts);
+			continue;
+		}
+		const result = registerProjectPlugin({ candidate, project, registry, state });
+		diagnostics.push(...result.diagnostics);
+		if (result.loaded) loaded.push(result.loaded);
+	}
+	return {
+		project: { ...project, plugins: loaded.map(entry => entry.plugin), pluginInfos: loaded.map(entry => entry.info), registry, workflows: registry.launchableEntries(), state },
+		diagnostics,
+	};
+}
+
+function collectPluginConflicts(plugins: readonly ImportedNornPlugin[]): Map<ImportedNornPlugin, NornPluginDiagnostic[]> {
+	const byPluginId = new Map<string, ImportedNornPlugin[]>();
+	const byWorkflowId = new Map<string, ImportedNornPlugin[]>();
+	for (const candidate of plugins) {
+		const id = candidate.plugin.manifest.id;
+		byPluginId.set(id, [...(byPluginId.get(id) ?? []), candidate]);
+		for (const workflowId of new Set(Object.values(candidate.plugin.manifest.workflows).map(workflow => workflow.id))) {
+			byWorkflowId.set(workflowId, [...(byWorkflowId.get(workflowId) ?? []), candidate]);
+		}
+	}
+	const conflicts = new Map<ImportedNornPlugin, NornPluginDiagnostic[]>();
+	for (const [pluginId, candidates] of byPluginId) {
+		if (candidates.length < 2) continue;
+		for (const candidate of candidates) conflicts.set(candidate, [createPluginDiagnostic({
+			source: candidate.source, workflowId: null, stage: "duplicate",
+			error: new Error(`Duplicate Norn plugin id: ${pluginId} (${candidates.map(other => other.source.pluginPath).join(", ")})`),
+		})]);
+	}
+	for (const [workflowId, candidates] of byWorkflowId) {
+		const distinctPlugins = candidates.filter(candidate => byPluginId.get(candidate.plugin.manifest.id)?.length === 1);
+		if (distinctPlugins.length < 2) continue;
+		for (const candidate of distinctPlugins) conflicts.set(candidate, [...(conflicts.get(candidate) ?? []), createPluginDiagnostic({
+			source: candidate.source, workflowId, stage: "duplicate",
+			error: new Error(`Workflow already registered: ${workflowId} (${distinctPlugins.map(other => other.source.pluginPath).join(", ")})`),
+		})]);
+	}
+	return conflicts;
+}
+
+async function importWorkflowPlugins(project: NornProject): Promise<{ readonly plugins: ImportedNornPlugin[]; readonly diagnostics: NornPluginDiagnostic[] }> {
+	const plugins: ImportedNornPlugin[] = [];
+	const diagnostics: NornPluginDiagnostic[] = [];
 	for (const configFile of project.configFiles) {
 		const jiti = createJiti(pathToFileURL(configFile.path).href, { moduleCache: false, virtualModules: nornWorkflowVirtualModules() });
 		for (const pluginPath of configFile.config.plugins) {
-			const resolvedPluginPath = resolveConfigPath(configFile.root, pluginPath);
-			const module = await jiti.import(pathToFileURL(resolvedPluginPath).href) as { default?: unknown };
-			if (!isWorkflowPlugin(module.default)) throw new Error(`Norn plugin must be the default export: ${resolvedPluginPath}`);
-			if (pluginIds.has(module.default.manifest.id)) throw new Error(`Duplicate Norn plugin id: ${module.default.manifest.id}`);
-			pluginIds.add(module.default.manifest.id);
-			const configInput = project.projectConfig[module.default.manifest.id];
-			if (!module.default.manifest.config && configInput !== undefined) throw new Error(`Norn config provided for plugin without config schema: ${module.default.manifest.id}`);
-			const config = module.default.manifest.config ? module.default.manifest.config.parse(defaultConfigInput(module.default.manifest.config, configInput)) : undefined;
-			plugins.push({
-				plugin: module.default,
-				info: {
-					id: module.default.manifest.id,
-					path: resolvedPluginPath,
-					configPath: configFile.path,
-					configSchema: module.default.manifest.config ? z.toJSONSchema(module.default.manifest.config, { io: "input" }) as NornJsonSchema : null,
-					config,
-				},
-			});
+			const source: NornPluginSource = { configPath: configFile.path, pluginPath: resolveConfigPath(configFile.root, pluginPath), pluginId: null };
+			let stage: NornPluginDiagnostic["stage"] = "import";
+			try {
+				const module = await jiti.import(pathToFileURL(source.pluginPath).href) as { default?: unknown };
+				stage = "declaration";
+				if (!isWorkflowPlugin(module?.default)) throw new Error(`Norn plugin must be the default export: ${source.pluginPath}`);
+				plugins.push({ plugin: module.default, source: { ...source, pluginId: module.default.manifest.id } });
+			} catch (error) {
+				diagnostics.push(createPluginDiagnostic({ source, workflowId: null, stage, error }));
+			}
 		}
 	}
-	return plugins;
+	return { plugins, diagnostics };
+}
+
+function registerProjectPlugin(input: {
+	readonly candidate: ImportedNornPlugin;
+	readonly project: NornProject;
+	readonly registry: NornWorkflowRegistry;
+	readonly state: NornMemoryWorkflowState;
+}): { readonly loaded: LoadedNornWorkflowPlugin | null; readonly diagnostics: NornPluginDiagnostic[] } {
+	const { plugin, source } = input.candidate;
+	const diagnostics: NornPluginDiagnostic[] = [];
+	const unregister: NornDispose[] = [];
+	let stage: NornPluginDiagnostic["stage"] = "config";
+	try {
+		const configInput = input.project.projectConfig[plugin.manifest.id];
+		if (!plugin.manifest.config && configInput !== undefined) throw new Error(`Norn config provided for plugin without config schema: ${plugin.manifest.id}`);
+		const config = plugin.manifest.config ? plugin.manifest.config.parse(defaultConfigInput(plugin.manifest.config, configInput)) : undefined;
+		stage = "schema";
+		const info: NornProjectPluginInfo = {
+			id: plugin.manifest.id, path: source.pluginPath, configPath: source.configPath,
+			configSchema: plugin.manifest.config ? z.toJSONSchema(plugin.manifest.config, { io: "input" }) : null, config,
+		};
+		stage = "implementation";
+		const implementation = typeof plugin.implementation === "function" ? plugin.implementation({ cwd: input.project.cwd, state: input.state }) : plugin.implementation;
+		for (const [key, workflow] of Object.entries(plugin.manifest.workflows)) {
+			stage = "implementation";
+			try {
+				const workflowImplementation = implementation.workflows?.[key];
+				if (typeof workflowImplementation?.execute !== "function") throw new Error(`Missing implementation for workflow ${workflow.id}`);
+				stage = "duplicate";
+				if (input.registry.workflowById(workflow.id)) throw new Error(`Workflow already registered: ${workflow.id}`);
+				stage = "declaration";
+				unregister.push(input.registry.register(workflow, workflowImplementation, { plugin: workflowPluginInfo(info), configSchema: plugin.manifest.config, config }));
+			} catch (error) {
+				diagnostics.push(createPluginDiagnostic({ source, workflowId: workflow.id, stage: error instanceof z.ZodError ? "config" : stage, error }));
+			}
+		}
+		if (diagnostics.length === 0) return { loaded: { plugin, info }, diagnostics };
+	} catch (error) {
+		diagnostics.push(createPluginDiagnostic({ source, workflowId: null, stage, error }));
+	}
+	for (const dispose of unregister) dispose();
+	return { loaded: null, diagnostics };
+}
+
+function createPluginDiagnostic(input: {
+	readonly source: NornPluginSource;
+	readonly workflowId: string | null;
+	readonly stage: NornPluginDiagnostic["stage"];
+	readonly error: unknown;
+}): NornPluginDiagnostic {
+	return {
+		...input.source, workflowId: input.workflowId, stage: input.stage, message: errorMessage(input.error),
+		issues: input.error instanceof z.ZodError ? input.error.issues.map(issue => ({
+			path: issue.path.map(part => typeof part === "symbol" ? String(part) : part), code: issue.code, message: issue.message,
+		})) : [],
+	};
 }
 
 function workflowPluginInfo(info: NornProjectPluginInfo): NornWorkflowPluginInfo {

@@ -1,3 +1,20 @@
+import type { NornPluginDiagnostic } from "../api.ts";
+
+export class NornProjectLoadError extends Error {
+	readonly code = "NORN_PROJECT_INVALID";
+	readonly isComplete = false;
+	readonly diagnostics: readonly NornPluginDiagnostic[];
+
+	constructor(input: { readonly diagnostics: readonly NornPluginDiagnostic[] }) {
+		const details = input.diagnostics.map(diagnostic =>
+			`${diagnostic.stage}: ${diagnostic.pluginPath} (declared in ${diagnostic.configPath}${diagnostic.workflowId ? `; workflow ${diagnostic.workflowId}` : ""}): ${diagnostic.message}`,
+		);
+		super(`Norn project is incomplete (${input.diagnostics.length} diagnostics); execution is blocked.\n${details.join("\n")}`);
+		this.name = "NornProjectLoadError";
+		this.diagnostics = input.diagnostics;
+	}
+}
+
 export class NornRunStoppedError extends Error {
 	constructor() {
 		super("Stopped by user");
