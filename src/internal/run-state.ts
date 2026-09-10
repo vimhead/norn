@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import type { NornRunHealth, NornRunStatus, NornRunOutcomeMetadata, NornRunInfo, NornRunInterruption, NornRunOutcomeInfo, NornRunFailureInfo } from "../api.ts";
 import { isNodeError } from "./errors.ts";
-import { readRunLaunchRequest } from "./launch-request.ts";
+import { readRunLaunchRequest, readOptionalRunResumeRequest, RESUME_START_GRACE_MS } from "./launch-request.ts";
 import { getRunLeaseHealth } from "./run-lease.ts";
 import { writeJsonAtomically } from "./json-file.ts";
 import { runCurrentRoot } from "./run-store.ts";
@@ -226,6 +226,7 @@ export async function listRuns(sessionCwd: string): Promise<NornRunInfo[]> {
 
 export async function getRunInfo(runRoot: string): Promise<NornRunInfo> {
 	try {
+		const resumeRequest = await readOptionalRunResumeRequest(runRoot);
 		const state = parseNornRunState(await readRunStateJson(runCurrentRoot(runRoot)));
 		return {
 			version: state.version,
@@ -234,9 +235,11 @@ export async function getRunInfo(runRoot: string): Promise<NornRunInfo> {
 			path: runRoot,
 			entrypointWorkflowId: state.entrypointWorkflowId,
 			currentWorkflowId: state.current?.workflowId,
-			status: state.status,
-			health: await runHealth(runRoot, state.status),
-			interruption: runInterruption(state),
+			status: resumeRequest ? "running" : state.status,
+			health: resumeRequest
+				? await getPendingResumeHealth(runRoot, resumeRequest.createdAt)
+				: await runHealth(runRoot, state.status),
+			interruption: resumeRequest ? undefined : runInterruption(state),
 			outcome: runOutcome(state),
 			failed: runFailure(state),
 			startedAt: state.startedAt,
@@ -267,6 +270,11 @@ function runRootCandidates(sessionCwd: string, run: string): string[] {
 	const candidates = [isAbsolute(run) ? run : resolve(sessionCwd, run)];
 	if (!isAbsolute(run)) candidates.push(resolve(sessionCwd, ".norn", "runs", run));
 	return Array.from(new Set(candidates));
+}
+
+async function getPendingResumeHealth(runRoot: string, requestedAt: string): Promise<NornRunHealth> {
+	const health = await getRunLeaseHealth(runRoot);
+	return health === "healthy" || Date.now() - Date.parse(requestedAt) < RESUME_START_GRACE_MS ? "healthy" : "unhealthy";
 }
 
 async function runHealth(runRoot: string, status: NornRunStatus): Promise<NornRunHealth> {

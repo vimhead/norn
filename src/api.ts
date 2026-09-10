@@ -461,19 +461,16 @@ export function workflowRefSchema<ParamsSchema extends z.ZodType>(options: NornW
 >;
 export function workflowRefSchema(options?: NornWorkflowRefSchemaOptions): z.ZodType {
 	void options;
-	return z.preprocess(
-		(value) => {
-			const workflowReference = isWorkflowRefInput(value) ? value : { workflow: value, forwardParams: {} };
-			return {
-				workflow: normalizeWorkflowRef(workflowReference.workflow),
-				forwardParams: workflowReference.forwardParams,
-			};
-		},
-		z.object({
-			workflow: z.string().min(1),
-			forwardParams: z.record(z.string(), z.unknown()),
-		}),
-	);
+	const targetSchema = z.union([
+		z.string().min(1),
+		z.object({ id: z.string().min(1) }),
+	]).transform((target) => typeof target === "string" ? target : target.id);
+	return z.union([
+		targetSchema,
+		z.object({ workflow: targetSchema, forwardParams: z.record(z.string(), z.unknown()) }),
+	]).transform((reference) => typeof reference === "string"
+		? { workflow: reference, forwardParams: {} }
+		: reference);
 }
 
 export type NornLogRef = {
@@ -734,16 +731,6 @@ function qualifyStateTree(pluginId: string, node: NornWorkflowPluginStateTreeNod
 		return { ...node, id: resolveDeclarationId(pluginId, path, node.id, "state", declaredIds) };
 	}
 	return Object.fromEntries(Object.entries(node).map(([key, child]) => [key, qualifyStateTree(pluginId, child, [...path, key], declaredIds)]));
-}
-
-function isWorkflowRefInput(value: unknown): value is { readonly workflow: unknown; readonly forwardParams: unknown } {
-	if (!value || typeof value !== "object") return false;
-	const candidate = value as { workflow?: unknown; forwardParams?: unknown };
-	return "workflow" in candidate && "forwardParams" in candidate;
-}
-
-function normalizeWorkflowRef(value: unknown): unknown {
-	return isWorkflowDeclaration(value) ? value.id : value;
 }
 
 export function isWorkflowDeclaration(value: unknown): value is NornAnyWorkflowDeclaration {

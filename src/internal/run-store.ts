@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { access, chmod, lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink, utimes, writeFile } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { access, chmod, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { gunzip, gzip } from "node:zlib";
 import type { NornRunCheckpoint } from "../api.ts";
 import { isNodeError } from "./errors.ts";
-import { writeJsonAtomically } from "./json-file.ts";
+import { writeJsonAtomically, writeTextAtomically } from "./json-file.ts";
 
 const gzipBuffer = promisify(gzip);
 const gunzipBuffer = promisify(gunzip);
@@ -49,29 +49,43 @@ export class NornRunStore {
 	}
 
 	async snapshotCurrent(message: string): Promise<NornRunCheckpoint> {
-		const checkpoint = await this.appendCheckpoint(message);
-		const snapshot = await this.createSnapshot(checkpoint);
-		await writeFile(this.currentRefPath, `${snapshot.id}\n`, "utf8");
+		const previous = await this.readCheckpointHistory();
+		const checkpoint = this.createCheckpoint(message, previous.checkpoints.length + 1);
+		const checkpoints = [...previous.checkpoints, checkpoint];
+		await this.createSnapshot(checkpoint, checkpoints);
+		await writeJsonAtomically(this.checkpointsPath, checkpoints);
+		try {
+			await writeTextAtomically(this.currentRefPath, `${checkpoint.id}\n`);
+		} catch (error) {
+			if (previous.content === undefined) await rm(this.checkpointsPath, { force: true });
+			else await writeTextAtomically(this.checkpointsPath, previous.content);
+			throw error;
+		}
 		return checkpoint;
 	}
 
-	async restoreSnapshot(ref: string): Promise<void> {
+	async restoreSnapshot(ref: string, prepare: ((stagedRunRoot: string) => Promise<void>) | undefined): Promise<void> {
 		const checkpoint = (await this.listCheckpoints()).find((entry) => entry.id === ref);
 		if (!checkpoint) throw new Error(`Unknown active run checkpoint: ${ref}`);
-		await this.restoreSnapshotManifest(await this.readSnapshot(checkpoint.id));
+		await this.restoreSnapshotManifest(await this.readSnapshot(checkpoint.id), prepare);
 	}
 
 	async restoreCurrentSnapshot(): Promise<void> {
-		await this.restoreSnapshotManifest(await this.readSnapshot(await this.currentSnapshotRef()));
+		await this.restoreSnapshotManifest(await this.readSnapshot(await this.currentSnapshotRef()), undefined);
 	}
 
 	async listCheckpoints(): Promise<NornRunCheckpoint[]> {
+		return (await this.readCheckpointHistory()).checkpoints;
+	}
+
+	private async readCheckpointHistory(): Promise<{ readonly checkpoints: NornRunCheckpoint[]; readonly content?: string }> {
 		try {
-			const checkpoints = parseNornRunCheckpoints(JSON.parse(await readFile(this.checkpointsPath, "utf8")));
+			const content = await readFile(this.checkpointsPath, "utf8");
+			const checkpoints = parseNornRunCheckpoints(JSON.parse(content));
 			for (const checkpoint of checkpoints) this.assertCheckpointPathMatchesId(checkpoint);
-			return checkpoints;
+			return { checkpoints, content };
 		} catch (error) {
-			if (isNodeError(error) && error.code === "ENOENT") return [];
+			if (isNodeError(error) && error.code === "ENOENT") return { checkpoints: [] };
 			throw error;
 		}
 	}
@@ -98,22 +112,18 @@ export class NornRunStore {
 		return join(this.currentRoot, CHECKPOINTS_FILE_NAME);
 	}
 
-	private async appendCheckpoint(message: string): Promise<NornRunCheckpoint> {
-		const checkpoints = await this.listCheckpoints();
+	private createCheckpoint(message: string, index: number): NornRunCheckpoint {
 		const id = `cp_${randomUUID().replaceAll("-", "")}`;
-		const checkpoint: NornRunCheckpoint = {
-			id,
-			path: this.snapshotRelativePath(id),
-			index: checkpoints.length + 1,
-			message,
-			createdAt: new Date().toISOString(),
-		};
-		await writeJsonAtomically(this.checkpointsPath, [...checkpoints, checkpoint]);
-		return checkpoint;
+		return { id, path: this.snapshotRelativePath(id), index, message, createdAt: new Date().toISOString() };
 	}
 
-	private async createSnapshot(checkpoint: NornRunCheckpoint): Promise<RunSnapshotManifest> {
-		const entries = await this.snapshotEntries(this.currentRoot);
+	private async createSnapshot(checkpoint: NornRunCheckpoint, checkpoints: readonly NornRunCheckpoint[]): Promise<RunSnapshotManifest> {
+		const entries = (await this.snapshotEntries(this.currentRoot)).filter((entry) => entry.path !== CHECKPOINTS_FILE_NAME);
+		const historyBytes = Buffer.from(`${JSON.stringify(checkpoints, null, 2)}\n`);
+		const historyHash = hashBuffer(historyBytes);
+		await this.storeObject(historyHash, historyBytes);
+		entries.push({ path: CHECKPOINTS_FILE_NAME, type: "file", sha256: historyHash, size: historyBytes.length, mode: 0o600, mtimeMs: Date.now(), compression: "gzip" });
+		entries.sort((left, right) => left.path.localeCompare(right.path));
 		const snapshot: RunSnapshotManifest = {
 			version: SNAPSHOT_VERSION,
 			id: checkpoint.id,
@@ -168,24 +178,52 @@ export class NornRunStore {
 		await rename(tmpPath, path);
 	}
 
-	private async restoreSnapshotManifest(snapshot: RunSnapshotManifest): Promise<void> {
-		await rm(this.currentRoot, { recursive: true, force: true });
-		await mkdir(this.currentRoot, { recursive: true });
-		await this.materializeSnapshot(snapshot);
-		await writeFile(this.currentRefPath, `${snapshot.id}\n`, "utf8");
+	private async restoreSnapshotManifest(snapshot: RunSnapshotManifest, prepare: ((stagedRunRoot: string) => Promise<void>) | undefined): Promise<void> {
+		const stagedRunRoot = await mkdtemp(join(this.runRoot, ".restore-"));
+		const stagedCurrent = runCurrentRoot(stagedRunRoot);
+		const previousCurrent = join(this.runRoot, `.previous-${randomUUID()}`);
+		try {
+			await mkdir(stagedCurrent);
+			await this.materializeSnapshot(snapshot, stagedCurrent);
+			await prepare?.(stagedRunRoot);
+			await rename(this.currentRoot, previousCurrent);
+			try {
+				await rename(stagedCurrent, this.currentRoot);
+			} catch (error) {
+				await rename(previousCurrent, this.currentRoot);
+				throw error;
+			}
+			try {
+				await writeTextAtomically(this.currentRefPath, `${snapshot.id}\n`);
+			} catch (error) {
+				await rename(this.currentRoot, stagedCurrent);
+				await rename(previousCurrent, this.currentRoot);
+				throw error;
+			}
+			await rm(previousCurrent, { recursive: true, force: true }).catch(() => undefined);
+		} finally {
+			await rm(stagedRunRoot, { recursive: true, force: true }).catch(() => undefined);
+		}
 	}
 
-	private async materializeSnapshot(snapshot: RunSnapshotManifest): Promise<void> {
+	private async materializeSnapshot(snapshot: RunSnapshotManifest, destination: string): Promise<void> {
+		const entriesByPath = new Map<string, RunSnapshotEntry>();
 		for (const entry of snapshot.entries) {
-			if (entry.type !== "directory") continue;
-			const path = this.materializedPath(entry.path);
-			await mkdir(path, { recursive: true });
-			await chmod(path, entry.mode);
+			this.materializedPath(destination, entry.path);
+			if (entriesByPath.has(entry.path)) throw new Error(`Duplicate snapshot path: ${entry.path}`);
+			entriesByPath.set(entry.path, entry);
+		}
+		for (const entry of snapshot.entries) {
+			let parent = dirname(entry.path);
+			while (parent !== ".") {
+				if (entriesByPath.get(parent)?.type !== "directory") throw new Error(`Snapshot parent is not a directory: ${parent}`);
+				parent = dirname(parent);
+			}
+			if (entry.type === "directory") await mkdir(this.materializedPath(destination, entry.path), { recursive: true });
 		}
 		for (const entry of snapshot.entries) {
 			if (entry.type === "directory") continue;
-			const path = this.materializedPath(entry.path);
-			await mkdir(dirname(path), { recursive: true });
+			const path = this.materializedPath(destination, entry.path);
 			if (entry.type === "symlink") {
 				await symlink(entry.target, path);
 				continue;
@@ -197,12 +235,15 @@ export class NornRunStore {
 			await chmod(path, entry.mode);
 			await utimes(path, new Date(entry.mtimeMs), new Date(entry.mtimeMs));
 		}
+		for (const entry of [...snapshot.entries].reverse()) {
+			if (entry.type === "directory") await chmod(this.materializedPath(destination, entry.path), entry.mode);
+		}
 	}
 
-	private materializedPath(snapshotPath: string): string {
-		if (snapshotPath.length === 0 || snapshotPath.split("/").includes("..")) throw new Error(`Invalid snapshot path: ${snapshotPath}`);
-		const path = resolve(this.currentRoot, ...snapshotPath.split("/"));
-		const pathFromCurrent = relative(this.currentRoot, path);
+	private materializedPath(destination: string, snapshotPath: string): string {
+		if (snapshotPath.length === 0 || isAbsolute(snapshotPath) || snapshotPath.split(/[\\/]/).some((part) => part === ".." || part === "." || part === "")) throw new Error(`Invalid snapshot path: ${snapshotPath}`);
+		const path = resolve(destination, ...snapshotPath.split("/"));
+		const pathFromCurrent = relative(destination, path);
 		if (pathFromCurrent === ".." || pathFromCurrent.startsWith(`..${sep}`)) throw new Error(`Snapshot path escapes current checkout: ${snapshotPath}`);
 		return path;
 	}

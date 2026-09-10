@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { WriteStream } from "node:fs";
 import type { NornCommandRunInput, NornCommandRunResult, NornLogRef } from "../api.ts";
@@ -22,10 +23,13 @@ export class NornCommandRunner {
 	async run(commandInput: NornCommandRunInput): Promise<NornCommandRunResult> {
 		const cwd = this.resolveFromCwd(commandInput.cwd ?? this.input.cwd);
 		const startedAtMs = Date.now();
-		await this.input.logger.record({ type: "command.started", label: commandInput.label, command: commandInput.command, cwd });
+		const invocationId = randomUUID();
+		const stdoutRef = commandLog({ label: commandInput.label, invocationId, stream: "stdout" });
+		const stderrRef = commandLog({ label: commandInput.label, invocationId, stream: "stderr" });
+		await this.input.logger.record({ type: "command.started", invocationId, label: commandInput.label, command: commandInput.command, cwd, stdoutLogId: stdoutRef.id, stderrLogId: stderrRef.id });
 		let result: SpawnCommandResult;
-		const stdoutLog = await this.input.logs.createWriteStream(commandLog(commandInput.label, "stdout"));
-		const stderrLog = await this.input.logs.createWriteStream(commandLog(commandInput.label, "stderr"));
+		const stdoutLog = await this.input.logs.createWriteStream(stdoutRef);
+		const stderrLog = await this.input.logs.createWriteStream(stderrRef);
 		try {
 			result = await spawnCommand({
 				command: commandInput.command,
@@ -37,7 +41,7 @@ export class NornCommandRunner {
 				stderrStream: stderrLog.stream,
 			});
 		} catch (error) {
-			await this.input.logger.record({ type: "command.failed", label: commandInput.label, durationMs: Date.now() - startedAtMs, error: errorMessage(error) });
+			await this.input.logger.record({ type: "command.failed", invocationId, label: commandInput.label, durationMs: Date.now() - startedAtMs, error: errorMessage(error) });
 			throw error;
 		}
 		const commandResult = {
@@ -53,6 +57,7 @@ export class NornCommandRunner {
 		};
 		await this.input.logger.record({
 			type: "command.completed",
+			invocationId,
 			label: commandInput.label,
 			durationMs: Date.now() - startedAtMs,
 			exitCode: result.exitCode,
@@ -100,9 +105,11 @@ async function spawnCommand(input: SpawnCommandInput): Promise<SpawnCommandResul
 	return new Promise((resolvePromise, reject) => {
 		const child = spawn(command, args, { cwd: input.cwd, env: input.env, shell: false });
 		let timeout: ReturnType<typeof setTimeout> | undefined;
+		let escalation: ReturnType<typeof setTimeout> | undefined;
 		let isSettled = false;
 		const cleanup = () => {
 			if (timeout) clearTimeout(timeout);
+			if (escalation) clearTimeout(escalation);
 			input.signal?.removeEventListener("abort", killChild);
 		};
 		const finish = (result: SpawnCommandResult) => {
@@ -118,11 +125,13 @@ async function spawnCommand(input: SpawnCommandInput): Promise<SpawnCommandResul
 			void closeStreams(input.stdoutStream, input.stderrStream).then(() => reject(error), reject);
 		};
 		const killChild = () => {
+			if (isSettled || killed) return;
 			killed = true;
 			child.kill("SIGTERM");
-			setTimeout(() => {
-				if (!child.killed) child.kill("SIGKILL");
-			}, 5_000).unref?.();
+			escalation = setTimeout(() => {
+				if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+			}, 5_000);
+			escalation.unref?.();
 		};
 
 		if (input.timeoutMs !== undefined) timeout = setTimeout(killChild, input.timeoutMs);
@@ -144,8 +153,8 @@ async function spawnCommand(input: SpawnCommandInput): Promise<SpawnCommandResul
 	});
 }
 
-function commandLog(label: string, stream: "stdout" | "stderr"): NornLogRef {
-	return { id: `commands/${safeFileName(label)}.${stream}` };
+function commandLog(input: { readonly label: string; readonly invocationId: string; readonly stream: "stdout" | "stderr" }): NornLogRef {
+	return { id: `commands/${safeFileName(input.label)}-${input.invocationId}.${input.stream}` };
 }
 
 class BoundedTextBuffer {
