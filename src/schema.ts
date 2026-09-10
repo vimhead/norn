@@ -1,8 +1,12 @@
 import type { NornAnyWorkflowDeclaration } from "./api.ts";
 
-export function assertLaunchableWorkflow(workflow: NornAnyWorkflowDeclaration): void {
-	if (!workflow.isEntrypoint) return;
-	if (!workflow.title || workflow.title.trim().length === 0) throw new Error(`Entrypoint workflow requires a title: ${workflow.id}`);
+export function assertWorkflowMetadata(workflow: NornAnyWorkflowDeclaration): void {
+	if (workflow.instructions !== undefined && (typeof workflow.instructions !== "string" || workflow.instructions.trim().length === 0)) {
+		throw new Error(`Workflow instructions must be a nonempty string: ${workflow.id}`);
+	}
+	if (workflow.isEntrypoint && workflow.instructions === undefined) {
+		throw new Error(`Entrypoint workflow requires instructions: ${workflow.id}`);
+	}
 }
 
 export function unwrapSchema(schema: unknown): unknown {

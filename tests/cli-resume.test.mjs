@@ -29,7 +29,7 @@ import { definePlugin, definePluginManifest } from "norn";
 import { z } from "zod";
 if (process.argv.includes("execute-run")) await new Promise(resolve => setTimeout(resolve, 1800));
 const manifest = definePluginManifest({ id: "cli", workflows: {
-	decide: { title: "Decide", isEntrypoint: true, params: z.object({ answer: z.boolean() }), gate: { enabled: true, fields: ["answer"] } }
+	decide: { instructions: "Use to supply the test decision.", isEntrypoint: true, params: z.object({ answer: z.boolean() }), gate: { enabled: true, fields: ["answer"] } }
 } });
 export default definePlugin(manifest, { workflows: { decide: {
 	gate: { describe: () => "Choose" }, execute: (run, params) => run.complete({ data: params })

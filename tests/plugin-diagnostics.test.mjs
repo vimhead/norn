@@ -14,7 +14,7 @@ const { readOptionalRunResumeRequest } = await jiti.import("../src/internal/laun
 const { getRunLeaseOwner } = await jiti.import("../src/internal/run-lease.ts");
 const cliPath = fileURLToPath(new URL("../bin/norn.mjs", import.meta.url));
 
-function createPluginSource({ id, workflows = '{ step: { title: "Step", isEntrypoint: true, params: z.object({}) } }', implementation = '{ workflows: { step: { execute: run => run.complete() } } }', configSchema = "undefined" }) {
+function createPluginSource({ id, workflows = '{ step: { instructions: "Use to complete the fixture step.", isEntrypoint: true, params: z.object({}) } }', implementation = '{ workflows: { step: { execute: run => run.complete() } } }', configSchema = "undefined" }) {
 	return `import { definePlugin, definePluginManifest } from "norn";
 import { z } from "zod";
 const manifest = definePluginManifest({ id: ${JSON.stringify(id)}, config: ${configSchema}, workflows: ${workflows} });
@@ -56,7 +56,7 @@ test("discovery collects import, export, config, factory and declaration failure
 		"export.ts": "export default {};",
 		"config.ts": createPluginSource({ id: "config", configSchema: 'z.object({ port: z.number() })' }),
 		"factory.ts": createPluginSource({ id: "factory", implementation: '() => { throw new Error("factory failed"); }' }),
-		"untitled.ts": createPluginSource({ id: "untitled", workflows: '{ step: { isEntrypoint: true, params: z.object({}) } }' }),
+		"unguided.ts": createPluginSource({ id: "unguided", workflows: '{ step: { isEntrypoint: true, params: z.object({}) } }' }),
 		"good.ts": createPluginSource({ id: "good" }),
 	}, config: { config: { port: "invalid" } } });
 	const result = await discoverNornProject(cwd);
@@ -65,13 +65,13 @@ test("discovery collects import, export, config, factory and declaration failure
 	assert.deepEqual(result.project.plugins.map(plugin => plugin.id), ["good"]);
 	assert.equal(result.diagnostics.length, 5);
 	const byFile = new Map(result.diagnostics.map(diagnostic => [diagnostic.pluginPath, diagnostic]));
-	for (const [file, stage] of [["broken.ts", "import"], ["export.ts", "declaration"], ["config.ts", "config"], ["factory.ts", "implementation"], ["untitled.ts", "declaration"]]) {
+	for (const [file, stage] of [["broken.ts", "import"], ["export.ts", "declaration"], ["config.ts", "config"], ["factory.ts", "implementation"], ["unguided.ts", "declaration"]]) {
 		const diagnostic = byFile.get(join(cwd, file));
 		assert.equal(diagnostic.configPath, join(cwd, "norn.project.json"));
 		assert.equal(diagnostic.stage, stage);
 		assert.ok(diagnostic.message.length > 0);
 	}
-	assert.equal(byFile.get(join(cwd, "untitled.ts")).workflowId, "untitled.step");
+	assert.equal(byFile.get(join(cwd, "unguided.ts")).workflowId, "unguided.step");
 	assert.deepEqual(byFile.get(join(cwd, "config.ts")).issues.map(issue => issue.path), [["port"]]);
 	assert.equal(byFile.get(join(cwd, "config.ts")).pluginId, "config");
 	assert.equal(byFile.get(join(cwd, "broken.ts")).pluginId, null);
@@ -96,16 +96,16 @@ test("syntax errors and missing imports retain source paths and do not block lat
 test("a plugin with any invalid workflow is excluded atomically and reports every invalid workflow", async context => {
 	const cwd = await createFixture(context, { files: {
 		"partial.ts": createPluginSource({ id: "partial", workflows: `{
-			valid: { title: "Valid", isEntrypoint: true, params: z.object({}) },
-			untitled: { isEntrypoint: true, params: z.object({}) },
-			missing: { title: "Missing", isEntrypoint: true, params: z.object({}) },
-			gate: { title: "Gate", isEntrypoint: true, params: z.object({}), gate: { enabled: true, fields: ["unknown"] } }
-		}`, implementation: '{ workflows: { valid: { execute: run => run.complete() }, untitled: { execute: run => run.complete() }, gate: { execute: run => run.complete() } } }' }),
+			valid: { instructions: "Use to complete the valid step.", isEntrypoint: true, params: z.object({}) },
+			unguided: { isEntrypoint: true, params: z.object({}) },
+			missing: { instructions: "Use to exercise missing implementation detection.", isEntrypoint: true, params: z.object({}) },
+			gate: { instructions: "Use to exercise gate field validation.", isEntrypoint: true, params: z.object({}), gate: { enabled: true, fields: ["unknown"] } }
+		}`, implementation: '{ workflows: { valid: { execute: run => run.complete() }, unguided: { execute: run => run.complete() }, gate: { execute: run => run.complete() } } }' }),
 		"good.ts": createPluginSource({ id: "good" }),
 	} });
 	const result = await discoverNornProject(cwd);
 	assert.deepEqual(result.workflows.map(workflow => workflow.id), ["good.step"]);
-	assert.deepEqual(result.diagnostics.map(diagnostic => diagnostic.workflowId), ["partial.untitled", "partial.missing", "partial.gate"]);
+	assert.deepEqual(result.diagnostics.map(diagnostic => diagnostic.workflowId), ["partial.unguided", "partial.missing", "partial.gate"]);
 	assert.deepEqual(result.diagnostics.map(diagnostic => diagnostic.stage), ["declaration", "implementation", "declaration"]);
 	const missing = await inspectNornWorkflow({ cwd, workflowId: "partial.valid" });
 	assert.equal(missing.workflow, null);
@@ -154,7 +154,7 @@ test("fresh discovery becomes complete after repairing the same source file", as
 
 test("CLI discovery reports incomplete status and schemas while execution fails before creating any run", { timeout: 20000 }, async context => {
 	const cwd = await createFixture(context, { files: {
-		"good.ts": createPluginSource({ id: "good", workflows: '{ step: { title: "Step", isEntrypoint: true, params: z.object({}) }, internal: { isEntrypoint: false, params: z.object({}) } }', implementation: '{ workflows: { step: { execute: run => run.complete() }, internal: { execute: run => run.complete() } } }' }),
+		"good.ts": createPluginSource({ id: "good", workflows: '{ step: { instructions: "Use to complete the fixture step.", isEntrypoint: true, params: z.object({}) }, internal: { isEntrypoint: false, params: z.object({}) } }', implementation: '{ workflows: { step: { execute: run => run.complete() }, internal: { execute: run => run.complete() } } }' }),
 		"broken.ts": 'throw new Error("broken sibling");', "another.ts": "export default false;",
 	} });
 	for (const args of [["project", "inspect"], ["workflows", "list"], ["workflows", "list", "--all"], ["workflows", "inspect", "good.step"], ["workflows", "inspect", "broken.step"]]) {
@@ -163,8 +163,13 @@ test("CLI discovery reports incomplete status and schemas while execution fails 
 		assert.equal(result.isComplete, false);
 		assert.equal(result.diagnostics.length, 2);
 		if (args[0] === "project") assert.deepEqual(result.project.plugins.map(plugin => plugin.id), ["good"]);
-		else if (args[1] === "list") assert.equal(result.workflows.length, args.includes("--all") ? 2 : 1);
-		else if (args[2] === "good.step") assert.equal(result.workflow.paramsSchema.type, "object");
+		else if (args[1] === "list") {
+			assert.equal(result.workflows.length, args.includes("--all") ? 2 : 1);
+			assert.equal(result.workflows.find(workflow => workflow.id === "good.step").instructions, "Use to complete the fixture step.");
+		} else if (args[2] === "good.step") {
+			assert.equal(result.workflow.paramsSchema.type, "object");
+			assert.equal(result.workflow.instructions, "Use to complete the fixture step.");
+		}
 		else assert.equal(result.workflow, null);
 	}
 	assertInvalidProject(await executeCli({ cwd, args: ["runs", "start", "good.step"], input: { params: {} } }), 2);
@@ -176,7 +181,7 @@ test("CLI discovery reports incomplete status and schemas while execution fails 
 
 test("strict resume preserves the existing interruption and does not queue a request or acquire a lease", { timeout: 20000 }, async context => {
 	const cwd = await createFixture(context, { files: {
-		"gate.ts": createPluginSource({ id: "gate", workflows: '{ step: { title: "Decision", isEntrypoint: true, params: z.object({ approved: z.boolean() }), gate: { enabled: true, fields: ["approved"] } } }' }),
+		"gate.ts": createPluginSource({ id: "gate", workflows: '{ step: { instructions: "Use to decide whether to proceed.", isEntrypoint: true, params: z.object({ approved: z.boolean() }), gate: { enabled: true, fields: ["approved"] } } }' }),
 	} });
 	const started = await executeCli({ cwd, args: ["runs", "start", "gate.step"], input: { params: { approved: false } } });
 	assert.equal(started.exitCode, 0, JSON.stringify(started.result));
@@ -207,6 +212,8 @@ test("client discovery preserves status and diagnostics, and execution errors re
 	for (const result of [await client.project.inspect(), await client.workflows.list(), await client.workflows.inspect("good.step")]) {
 		assert.equal(result.isComplete, false);
 		assert.equal(result.diagnostics.length, 1);
+		if (result.workflow) assert.equal(result.workflow.instructions, "Use to complete the fixture step.");
+		if (result.workflows) assert.equal(result.workflows[0].instructions, "Use to complete the fixture step.");
 	}
 	await assert.rejects(client.runs.start({ workflowId: "good.step", params: {} }), error => error instanceof NornProjectLoadError && error.diagnostics[0].stage === "import");
 	await assert.rejects(client.workflows.entries(), error => error.code === "NORN_PROJECT_INVALID" && error.diagnostics.length === 1);
@@ -233,8 +240,8 @@ test("CLI and client inspection advertise contribution schemas without losing fo
 	const source = 'import { artifactRefSchema, workflowRefSchema } from "norn";\n' + createPluginSource({
 		id: "handoff",
 		workflows: `{
-			caller: { title: "Caller", isEntrypoint: true, params: z.object({ taskId: z.string(), context: z.record(z.string(), z.unknown()) }) },
-			collect: { title: "Collector", isEntrypoint: true, params: z.object({ query: z.string(), next: workflowRefSchema({ params: z.object({ records: artifactRefSchema }) }) }) },
+			caller: { instructions: "Use to collect records for the supplied task.", isEntrypoint: true, params: z.object({ taskId: z.string(), context: z.record(z.string(), z.unknown()) }) },
+			collect: { instructions: "Use to collect records and forward them to the supplied continuation.", isEntrypoint: true, params: z.object({ query: z.string(), next: workflowRefSchema({ params: z.object({ records: artifactRefSchema }) }) }) },
 			finish: { isEntrypoint: false, params: z.object({ taskId: z.string(), context: z.record(z.string(), z.unknown()), records: artifactRefSchema }) }
 		}`,
 		implementation: `{ workflows: {
@@ -276,7 +283,7 @@ test("CLI and client inspection advertise contribution schemas without losing fo
 test("unrepresentable contributions fail inspection as schema diagnostics rather than plugin import errors", async context => {
 	const cwd = await createFixture(context, { files: {
 		"custom.ts": 'import { workflowRefSchema } from "norn";\n' + createPluginSource({
-			id: "custom", workflows: '{ step: { title: "Custom", isEntrypoint: true, params: z.object({ next: workflowRefSchema({ params: z.custom(() => true) }) }) } }',
+			id: "custom", workflows: '{ step: { instructions: "Use to inspect custom continuation parameters.", isEntrypoint: true, params: z.object({ next: workflowRefSchema({ params: z.custom(() => true) }) }) } }',
 		}),
 		"good.ts": createPluginSource({ id: "good" }),
 	} });
@@ -292,7 +299,7 @@ test("unrepresentable contributions fail inspection as schema diagnostics rather
 
 test("inspection reports an unrepresentable params schema without hiding sibling diagnostics", async context => {
 	const cwd = await createFixture(context, { files: {
-		"custom.ts": createPluginSource({ id: "custom", workflows: '{ step: { title: "Custom", isEntrypoint: true, params: z.custom(() => true) } }' }),
+		"custom.ts": createPluginSource({ id: "custom", workflows: '{ step: { instructions: "Use to inspect custom parameters.", isEntrypoint: true, params: z.custom(() => true) } }' }),
 		"broken.ts": 'throw new Error("unfinished");',
 	} });
 	const result = await inspectNornWorkflow({ cwd, workflowId: "custom.step" });

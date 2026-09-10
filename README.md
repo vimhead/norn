@@ -130,16 +130,17 @@ catalog is `null`, rather than falsely asserting that its ID does not exist.
 
 ## Writing workflows
 
-A workflow is a declaration object with params, entrypoint visibility, and an
-optional isolation mode.
+A workflow declares params, entrypoint visibility, caller-facing `instructions`,
+and an optional isolation mode. Entrypoints require nonempty instructions;
+internal steps may omit them. Instructions guide selection and use, not worker
+system prompts or gate decisions. Workflow IDs identify and sort catalog entries.
 
 ```ts
 import { z } from "zod";
 import type { NornWorkflowDefinition } from "norn";
 
 export const planWorkflow = {
-  title: "Plan",
-  description: "Create an implementation plan for a coding task.",
+  instructions: "Use to create an implementation plan for a coding task.",
   isEntrypoint: true,
   params: z.object({ task: z.string() }),
 } as const satisfies NornWorkflowDefinition;
@@ -267,8 +268,7 @@ or verify files in the project root:
 
 ```ts
 export const verifyWorkflow = {
-  title: "Verify",
-  description: "Run project verification.",
+  instructions: "Use to run project verification.",
   isEntrypoint: true,
   isolation: { mode: "project" },
   params,
@@ -294,8 +294,7 @@ before execution:
 
 ```ts
 export const reviewWorkflow = {
-  title: "Review",
-  description: "Approve, revise, or block a proposed change.",
+  instructions: "Use to approve, revise, or block a proposed change.",
   isEntrypoint: false,
   gate: {
     enabled: true,

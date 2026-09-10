@@ -15,7 +15,7 @@ async function createFixture(context, gateMode, isEntrypoint) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-gate-test-"));
 	context.after(() => rm(cwd, { recursive: true, force: true }));
 	const manifest = definePluginManifest({ id: "gates", workflows: {
-		decide: { title: "Decide", isEntrypoint, params: z.object({ answer: z.boolean() }), gate: { enabled: true, fields: ["answer"] } },
+		decide: { instructions: "Use to supply the test decision.", isEntrypoint, params: z.object({ answer: z.boolean() }), gate: { enabled: true, fields: ["answer"] } },
 	} });
 	let executionCount = 0;
 	const engine = new NornEngine({ cwd, gateMode });

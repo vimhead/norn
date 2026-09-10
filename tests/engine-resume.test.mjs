@@ -21,7 +21,7 @@ async function createInterruptedRun(context) {
 	const manifest = definePluginManifest({
 		id: "resumeTest",
 		workflows: {
-			start: { isEntrypoint: true, title: "Start gated run", params: z.object({}) },
+			start: { isEntrypoint: true, instructions: "Use to start a gated test run.", params: z.object({}) },
 			decision: {
 				isEntrypoint: false,
 				params: z.object({ decision: z.enum(["accept", "reject"]), evidence: z.string() }),
