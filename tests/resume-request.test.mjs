@@ -84,8 +84,7 @@ test("an old executor cannot clear a replacement request", async context => {
 
 test("executor plugin-loading errors release the queued resume request", { timeout: 10000 }, async context => {
 	const fixture = await createFixture(context, "interrupted");
-	await writeFile(join(fixture.cwd, "norn.project.json"), '{"version":1,"includes":["./norn.json"]}');
-	await writeFile(join(fixture.cwd, "norn.json"), '{"plugins":["./broken.ts"]}');
+	await writeFile(join(fixture.cwd, "norn.project.json"), '{"version":1,"plugins":["./broken.ts"]}');
 	await writeFile(join(fixture.cwd, "broken.ts"), 'throw new Error("injected plugin loading failure");');
 	await writeRunResumeRequest(fixture.runRoot, fixture.request);
 	const child = spawn(process.execPath, [cliPath, "execute-run", "requested"], { cwd: fixture.cwd, stdio: ["ignore", "pipe", "pipe"] });
