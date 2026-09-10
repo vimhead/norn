@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { homedir } from "node:os";
+import { resolveDocumentationCacheRoot, resolveNornDocumentation, type NornDocumentationSource } from "./documentation.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { discoverNornProject, findNornProject, inspectNornWorkflow, loadNornProject, NORN_PROJECT_FILE_NAME } from "./plugin-loader.ts";
 import { type NornAnyWorkflowDeclaration, type DeletedNornRunInfo, type NornRunInfo } from "./api.ts";
@@ -49,6 +51,22 @@ const COMMANDS: readonly CliCommand[] = [
 		output: "JSON object with help metadata under help.",
 		examples: ["norn help", "norn help runs", "norn help runs start", "norn --help"],
 		execute: (args) => writeCliHelp(args),
+	},
+	{
+		id: "docs.inspect",
+		path: ["docs", "inspect"],
+		description: "Resolve version-matched local documentation and examples. Standalone binaries extract bundled assets into a verified build-specific cache; no project or network is required.",
+		usage: "norn docs inspect",
+		output: "JSON object under documentation with storage, version, commit, assetDigest, absolute paths, and commit-pinned GitHub links when build metadata is available. NORN_DOCS_CACHE_DIR overrides the binary cache directory.",
+		examples: ["norn docs inspect"],
+		execute: async (args, documentationSource) => {
+			assertNoExtraArgs("docs inspect", args);
+			writeJson({ documentation: await resolveNornDocumentation({
+				source: documentationSource,
+				build: NORN_BUILD_INFO,
+				cacheRoot: resolveDocumentationCacheRoot({ platform: process.platform, home: homedir(), environment: process.env }),
+			}) });
+		},
 	},
 	{
 		id: "project.init",
@@ -323,6 +341,7 @@ const COMMANDS: readonly CliCommand[] = [
 const HELP_COMMAND_ORDER = [
 	"commands.list",
 	"commands.inspect",
+	"docs.inspect",
 	"workflows.list",
 	"workflows.inspect",
 	"runs.start",
@@ -348,6 +367,7 @@ const HELP_COMMAND_ORDER = [
 const HUMAN_COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
 	"commands.list": "List machine-readable command metadata.",
 	"commands.inspect": "Inspect one command's machine-readable contract.",
+	"docs.inspect": "Locate matching documentation and examples offline.",
 	"workflows.list": "List Norn workflows.",
 	"workflows.inspect": "Inspect a workflow schema and source.",
 	"runs.start": "Start a workflow run.",
@@ -370,9 +390,9 @@ const HUMAN_COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
 	help: "Show concise command help.",
 };
 
-export async function main(args: readonly string[]): Promise<void> {
+export async function main(args: readonly string[], documentationSource: NornDocumentationSource): Promise<void> {
 	try {
-		await runCommand(args);
+		await runCommand(args, documentationSource);
 	} catch (error) {
 		writeJson({ error: {
 			code: errorCode(error), message: errorMessage(error),
@@ -382,7 +402,7 @@ export async function main(args: readonly string[]): Promise<void> {
 	}
 }
 
-async function runCommand(args: readonly string[]): Promise<void> {
+async function runCommand(args: readonly string[], documentationSource: NornDocumentationSource): Promise<void> {
 	if (args.length === 0) {
 		writeCliHelp([]);
 		return;
@@ -398,7 +418,7 @@ async function runCommand(args: readonly string[]): Promise<void> {
 	}
 	const command = findCliCommand(args);
 	if (!command) throw new Error(`Unknown norn command: ${args.join(" ")}`);
-	await command.execute(args.slice(command.path.length));
+	await command.execute(args.slice(command.path.length), documentationSource);
 }
 
 type CliCommand = {
@@ -412,7 +432,7 @@ type CliCommand = {
 	readonly output: string;
 	readonly examples: readonly string[];
 	readonly hidden?: true;
-	readonly execute: (args: readonly string[]) => Promise<void> | void;
+	readonly execute: (args: readonly string[], documentationSource: NornDocumentationSource) => Promise<void> | void;
 };
 
 type CliCommandInfo = Omit<CliCommand, "execute">;
