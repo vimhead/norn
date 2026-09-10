@@ -19,6 +19,7 @@ import { NornAgentResponseCollector } from "./agent-response-tool.ts";
 import { NornArtifacts } from "./artifacts.ts";
 import { errorMessage, NornRunStoppedError } from "./errors.ts";
 import { NornRunLogs } from "./logs.ts";
+import { clearRunResumeRequest, matchesRunResumeRequest, readOptionalRunResumeRequest, RESUME_START_GRACE_MS, type NornRunResumeRequest } from "./launch-request.ts";
 import { NornRunLease } from "./run-lease.ts";
 import { NornRunLogger } from "./run-log.ts";
 import { NornRunStore, runCurrentRoot } from "./run-store.ts";
@@ -110,10 +111,9 @@ export class NornEngine {
 		options: NornRunStartOptions | undefined,
 	): Promise<NornRunResult> {
 		const session = await this.createRunSession(workflow, params, options);
-		return this.runScheduler(session, {
-			workflow,
-			params,
-		});
+		const current = session.state.currentState().current;
+		if (!current) throw new Error("New run is missing its initial workflow step");
+		return this.runScheduler(session, toWorkflowStep(workflow, current));
 	}
 
 	async listRunCheckpoints(path: string): Promise<NornRunCheckpoint[]> {
@@ -125,10 +125,14 @@ export class NornEngine {
 		const runRoot = await resolveRunRoot(this.input.cwd, path);
 		const lease = await NornRunLease.acquire(runRoot);
 		try {
+			const pendingRequest = await readOptionalRunResumeRequest(runRoot);
+			if (pendingRequest && Date.now() - Date.parse(pendingRequest.createdAt) < RESUME_START_GRACE_MS) throw new Error(`Resume request is still pending: ${runRoot}`);
 			const runStore = await NornRunStore.open(runRoot);
-			await runStore.restoreSnapshot(checkpointId);
-			const state = await NornRunStateStore.load(runRoot);
-			await state.prepareForResumeAfterRollback();
+			await runStore.restoreSnapshot(checkpointId, async (stagedRunRoot) => {
+				const state = await NornRunStateStore.load(stagedRunRoot);
+				await state.prepareForResumeAfterRollback();
+			});
+			if (pendingRequest) await clearRunResumeRequest({ runRoot, request: pendingRequest, lease });
 			return getRunInfo(runRoot);
 		} finally {
 			await lease.release();
@@ -136,7 +140,16 @@ export class NornEngine {
 	}
 
 	async resumeWorkflow(path: string, params?: unknown): Promise<NornRunResult> {
-		const runRoot = await resolveRunRoot(this.input.cwd, path);
+		return this.resumeWorkflowExecution({ path, params, expectedRequest: undefined });
+	}
+
+	async resumeRequestedWorkflow(input: { readonly runRoot: string; readonly request: NornRunResumeRequest }): Promise<NornRunResult> {
+		return this.resumeWorkflowExecution({ path: input.runRoot, params: input.request.params, expectedRequest: input.request });
+	}
+
+	private async resumeWorkflowExecution(input: { readonly path: string; readonly params: unknown; readonly expectedRequest: NornRunResumeRequest | undefined }): Promise<NornRunResult> {
+		const { params, expectedRequest } = input;
+		const runRoot = await resolveRunRoot(this.input.cwd, input.path);
 		const initialStateStore = await NornRunStateStore.load(runRoot);
 		const initialState = initialStateStore.currentState();
 		if (initialState.status === "interrupted" && params === undefined) throw new Error(`Interrupted workflow resume requires params: ${runRoot}`);
@@ -147,6 +160,8 @@ export class NornEngine {
 		let isLeaseOwnedByScheduler = false;
 		let session: RunSession | undefined;
 		try {
+			const pendingRequest = await readOptionalRunResumeRequest(runRoot);
+			if (expectedRequest ? !matchesRunResumeRequest(pendingRequest, expectedRequest) : pendingRequest !== undefined) throw new Error(`Resume request changed or belongs to another executor: ${runRoot}`);
 			session = await this.openRunSession(runRoot, lease);
 			const state = session.state.currentState();
 			const current = state.current;
@@ -295,7 +310,10 @@ export class NornEngine {
 				entrypointWorkflowId: workflow.id,
 				workspace,
 				configOverride: options?.configOverride,
-				current: { workflowId: workflow.id, params, cwd, env: {} },
+				current: {
+					workflowId: workflow.id, params, cwd, env: {},
+					interruption: this.input.gateMode === "pause" && workflow.gate ? { status: "pending" } : undefined,
+				},
 				startedAt,
 			});
 			const session = { runRoot, run, state, lease, runStore, logger, activeRun };

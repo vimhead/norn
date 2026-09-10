@@ -7,9 +7,9 @@ import { findNornProject, loadNornProject, NORN_CONFIG_FILE_NAME, NORN_PROJECT_F
 import { type NornAnyWorkflowDeclaration, type DeletedNornRunInfo, type NornProjectInfo, type NornRunInfo } from "./api.ts";
 import { NornEngine } from "./internal/engine.ts";
 import { errorMessage, isNodeError, NornRunStoppedError } from "./internal/errors.ts";
-import { readRunLaunchRequest, readRunResumeRequest, writeRunLaunchRequest, writeRunResumeRequest } from "./internal/launch-request.ts";
+import { clearRunResumeRequest, readRunLaunchRequest, readRunResumeRequest, writeRunLaunchRequest, writeRunResumeRequest, type NornRunResumeRequest } from "./internal/launch-request.ts";
 import { generateRunName } from "./internal/run-names.ts";
-import { getRunLeaseOwner } from "./internal/run-lease.ts";
+import { getRunLeaseOwner, NornRunLease } from "./internal/run-lease.ts";
 import { NornRunStore } from "./internal/run-store.ts";
 import { readRunMetrics } from "./internal/metrics.ts";
 import { getRunInfo, listRuns, mergeInterruptedWorkflowParams, resolveRunRoot } from "./internal/run-state.ts";
@@ -793,7 +793,7 @@ async function startRun(workflowId: string, args: readonly string[]): Promise<vo
 	await mkdir(runRoot, { recursive: true });
 	const createdAt = new Date().toISOString();
 	await writeRunLaunchRequest(runRoot, { version: 1, type: "run", id, name, workflowId, params, configOverride, createdAt });
-	startDetachedExecuteRun(id, project.projectRoot);
+	await startDetachedExecuteRun(id, project.projectRoot);
 	writeJson({ run: startedRunInfo({ id, name, workflow, runRoot, createdAt }) });
 }
 
@@ -801,12 +801,24 @@ async function resumeRun(run: string, args: readonly string[]): Promise<void> {
 	assertNoStructuredInputArgs("runs resume", args);
 	const project = await loadNornProject(process.cwd());
 	const runRoot = await resolveRunRoot(project.projectRoot, run);
-	const runInfo = await getRunInfo(runRoot);
 	const input = parseResumeRunInput(await readStdinJson());
-	const params = await parseResumeParams(runInfo, input.params);
-	await writeRunResumeRequest(runRoot, { version: 1, type: "resume", id: runInfo.id, params, createdAt: new Date().toISOString() });
-	startDetachedExecuteRun(runInfo.id, project.projectRoot);
-	writeJson({ run: { ...runInfo, status: "running", health: "healthy", interruption: undefined, updatedAt: new Date().toISOString() } });
+	const lease = await NornRunLease.acquire(runRoot);
+	let request: NornRunResumeRequest;
+	try {
+		const runInfo = await getRunInfo(runRoot);
+		const params = await parseResumeParams(runInfo, input.params);
+		request = { version: 1, type: "resume", id: runInfo.id, requestId: randomUUID(), params, createdAt: new Date().toISOString() };
+		await writeRunResumeRequest(runRoot, request);
+	} finally {
+		await lease.release();
+	}
+	try {
+		await startDetachedExecuteRun(request.id, project.projectRoot);
+	} catch (error) {
+		await removeResumeRequest({ runRoot, request });
+		throw error;
+	}
+	writeJson({ run: await getRunInfo(runRoot) });
 }
 
 async function parseResumeParams(runInfo: NornRunInfo, params: unknown): Promise<unknown> {
@@ -892,26 +904,32 @@ async function executeRun(runId: string): Promise<void> {
 	const abortController = new AbortController();
 	process.once("SIGTERM", () => abortController.abort(new NornRunStoppedError()));
 	process.once("SIGINT", () => abortController.abort(new NornRunStoppedError()));
-	const project = await loadNornProject(process.cwd());
-	const runRoot = resolve(project.projectRoot, RUNS_ROOT, runId);
-	const engine = new NornEngine({ cwd: project.projectRoot, signal: abortController.signal, gateMode: "pause", config: project.projectConfig });
-	for (const plugin of project.plugins) engine.registerPlugin(plugin);
-	const launchRequest = await readOptionalRunLaunchRequest(runRoot);
-	if (launchRequest) {
-		try {
-			const workflow = project.registry.workflowById(launchRequest.workflowId);
-			if (!workflow) throw new Error(`Unknown workflow: ${launchRequest.workflowId}`);
-			await engine.runWorkflow(workflow, launchRequest.params, { id: launchRequest.id, name: launchRequest.name, configOverride: launchRequest.configOverride });
-			return;
-		} finally {
-			await rm(join(runRoot, "launch-request.json"), { force: true });
-		}
-	}
-	const resumeRequest = await readRunResumeRequest(runRoot);
+	const location = await findNornProject(process.cwd());
+	const runRoot = resolve(location.projectRoot, RUNS_ROOT, runId);
+	const request = await readOptionalRunLaunchRequest(runRoot) ?? await readRunResumeRequest(runRoot);
 	try {
-		await engine.resumeWorkflow(runRoot, resumeRequest.params);
+		const project = await loadNornProject(process.cwd());
+		const engine = new NornEngine({ cwd: project.projectRoot, signal: abortController.signal, gateMode: "pause", config: project.projectConfig });
+		for (const plugin of project.plugins) engine.registerPlugin(plugin);
+		if (request.type === "run") {
+			const workflow = project.registry.workflowById(request.workflowId);
+			if (!workflow) throw new Error(`Unknown workflow: ${request.workflowId}`);
+			await engine.runWorkflow(workflow, request.params, { id: request.id, name: request.name, configOverride: request.configOverride });
+		} else {
+			await engine.resumeRequestedWorkflow({ runRoot, request });
+		}
 	} finally {
-		await rm(join(runRoot, "resume-request.json"), { force: true });
+		if (request.type === "run") await rm(join(runRoot, "launch-request.json"), { force: true });
+		else await removeResumeRequest({ runRoot, request });
+	}
+}
+
+async function removeResumeRequest(input: { readonly runRoot: string; readonly request: NornRunResumeRequest }): Promise<void> {
+	const lease = await NornRunLease.acquire(input.runRoot);
+	try {
+		await clearRunResumeRequest({ ...input, lease });
+	} finally {
+		await lease.release();
 	}
 }
 
@@ -971,11 +989,15 @@ async function writeRunLogs(run: string, options: { readonly follow: boolean }):
 	}
 }
 
-function startDetachedExecuteRun(runId: string, projectRoot: string): void {
+async function startDetachedExecuteRun(runId: string, projectRoot: string): Promise<void> {
 	const child = spawn(process.execPath, detachedExecuteRunArgs(runId), {
 		cwd: projectRoot,
 		detached: true,
 		stdio: "ignore",
+	});
+	await new Promise<void>((resolveSpawn, reject) => {
+		child.once("spawn", resolveSpawn);
+		child.once("error", reject);
 	});
 	child.unref();
 }
