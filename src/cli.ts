@@ -3,10 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { findNornProject, loadNornProject, NORN_PROJECT_FILE_NAME } from "./plugin-loader.ts";
-import { type NornAnyWorkflowDeclaration, type DeletedNornRunInfo, type NornProjectInfo, type NornRunInfo } from "./api.ts";
+import { discoverNornProject, findNornProject, inspectNornWorkflow, loadNornProject, NORN_PROJECT_FILE_NAME } from "./plugin-loader.ts";
+import { type NornAnyWorkflowDeclaration, type DeletedNornRunInfo, type NornRunInfo } from "./api.ts";
 import { NornEngine } from "./internal/engine.ts";
-import { errorMessage, isNodeError, NornRunStoppedError } from "./internal/errors.ts";
+import { errorMessage, isNodeError, NornProjectLoadError, NornRunStoppedError } from "./internal/errors.ts";
 import { clearRunResumeRequest, readRunLaunchRequest, readRunResumeRequest, writeRunLaunchRequest, writeRunResumeRequest, type NornRunResumeRequest } from "./internal/launch-request.ts";
 import { generateRunName } from "./internal/run-names.ts";
 import { getRunLeaseOwner, NornRunLease } from "./internal/run-lease.ts";
@@ -67,7 +67,7 @@ const COMMANDS: readonly CliCommand[] = [
 		path: ["project", "inspect"],
 		description: "Use when discovering the active Norn project, plugins, workflow sources, and Seer mode.",
 		usage: "norn project inspect",
-		output: "JSON object with project metadata under project.",
+		output: "JSON object with project metadata under project, isComplete, and plugin diagnostics. Incomplete discovery does not permit execution.",
 		examples: ["norn project inspect"],
 		execute: async (args) => {
 			assertNoExtraArgs("project inspect", args);
@@ -92,7 +92,7 @@ const COMMANDS: readonly CliCommand[] = [
 		description: "Use when selecting a Norn workflow for a user task; defaults to entrypoint workflows.",
 		usage: "norn workflows list [--entrypoints|--all]",
 		options: ["--entrypoints: list entrypoint workflows", "--all: include internal workflow steps"],
-		output: "JSON object with registered workflow summaries under workflows.",
+		output: "JSON object with workflow summaries under workflows, isComplete, and plugin diagnostics. Successful discovery can be incomplete; start/resume remain strict.",
 		examples: ["norn workflows list", "norn workflows list --all"],
 		execute: listWorkflows,
 	},
@@ -102,7 +102,7 @@ const COMMANDS: readonly CliCommand[] = [
 		description: "Use when reading a workflow's params schema, gate contract, description, and source plugin before starting or editing it.",
 		usage: "norn workflows inspect <workflow-id>",
 		arguments: ["workflow-id: fully qualified workflow id"],
-		output: "JSON object with inspected workflow details under workflow.",
+		output: "JSON object with workflow details, isComplete, and plugin diagnostics. workflow is null if unavailable in an incomplete catalog or its schema cannot be inspected; an unknown id in a complete catalog is an error.",
 		examples: ["norn workflows inspect example.plan"],
 		execute: async (args) => {
 			const workflowId = requiredArg("workflows inspect", args, 0, "workflow id");
@@ -374,7 +374,10 @@ export async function main(args: readonly string[]): Promise<void> {
 	try {
 		await runCommand(args);
 	} catch (error) {
-		writeJson({ error: { code: errorCode(error), message: errorMessage(error) } });
+		writeJson({ error: {
+			code: errorCode(error), message: errorMessage(error),
+			...(error instanceof NornProjectLoadError ? { isComplete: error.isComplete, diagnostics: error.diagnostics } : {}),
+		} });
 		process.exitCode = 1;
 	}
 }
@@ -718,15 +721,13 @@ function assertKnownFlags(command: string, args: readonly string[], flags: reado
 
 async function listWorkflows(args: readonly string[]): Promise<void> {
 	assertKnownFlags("workflows list", args, ["--entrypoints", "--all"]);
-	const project = await loadNornProject(process.cwd());
-	writeJson({ workflows: project.registry.list({ entrypointsOnly: workflowListEntrypointsOnly(args) }) });
+	const entrypointsOnly = workflowListEntrypointsOnly(args);
+	const { workflows, isComplete, diagnostics } = await discoverNornProject(process.cwd());
+	writeJson({ workflows: entrypointsOnly ? workflows.filter(workflow => workflow.isEntrypoint) : workflows, isComplete, diagnostics });
 }
 
 async function inspectWorkflow(workflowId: string): Promise<void> {
-	const project = await loadNornProject(process.cwd());
-	const workflow = project.registry.inspect(workflowId);
-	if (!workflow) throw new Error(`Unknown workflow: ${workflowId}`);
-	writeJson({ workflow });
+	writeJson(await inspectNornWorkflow({ cwd: process.cwd(), workflowId }));
 }
 
 function workflowListEntrypointsOnly(args: readonly string[]): boolean {
@@ -752,21 +753,8 @@ async function listCurrentProjectRuns(): Promise<NornRunInfo[]> {
 }
 
 async function inspectProject(): Promise<void> {
-	const project = await loadNornProject(process.cwd());
-	writeJson({ project: projectInfo(project) });
-}
-
-function projectInfo(project: Awaited<ReturnType<typeof loadNornProject>>): NornProjectInfo {
-	return {
-		cwd: project.cwd,
-		projectPath: project.projectPath,
-		projectRoot: project.projectRoot,
-		configPath: project.configPath,
-		configRoot: project.configRoot,
-		configFiles: project.configFiles.map((configFile) => configFile.path),
-		plugins: project.pluginInfos,
-		seerMode: project.seerMode ?? null,
-	};
+	const { project, isComplete, diagnostics } = await discoverNornProject(process.cwd());
+	writeJson({ project, isComplete, diagnostics });
 }
 
 async function inspectSeerMode(): Promise<void> {
@@ -1117,6 +1105,7 @@ function writeJson(value: unknown): void {
 }
 
 function errorCode(error: unknown): string {
+	if (error instanceof NornProjectLoadError) return error.code;
 	if (error instanceof SyntaxError) return "INVALID_JSON";
 	return "NORN_ERROR";
 }

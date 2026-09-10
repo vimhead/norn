@@ -108,6 +108,26 @@ norn project inspect
 norn workflows list
 ```
 
+Discovery commands (`project inspect`, `workflows list`, `workflows inspect`)
+return `isComplete` and `diagnostics` alongside their results. A broken plugin
+is excluded as a whole; duplicate plugin IDs exclude all conflicting sources.
+Diagnostics identify the declaring config, plugin path, failure stage, and error,
+with field-level issues for schema validation. The `import` stage includes module
+evaluation, not just syntax errors.
+
+An incomplete catalog can still describe successfully loaded workflows; it does
+not authorize execution. Start, resume, and executable client entries require the
+entire project to load and report `NORN_PROJECT_INVALID` with all collected plugin
+diagnostics otherwise. Discovery exits successfully even for incomplete results;
+invalid project/include configuration remains fatal. Importing plugins and calling
+implementation factories still executes trusted project code, not a sandbox.
+
+The client preserves these result envelopes: `project.inspect()` returns
+`{ project, isComplete, diagnostics }`, `workflows.list()` returns
+`{ workflows, isComplete, diagnostics }`, and `workflows.inspect()` returns
+`{ workflow, isComplete, diagnostics }`. An unavailable workflow in an incomplete
+catalog is `null`, rather than falsely asserting that its ID does not exist.
+
 ## Writing workflows
 
 A workflow is a declaration object with params, entrypoint visibility, and an

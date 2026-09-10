@@ -132,7 +132,8 @@ test("project-local plugin config is validated by its manifest", async context =
 	await writeJsonFixture({ path: join(projectRoot, "norn.project.json"), value: {
 		plugins: ["./plugin.ts"], config: { local: { greeting: 42 } },
 	} });
-	await assert.rejects(loadNornProject(projectRoot), error => error.issues.some(issue => issue.path[0] === "greeting"));
+	await assert.rejects(loadNornProject(projectRoot), error => error.code === "NORN_PROJECT_INVALID"
+		&& error.diagnostics.some(diagnostic => diagnostic.stage === "config" && diagnostic.issues.some(issue => issue.path[0] === "greeting")));
 });
 
 test("duplicate plugin ids across project and reusable configs are rejected", async context => {
