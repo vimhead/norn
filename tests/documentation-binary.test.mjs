@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { access, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,7 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const root = await mkdtemp(join(tmpdir(), "norn-binary-documentation-"));
 	context.after(() => rm(root, { recursive: true, force: true }));
 	const buildRoot = join(root, "build");
-	const detachedRoot = join(root, "standalone");
+	const detachedRoot = join(root, "standalone copy");
 	await mkdir(buildRoot);
 	await mkdir(detachedRoot);
 	for (const path of ["src", "docs", "examples", "skills", "README.md", "package.json", "tests/workflow-ref.test.mjs"]) {
@@ -37,13 +37,22 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const invoke = async (args, cwd = detachedRoot) => JSON.parse((await execute(binary, args, { cwd, env: environment, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 })).stdout);
 	assert.equal((await invoke(["version"])).build.commit, commit);
 	assert.equal((await invoke(["commands", "inspect", "docs.inspect"])).command.id, "docs.inspect");
+	assert.equal((await invoke(["commands", "inspect", "docs.intro"])).command.id, "docs.intro");
 	await assert.rejects(access(cacheRoot), { code: "ENOENT" });
+	const { intro } = await invoke(["docs", "intro"]);
+	const invocation = JSON.parse(intro.match(/^Runtime argv .*: (.+)$/m)[1]);
+	assert.deepEqual(invocation, [await realpath(binary)]);
+	assert.equal(JSON.parse((await execute(invocation[0], [...invocation.slice(1), "version"], { cwd: detachedRoot, env: environment, timeout: 30_000 })).stdout).build.commit, commit);
+	await rm(cacheRoot, { recursive: true, force: true });
 	const responses = await Promise.all(Array.from({ length: 4 }, () => invoke(["docs", "inspect"])));
 	const documentation = responses[0].documentation;
 	for (const response of responses) assert.deepEqual(response.documentation, documentation);
 	assert.equal(documentation.storage, "cache");
 	assert.equal(documentation.commit, commit);
 	assert.equal(documentation.version, version);
+	assert.ok(intro.includes(JSON.stringify(documentation.paths.index)));
+	assert.ok(intro.includes(JSON.stringify(documentation.paths.examples)));
+	assert.equal((await invoke(["docs", "intro"])).intro, intro);
 	for (const file of expectedBundle.files) {
 		assert.deepEqual(await readFile(join(documentation.paths.root, file.path)), Buffer.from(file.content), file.path);
 	}
@@ -62,6 +71,10 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Offline!\n");
 	await writeFile(documentation.paths.index, "modified");
 	await assert.rejects(invoke(["docs", "inspect"]), error => {
+		assert.match(error.stdout, /cache is incomplete or modified/);
+		return true;
+	});
+	await assert.rejects(invoke(["docs", "intro"]), error => {
 		assert.match(error.stdout, /cache is incomplete or modified/);
 		return true;
 	});

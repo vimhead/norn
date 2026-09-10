@@ -5,6 +5,8 @@ import type { NornBuildInfo } from "./build-info.ts";
 import { DOCUMENTATION_PATHS, hashDocumentationBundle, validateDocumentationBundle, type NornDocumentationBundle } from "./internal/documentation-bundle.ts";
 import { isNodeError } from "./internal/errors.ts";
 
+export { renderNornDocumentationIntro } from "./documentation-intro.ts";
+
 export type NornDocumentationSource =
 	| { readonly kind: "local"; readonly root: string }
 	| { readonly kind: "embedded"; readonly bundle: NornDocumentationBundle };
