@@ -99,7 +99,7 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "workflows.inspect",
 		path: ["workflows", "inspect"],
-		description: "Use when reading a workflow's params schema, gate contract, description, and source plugin before starting or editing it.",
+		description: "Use when reading a workflow's instructions, params schema, gate contract, and source plugin before starting or editing it.",
 		usage: "norn workflows inspect <workflow-id>",
 		arguments: ["workflow-id: fully qualified workflow id"],
 		output: "JSON object with workflow details, isComplete, and plugin diagnostics. workflow is null if unavailable in an incomplete catalog or its schema cannot be inspected; an unknown id in a complete catalog is an error.",

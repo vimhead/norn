@@ -36,9 +36,8 @@ export type NornWorkflowDeclaration<
 > = {
 	readonly kind: typeof WORKFLOW_DECLARATION_KIND;
 	readonly id: NornWorkflowRef<ParamsSchema, Id>;
-	readonly title?: string;
 	readonly isEntrypoint: boolean;
-	readonly description?: string;
+	readonly instructions?: string;
 	readonly params: ParamsSchema;
 	readonly gate?: NornWorkflowAnyGate;
 	readonly isolation: NornWorkflowIsolation<IsolationMode>;
@@ -85,29 +84,27 @@ export type NornWorkflowGate<ParamsSchema extends z.ZodType> = unknown extends z
 			readonly fields?: never;
 		};
 
+type NornWorkflowInstructions =
+	| { readonly isEntrypoint: true; readonly instructions: string }
+	| { readonly isEntrypoint: false; readonly instructions?: string };
+
 export type NornWorkflowDefinition<
 	Id extends string | undefined = string | undefined,
 	ParamsSchema extends z.ZodType = z.ZodType,
 	IsolationMode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
 > = {
 	readonly id?: Id;
-	readonly title?: string;
-	readonly isEntrypoint: boolean;
-	readonly description?: string;
 	readonly params: ParamsSchema;
 	readonly gate?: NornWorkflowGate<ParamsSchema>;
 	readonly isolation?: NornWorkflowIsolation<IsolationMode>;
-};
+} & NornWorkflowInstructions;
 
 export type NornAnyWorkflowDefinition = {
 	readonly id?: string;
-	readonly title?: string;
-	readonly isEntrypoint: boolean;
-	readonly description?: string;
 	readonly params: z.ZodType;
 	readonly gate?: NornWorkflowAnyGate;
 	readonly isolation?: NornWorkflowIsolation;
-};
+} & NornWorkflowInstructions;
 
 export type NornWorkflowStateDefinition<T = unknown, Id extends string = string> = {
 	readonly id: Id;
@@ -673,8 +670,7 @@ export type NornWorkflowGateInfo = {
 
 export type NornRegisteredWorkflowInfo = {
 	readonly id: string;
-	readonly title: string | null;
-	readonly description?: string;
+	readonly instructions?: string;
 	readonly isEntrypoint: boolean;
 	readonly isolation: NornWorkflowIsolation;
 	readonly plugin?: NornWorkflowPluginInfo;
@@ -768,12 +764,12 @@ function qualifyStateTree(pluginId: string, node: NornWorkflowPluginStateTreeNod
 
 export function isWorkflowDeclaration(value: unknown): value is NornAnyWorkflowDeclaration {
 	if (!value || typeof value !== "object") return false;
-	const candidate = value as { kind?: unknown; id?: unknown; title?: unknown; isEntrypoint?: unknown; params?: unknown; isolation?: { mode?: unknown } };
+	const candidate = value as { kind?: unknown; id?: unknown; instructions?: unknown; isEntrypoint?: unknown; params?: unknown; isolation?: { mode?: unknown } };
 	return (
 		candidate.kind === WORKFLOW_DECLARATION_KIND &&
 		typeof candidate.id === "string" &&
 		candidate.id.length > 0 &&
-		(candidate.title === undefined || typeof candidate.title === "string") &&
+		(candidate.instructions === undefined || typeof candidate.instructions === "string") &&
 		typeof candidate.isEntrypoint === "boolean" &&
 		Boolean(candidate.params) &&
 		(candidate.isolation?.mode === "runWorkspace" || candidate.isolation?.mode === "project")

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { isWorkflowComplete, isWorkflowFail, isWorkflowNext, type NornAnyWorkflowDeclaration, type NornInspectedWorkflowInfo, type NornJsonSchema, type NornRegisteredWorkflowInfo, type NornRunComplete, type NornDispose, type NornRunFail, type NornWorkflowGateInfo, type NornWorkflowImplementation, type NornRunNext, type NornRunFor, type NornWorkflowParams, type NornWorkflowPluginInfo } from "../api.ts";
-import { assertLaunchableWorkflow, isPlainObject, schemaShape, schemaType, unwrapSchema } from "../schema.ts";
+import { assertWorkflowMetadata, isPlainObject, schemaShape, schemaType, unwrapSchema } from "../schema.ts";
 
 export type NornRegisteredWorkflow = {
 	workflow: NornAnyWorkflowDeclaration;
@@ -32,7 +32,7 @@ export class NornWorkflowRegistry {
 			config: metadata.configSchema ? metadata.configSchema.parse(defaultConfigInput(metadata.configSchema, metadata.config)) : undefined,
 			plugin: metadata.plugin,
 		};
-		assertLaunchableWorkflow(workflow);
+		assertWorkflowMetadata(workflow);
 		assertGateWorkflow(workflow);
 		this.entries.set(workflow.id, entry);
 
@@ -71,7 +71,7 @@ export class NornWorkflowRegistry {
 		const parsedParams = workflow.params.parse(params) as NornWorkflowParams<TWorkflow>;
 		const parsedConfig = parseExecutionConfig(entry, configOverride);
 		const description = await (entry.implementation as NornWorkflowImplementation<TWorkflow, unknown>).gate?.describe(run, parsedParams, parsedConfig);
-		return validateGateDescription(description ?? defaultGateDescription(workflow), workflow.id);
+		return validateGateDescription(description ?? workflow.id, workflow.id);
 	}
 
 	async execute<TWorkflow extends NornAnyWorkflowDeclaration>(
@@ -93,9 +93,7 @@ export class NornWorkflowRegistry {
 	}
 
 	private sortedEntries(): NornRegisteredWorkflow[] {
-		return Array.from(this.entries.values()).sort((left, right) =>
-			(left.workflow.title ?? left.workflow.id).localeCompare(right.workflow.title ?? right.workflow.id),
-		);
+		return Array.from(this.entries.values()).sort((left, right) => left.workflow.id.localeCompare(right.workflow.id));
 	}
 }
 
@@ -145,10 +143,6 @@ function assertGateWorkflow(workflow: NornAnyWorkflowDeclaration): void {
 	}
 }
 
-function defaultGateDescription(workflow: NornAnyWorkflowDeclaration): string {
-	return workflow.description ?? workflow.title ?? workflow.id;
-}
-
 function validateGateDescription(description: string, workflowId: string): string {
 	const trimmed = description.trim();
 	if (trimmed.length === 0) throw new Error(`Workflow gate description must not be empty: ${workflowId}`);
@@ -166,8 +160,7 @@ function inspectedWorkflowInfo(entry: NornRegisteredWorkflow): NornInspectedWork
 function workflowInfo(entry: NornRegisteredWorkflow): NornRegisteredWorkflowInfo {
 	return {
 		id: entry.workflow.id,
-		title: entry.workflow.title ?? null,
-		description: entry.workflow.description,
+		instructions: entry.workflow.instructions,
 		isEntrypoint: entry.workflow.isEntrypoint,
 		isolation: entry.workflow.isolation,
 		plugin: entry.plugin,

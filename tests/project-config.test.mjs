@@ -36,7 +36,7 @@ const manifest = definePluginManifest({
 		greeting: z.string().default("hello"),
 		options: z.object({ keep: z.string(), replace: z.string() }).optional(),
 	}),
-	workflows: { echo: { title: "Echo", isEntrypoint: true, params: z.object({ value: z.string() }) } },
+	workflows: { echo: { instructions: "Use to echo the provided value.", isEntrypoint: true, params: z.object({ value: z.string() }) } },
 });
 export default definePlugin(manifest, { workflows: {
 	echo: { execute: (run, params) => run.complete({ data: { value: params.value, revision: ${JSON.stringify(revision)} } }) },
