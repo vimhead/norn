@@ -60,6 +60,12 @@ npx skills add vimhead/norn --list
 This installs the skill, not the runtime. No Pi integration extension is required.
 The package also advertises `skills/` through Pi package metadata.
 
+## Pi integration
+
+The optional [Pi adapter](docs/pi.md) delivers the selected runtime's compact
+introduction without replacing the current prompt. Installing Norn as a Pi package
+loads both the adapter and the existing skill; native Norn workers are excluded.
+
 ## Setting up a Norn project
 
 [Projects and loading](docs/projects.md) covers initialization, registration,
@@ -91,4 +97,4 @@ npm test
 npm run pack:dry
 ```
 
-Checks cover TypeScript (including examples), skill packaging, and regression tests.
+Checks cover TypeScript (including examples and adapters), skill packaging, and regression tests.

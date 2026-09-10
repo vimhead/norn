@@ -5,7 +5,7 @@ import { createJiti } from "jiti";
 
 const jiti = createJiti(import.meta.url, { moduleCache: false });
 const { validateDocumentationBundle, hashDocumentationBundle } = await jiti.import("../src/internal/documentation-bundle.ts");
-const ASSET_ROOTS = ["README.md", "docs", "examples", "skills", "src", "tests/workflow-ref.test.mjs"];
+const ASSET_ROOTS = ["README.md", "docs", "adapters", "examples", "skills", "src", "tests/workflow-ref.test.mjs"];
 const EXCLUDED_DIRECTORIES = new Set([".git", ".norn", "node_modules", "dist"]);
 const TEXT_EXTENSIONS = new Set([".md", ".ts", ".mjs", ".json"]);
 const GENERATED_ASSET_PATH = "src/bun/documentation-assets.generated.ts";
