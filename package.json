@@ -54,6 +54,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
     "build:cli": "npm run check",
     "release:dry": "npm run build:cli && npm pack --dry-run",
     "release:pack": "npm run build:cli && npm pack",
