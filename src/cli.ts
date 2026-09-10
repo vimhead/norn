@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { findNornProject, loadNornProject, NORN_CONFIG_FILE_NAME, NORN_PROJECT_FILE_NAME } from "./plugin-loader.ts";
+import { findNornProject, loadNornProject, NORN_PROJECT_FILE_NAME } from "./plugin-loader.ts";
 import { type NornAnyWorkflowDeclaration, type DeletedNornRunInfo, type NornProjectInfo, type NornRunInfo } from "./api.ts";
 import { NornEngine } from "./internal/engine.ts";
 import { errorMessage, isNodeError, NornRunStoppedError } from "./internal/errors.ts";
@@ -53,7 +53,7 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "project.init",
 		path: ["project", "init"],
-		description: "Use when creating a Norn project marker and local run state directory in the current directory.",
+		description: "Use when creating a self-contained Norn project config and local run state directory in the current directory.",
 		usage: "norn project init",
 		output: "JSON object with initialized project metadata under project.",
 		examples: ["norn project init"],
@@ -741,14 +741,9 @@ async function initProject(): Promise<void> {
 	const projectPath = resolve(projectRoot, NORN_PROJECT_FILE_NAME);
 	if (await isFile(projectPath)) throw new Error(`Norn project already exists: ${projectPath}`);
 	await mkdir(resolve(projectRoot, RUNS_ROOT), { recursive: true });
-	const includes = await defaultProjectIncludes(projectRoot);
-	await writeFile(projectPath, `${JSON.stringify({ version: 1, includes, config: {} }, null, 2)}\n`, "utf8");
+	await writeFile(projectPath, `${JSON.stringify({ version: 1, plugins: [], includes: [], config: {} }, null, 2)}\n`, "utf8");
 	await ensureGitignoreExcludesRunState(projectRoot);
 	writeJson({ project: { path: projectPath, root: projectRoot, runsRoot: resolve(projectRoot, RUNS_ROOT) } });
-}
-
-async function defaultProjectIncludes(projectRoot: string): Promise<readonly string[]> {
-	return await isFile(resolve(projectRoot, NORN_CONFIG_FILE_NAME)) ? [`./${NORN_CONFIG_FILE_NAME}`] : [];
 }
 
 async function listCurrentProjectRuns(): Promise<NornRunInfo[]> {

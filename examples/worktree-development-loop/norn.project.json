@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "includes": ["./norn.json"],
+  "plugins": ["./plugin.ts"],
   "config": {
     "worktreeDevelopmentLoop": {
       "repositoryRoot": "."

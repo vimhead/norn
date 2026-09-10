@@ -23,8 +23,7 @@ async function cli(cwd, args, input) {
 test("detached CLI resumes wait for the new execution, including slow plugin loading", { timeout: 45000 }, async context => {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-cli-resume-test-"));
 	context.after(() => rm(cwd, { recursive: true, force: true }));
-	await writeFile(join(cwd, "norn.project.json"), '{"version":1,"includes":["./norn.json"]}');
-	await writeFile(join(cwd, "norn.json"), '{"plugins":["./plugin.ts"]}');
+	await writeFile(join(cwd, "norn.project.json"), '{"version":1,"plugins":["./plugin.ts"]}');
 	await writeFile(join(cwd, "plugin.ts"), `
 import { definePlugin, definePluginManifest } from "norn";
 import { z } from "zod";

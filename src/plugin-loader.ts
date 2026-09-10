@@ -17,7 +17,6 @@ import { schemaType, unwrapSchema } from "./schema.ts";
 import { resolveSeerModeConfig, type NornResolvedSeerModeConfig } from "./seer/index.ts";
 
 export const NORN_PROJECT_FILE_NAME = "norn.project.json";
-export const NORN_CONFIG_FILE_NAME = "norn.json";
 
 const seerModeConfigSchema = z.object({
 	writableRoots: z.array(z.string().min(1)).min(1),
@@ -27,10 +26,8 @@ const nornConfigSchema = z.object({
 	includes: z.array(z.string().min(1)).default([]),
 	config: z.record(z.string(), z.unknown()).default({}),
 });
-const nornProjectConfigSchema = z.object({
+const nornProjectConfigSchema = nornConfigSchema.extend({
 	version: z.literal(1).default(1),
-	includes: z.array(z.string().min(1)).default([]),
-	config: z.record(z.string(), z.unknown()).default({}),
 	seerMode: seerModeConfigSchema.optional(),
 });
 
@@ -89,7 +86,7 @@ export async function loadNornProject(cwd: string): Promise<NornLoadedProject> {
 export async function findNornProject(cwd: string): Promise<NornProject> {
 	const projectPath = await findNearestNornProject(cwd);
 	const projectRootConfig = await readNornProjectConfigFile(projectPath);
-	const configFiles = await loadIncludedNornConfigFiles(projectRootConfig, new Set());
+	const configFiles = await loadIncludedNornConfigFiles(projectRootConfig, new Set([projectRootConfig.path]));
 	return {
 		cwd: resolve(cwd),
 		projectPath: projectRootConfig.path,
@@ -131,7 +128,7 @@ async function loadIncludedNornConfigFiles(projectFile: NornProjectConfigFile, v
 		return Promise.all(configPaths.map(readNornConfigFile));
 	}));
 	const descendants = await Promise.all(includedConfigFiles.flat().map((includedConfigFile) => loadNornConfigTree(includedConfigFile, visitedPaths)));
-	return [projectConfigFile(projectFile), ...descendants.flat()];
+	return [createProjectConfigEntry(projectFile), ...descendants.flat()];
 }
 
 async function loadNornConfigTree(configFile: NornConfigFile, visitedPaths: Set<string>): Promise<NornConfigFile[]> {
@@ -155,12 +152,12 @@ async function readNornConfigFile(path: string): Promise<NornConfigFile> {
 	return { path, root: dirname(path), config };
 }
 
-function projectConfigFile(projectFile: NornProjectConfigFile): NornConfigFile {
+function createProjectConfigEntry(projectFile: NornProjectConfigFile): NornConfigFile {
 	return {
 		path: projectFile.path,
 		root: projectFile.root,
 		config: {
-			plugins: [],
+			plugins: projectFile.config.plugins,
 			includes: projectFile.config.includes,
 			config: projectFile.config.config,
 		},

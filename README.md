@@ -37,22 +37,21 @@ npm install github:vimhead/norn
 npm install -g github:vimhead/norn
 ```
 
-Create a project marker:
+Create a project:
 
 ```bash
 norn project init
 ```
 
-This creates `norn.project.json` and `.norn/runs/`. Norn finds a project by
-walking up to the nearest `norn.project.json`.
+This creates a self-contained `norn.project.json` and `.norn/runs/`. Norn finds a
+project by walking up to the nearest `norn.project.json`.
 
-A project file includes reusable workflow configs and owns project-specific
-plugin config:
+Register plugins directly in the project file; no separate `norn.json` is needed:
 
 ```json
 {
   "version": 1,
-  "includes": ["./packages/workflows/norn.json"],
+  "plugins": ["./plugin.ts"],
   "config": {
     "example": {
       "repositoryRoot": "."
@@ -61,7 +60,13 @@ plugin config:
 }
 ```
 
-A reusable `norn.json` lists plugin modules:
+`norn.project.json` supports `plugins`, `includes`, and `config`, plus the
+project-only `version` and `seerMode` fields. Plugin paths are resolved relative
+to the file that declares them, not the invoking directory. Config is keyed by
+plugin id and validated by the plugin manifest.
+
+Optional reusable configuration files, conventionally named `norn.json`, can
+contribute plugins, includes, and shared config:
 
 ```json
 {
@@ -69,26 +74,27 @@ A reusable `norn.json` lists plugin modules:
 }
 ```
 
-Plugin paths are resolved relative to the `norn.json` that declares them. Project
-config is keyed by plugin id and validated by the plugin manifest.
-
-For multiple packages, include package-local configs explicitly:
+Include reusable configs explicitly, alongside any project-local plugins:
 
 ```json
 {
   "version": 1,
+  "plugins": ["./plugin.ts"],
   "includes": ["./packages/*/norn.json"]
 }
 ```
 
-`*` matches one directory segment. Norn does not scan the whole tree by default.
+`*` matches one directory segment. Initialization does not automatically include
+an existing sibling `norn.json`, and Norn does not scan the tree for plugins.
+Project config overrides included values; conflicting values between reusable
+configs and duplicate plugin ids are rejected.
 
 Projects that use Seer mode can declare writable project-relative roots:
 
 ```json
 {
   "version": 1,
-  "includes": ["./packages/workflows/norn.json"],
+  "plugins": ["./plugin.ts"],
   "seerMode": {
     "writableRoots": ["./workflow-sources"]
   }
