@@ -145,8 +145,9 @@ export class NornEngine {
 
 		const lease = await NornRunLease.acquire(runRoot);
 		let isLeaseOwnedByScheduler = false;
+		let session: RunSession | undefined;
 		try {
-			const session = await this.openRunSession(runRoot, lease);
+			session = await this.openRunSession(runRoot, lease);
 			const state = session.state.currentState();
 			const current = state.current;
 			if (!current) throw new Error(`Run is not resumable: ${runRoot}`);
@@ -166,7 +167,13 @@ export class NornEngine {
 			isLeaseOwnedByScheduler = true;
 			return this.runScheduler(session, toWorkflowStep(workflow, current));
 		} finally {
-			if (!isLeaseOwnedByScheduler) await lease.release();
+			if (!isLeaseOwnedByScheduler) {
+				try {
+					await lease.release();
+				} finally {
+					if (session) this.failActiveRun(runRoot, session.activeRun);
+				}
+			}
 		}
 	}
 
