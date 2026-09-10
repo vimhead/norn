@@ -9,9 +9,30 @@ project capability.
 
 Contents:
 
+- [Installing the agent skill](#installing-the-agent-skill)
 - [Setting up a Norn project](#setting-up-a-norn-project)
 - [Writing workflows](#writing-workflows)
 - [Using the CLI](#using-the-cli)
+- [Development](#development)
+
+## Installing the agent skill
+
+The [norn skill](skills/norn/SKILL.md) teaches agents to create, use, compose, and
+repair workflows while solving a task. Install it with the Skills CLI:
+
+```bash
+npx skills add vimhead/norn --skill norn
+```
+
+List available skills without installing:
+
+```bash
+npx skills add vimhead/norn --list
+```
+
+This installs the skill, not the Norn runtime. Install the CLI separately below;
+no Pi integration extension is required. The skill follows the Agent Skills
+standard and lives in `skills/norn/SKILL.md` alongside the runtime source.
 
 ## Setting up a Norn project
 
@@ -370,3 +391,31 @@ Check the installed version and supported upgrade path:
 norn version
 norn upgrade --dry-run
 ```
+
+## Development
+
+```bash
+npm run check
+npm test
+npm run pack:dry
+```
+
+Checks cover TypeScript, skill structure and size, and regression tests. They do
+not establish agent quality. The live paired benchmark separately exercises
+workflow creation during a task, repair without repeating preparation, and a
+trivial task that should not become a workflow.
+
+```bash
+npm run benchmark -- --help
+npm run benchmark -- \
+  --norn-root . --pi-root /path/to/pi-coding-agent \
+  --baseline /path/to/previous/skills --output /tmp/norn-benchmark.json \
+  --provider PROVIDER --model MODEL --max-turns 20 --timeout-ms 240000
+```
+
+The benchmark requires an installed Pi package and authenticated model. It uses
+live provider quota and may incur charges; nested workers remain deterministic.
+Both skill variants are snapshotted before execution. Results include outcome
+checks, tool calls, usage, catalog-estimated cost, timing, and skill reads.
+Transcripts omit thinking blocks, and outputs stay outside the repository.
+These small trials are smoke evidence, not statistical performance claims.
