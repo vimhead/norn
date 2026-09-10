@@ -229,6 +229,67 @@ test("an empty project is complete and an unknown workflow is an error only afte
 	await assert.rejects(inspectNornWorkflow({ cwd, workflowId: "unknown.step" }), /Unknown workflow/);
 });
 
+test("CLI and client inspection advertise contribution schemas without losing forwarded context during execution", { timeout: 20000 }, async context => {
+	const source = 'import { artifactRefSchema, workflowRefSchema } from "norn";\n' + createPluginSource({
+		id: "handoff",
+		workflows: `{
+			caller: { title: "Caller", isEntrypoint: true, params: z.object({ taskId: z.string(), context: z.record(z.string(), z.unknown()) }) },
+			collect: { title: "Collector", isEntrypoint: true, params: z.object({ query: z.string(), next: workflowRefSchema({ params: z.object({ records: artifactRefSchema }) }) }) },
+			finish: { isEntrypoint: false, params: z.object({ taskId: z.string(), context: z.record(z.string(), z.unknown()), records: artifactRefSchema }) }
+		}`,
+		implementation: `{ workflows: {
+			caller: { execute: (run, params) => run.next(manifest.workflows.collect, {
+				query: "recent incidents", next: { workflow: manifest.workflows.finish, forwardParams: params }
+			}) },
+			collect: { async execute(run, params) {
+				const records = await run.artifacts.write("records.json", JSON.stringify([params.query]));
+				return run.next(params.next.workflow, { ...params.next.forwardParams, records });
+			} },
+			finish: { execute: (run, params) => run.complete({ data: params }) }
+		} }`,
+	});
+	const cwd = await createFixture(context, { files: { "handoff.ts": source } });
+	const inspected = await executeCli({ cwd, args: ["workflows", "inspect", "handoff.collect"] });
+	assert.equal(inspected.exitCode, 0);
+	assert.equal(inspected.result.isComplete, true);
+	assert.deepEqual(inspected.result.diagnostics, []);
+	const next = inspected.result.workflow.paramsSchema.properties.next;
+	const contributedParamsSchema = next["x-norn-workflow-ref"].contributedParamsSchema;
+	assert.equal(contributedParamsSchema.type, "object");
+	assert.deepEqual(contributedParamsSchema.required, ["records"]);
+	assert.deepEqual(contributedParamsSchema.properties.records.properties, { path: { type: "string" } });
+	assert.deepEqual(contributedParamsSchema.properties.records.required, ["path"]);
+	assert.equal(next.anyOf[1].properties.forwardParams.type, "object");
+	assert.deepEqual(next.anyOf[1].properties.forwardParams.additionalProperties, {});
+	assert.deepEqual(next.anyOf[1].required, ["workflow", "forwardParams"]);
+	const client = createNornClient({ spawnCwd: cwd, executablePath: cliPath });
+	assert.deepEqual(await client.workflows.inspect("handoff.collect"), inspected.result);
+	const params = { taskId: "task-42", context: { labels: ["one", "two"], nested: { enabled: false, absent: null } } };
+	const started = await executeCli({ cwd, args: ["runs", "start", "handoff.caller"], input: { params } });
+	assert.equal(started.exitCode, 0, JSON.stringify(started.result));
+	const completed = (await executeCli({ cwd, args: ["runs", "wait", started.result.run.id] })).result.run;
+	assert.equal(completed.status, "completed");
+	assert.deepEqual(completed.outcome.metadata.data, { ...params, records: { path: "records.json" } });
+	assert.deepEqual(JSON.parse(await readFile(join(completed.path, "current/artifacts/records.json"), "utf8")), ["recent incidents"]);
+});
+
+test("unrepresentable contributions fail inspection as schema diagnostics rather than plugin import errors", async context => {
+	const cwd = await createFixture(context, { files: {
+		"custom.ts": 'import { workflowRefSchema } from "norn";\n' + createPluginSource({
+			id: "custom", workflows: '{ step: { title: "Custom", isEntrypoint: true, params: z.object({ next: workflowRefSchema({ params: z.custom(() => true) }) }) } }',
+		}),
+		"good.ts": createPluginSource({ id: "good" }),
+	} });
+	assert.equal((await discoverNornProject(cwd)).isComplete, true);
+	assert.equal((await loadNornProject(cwd)).plugins.length, 2);
+	const inspected = await inspectNornWorkflow({ cwd, workflowId: "custom.step" });
+	assert.equal(inspected.workflow, null);
+	assert.equal(inspected.isComplete, false);
+	assert.deepEqual(inspected.diagnostics.map(diagnostic => diagnostic.stage), ["schema"]);
+	assert.equal(inspected.diagnostics[0].workflowId, "custom.step");
+	assert.equal((await inspectNornWorkflow({ cwd, workflowId: "good.step" })).isComplete, true);
+});
+
 test("inspection reports an unrepresentable params schema without hiding sibling diagnostics", async context => {
 	const cwd = await createFixture(context, { files: {
 		"custom.ts": createPluginSource({ id: "custom", workflows: '{ step: { title: "Custom", isEntrypoint: true, params: z.custom(() => true) } }' }),

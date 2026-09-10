@@ -4,7 +4,7 @@ import { createJiti } from "jiti";
 import { z } from "zod";
 
 const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { definePluginManifest, workflowRefSchema } = await jiti.import("../src/api.ts");
+const { artifactRefSchema, definePluginManifest, workflowRefSchema } = await jiti.import("../src/api.ts");
 
 const target = definePluginManifest({
 	id: "refs", workflows: { finish: { isEntrypoint: false, params: z.object({ report: z.string() }) } },
@@ -36,6 +36,77 @@ test("optional reference inputs are optional in both validation and inspection",
 	const schema = z.object({ next: workflowRefSchema().optional() });
 	assert.deepEqual(schema.parse({}), {});
 	assert.equal(z.toJSONSchema(schema, { io: "input" }).required?.includes("next") ?? false, false);
+});
+
+test("inspection advertises contributions alongside the unchanged reference and forward-params input schema", () => {
+	const contributions = z.object({
+		records: artifactRefSchema,
+		count: z.string().transform(Number),
+		label: z.string().default("collected"),
+	});
+	const reference = workflowRefSchema({ params: contributions }).describe("Continue with the collected records");
+	const schema = z.object({ next: reference });
+	const inspected = z.toJSONSchema(schema, { io: "input" });
+	const next = inspected.properties.next;
+	assert.deepEqual(next["x-norn-workflow-ref"].contributedParamsSchema, z.toJSONSchema(contributions, { io: "input" }));
+	assert.equal(next.description, "Continue with the collected records");
+	assert.deepEqual(next.anyOf, z.toJSONSchema(workflowRefSchema(), { io: "input" }).anyOf);
+	assert.equal(next.anyOf[1].properties.forwardParams.type, "object");
+	assert.deepEqual(next.anyOf[1].properties.forwardParams.additionalProperties, {});
+	assert.deepEqual(next.anyOf[1].required, ["workflow", "forwardParams"]);
+	assert.deepEqual(next["x-norn-workflow-ref"].contributedParamsSchema.required, ["records", "count"]);
+	assert.equal(next["x-norn-workflow-ref"].contributedParamsSchema.properties.count.type, "string");
+	const forwardParams = { taskId: "task-42", nested: { labels: ["one", "two"], enabled: false, absent: null } };
+	const input = { next: { workflow: "refs.finish", forwardParams } };
+	assert.deepEqual(schema.parse(input), input);
+});
+
+test("references without declared contributions advertise an empty contribution schema", () => {
+	for (const reference of [workflowRefSchema(), workflowRefSchema({ params: undefined })]) {
+		assert.deepEqual(z.toJSONSchema(reference, { io: "input" })["x-norn-workflow-ref"].contributedParamsSchema, z.toJSONSchema(z.object({}), { io: "input" }));
+		assert.deepEqual(reference.parse("refs.finish"), { workflow: "refs.finish", forwardParams: {} });
+	}
+});
+
+test("optional, nullable and array references retain their contribution annotations", () => {
+	const reference = workflowRefSchema({ params: z.object({ report: z.string() }) });
+	const schema = z.object({ optional: reference.optional(), nullable: reference.nullable(), many: z.array(reference) });
+	const inspected = JSON.parse(JSON.stringify(z.toJSONSchema(schema, { io: "input" })));
+	const expected = z.toJSONSchema(z.object({ report: z.string() }), { io: "input" });
+	for (const node of [inspected.properties.optional, inspected.properties.nullable.anyOf[0], inspected.properties.many.items]) {
+		assert.deepEqual(node["x-norn-workflow-ref"].contributedParamsSchema, expected);
+	}
+	assert.deepEqual(inspected.required, ["nullable", "many"]);
+	assert.deepEqual(schema.parse({ nullable: null, many: ["refs.finish"] }), { nullable: null, many: [{ workflow: "refs.finish", forwardParams: {} }] });
+});
+
+test("nested continuation schemas retain their own contribution and forwarding contracts", () => {
+	const finalContributions = z.object({ summary: z.string() });
+	const contributions = z.object({
+		records: artifactRefSchema,
+		next: workflowRefSchema({ params: finalContributions }),
+	});
+	const inspected = z.toJSONSchema(workflowRefSchema({ params: contributions }), { io: "input" });
+	const nested = inspected["x-norn-workflow-ref"].contributedParamsSchema.properties.next;
+	assert.deepEqual(nested["x-norn-workflow-ref"].contributedParamsSchema, z.toJSONSchema(finalContributions, { io: "input" }));
+	assert.equal(nested.anyOf[1].properties.forwardParams.type, "object");
+	assert.deepEqual(nested.anyOf[1].properties.forwardParams.additionalProperties, {});
+});
+
+test("lazy recursive contribution schemas are resolved during inspection, not reference construction", () => {
+	let contributions;
+	const lazyContributions = z.lazy(() => contributions);
+	const reference = workflowRefSchema({ params: lazyContributions });
+	contributions = z.object({ label: z.string(), children: z.array(z.lazy(() => contributions)) });
+	const inspected = z.toJSONSchema(reference, { io: "input" });
+	assert.deepEqual(inspected["x-norn-workflow-ref"].contributedParamsSchema, z.toJSONSchema(lazyContributions, { io: "input" }));
+	assert.deepEqual(reference.parse("refs.finish"), { workflow: "refs.finish", forwardParams: {} });
+});
+
+test("an unrepresentable contribution schema does not change reference parsing", () => {
+	const reference = workflowRefSchema({ params: z.custom(() => true) });
+	assert.deepEqual(reference.parse("refs.finish"), { workflow: "refs.finish", forwardParams: {} });
+	assert.throws(() => z.toJSONSchema(reference, { io: "input" }));
 });
 
 for (const input of [undefined, null, "", 3, {}, { id: "" }, { workflow: "refs.finish" }, { workflow: "", forwardParams: {} }, { workflow: "refs.finish", forwardParams: null }]) {
