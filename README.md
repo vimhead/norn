@@ -419,3 +419,33 @@ Both skill variants are snapshotted before execution. Results include outcome
 checks, tool calls, usage, catalog-estimated cost, timing, and skill reads.
 Transcripts omit thinking blocks, and outputs stay outside the repository.
 These small trials are smoke evidence, not statistical performance claims.
+
+For task-level evaluation with live independent workers and fresh outer sessions:
+
+```bash
+npm run benchmark:tasks -- --help
+npm run benchmark:tasks -- \
+  --root /tmp/fresh-norn-study --family support --variants current,revised \
+  --norn-root . --pi-root /path/to/pi-coding-agent \
+  --provider PROVIDER --model MODEL
+```
+
+Prepare `current-skills/` and `revised-skills/` under that fresh study root before
+running. Other arm names are `baseline` and `no` (`no-skills/` is empty). Existing
+trial directories are rejected rather than silently reusing prior executions.
+Families cover source-grounded correction, changed evidence, second consumers,
+and unattended operations recovering from a delivery outage. `queue` requires a
+verified metadata extractor seed; `support-queue` is self-contained. `trivial`
+checks a direct answer without project files or worker calls.
+
+These trials consume live provider quota, including nested worker calls. Worker
+resources are isolated from the selected outer skill; CLI session persistence is
+retained for auditing even when a worker requests `--no-session`. Temporary
+credential links stay outside project fixtures and must not be archived.
+
+Outcome checks alone do not establish Norn adoption. Inspect retained worker
+conversations, workflow source, run states and recovery trajectories separately:
+a registered wrapper around an independent coordinator is not the same as Norn
+owning worker execution and saved control flow. A non-Norn solution can satisfy
+the task. Keep task success, native coordination, extra work and limitations
+separate; do not infer quality from skill size or the presence of a run ID.
