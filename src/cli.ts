@@ -57,7 +57,7 @@ const COMMANDS: readonly CliCommand[] = [
 		path: ["docs", "inspect"],
 		description: "Resolve version-matched local documentation and examples. Standalone binaries extract bundled assets into a verified build-specific cache; no project or network is required.",
 		usage: "norn docs inspect",
-		output: "JSON object under documentation with storage, version, commit, assetDigest, absolute paths, and commit-pinned GitHub links when build metadata is available. NORN_DOCS_CACHE_DIR overrides the binary cache directory.",
+		output: "JSON object under documentation with storage, version, commit, assetDigest, and absolute paths. NORN_DOCS_CACHE_DIR overrides the binary cache directory.",
 		examples: ["norn docs inspect"],
 		execute: async (args, documentationSource) => {
 			assertNoExtraArgs("docs inspect", args);
