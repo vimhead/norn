@@ -6,6 +6,7 @@
   "license": "MIT",
   "keywords": [
     "pi-package",
+    "agent-skills",
     "coding-agent",
     "workflows",
     "api"
@@ -25,8 +26,12 @@
     "README.md",
     "bin",
     "src",
-    "examples"
+    "examples",
+    "skills"
   ],
+  "pi": {
+    "skills": ["./skills"]
+  },
   "exports": {
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
@@ -53,8 +58,9 @@
     "typescript": "^5.9.0"
   },
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && node scripts/validate-skill-package.mjs",
     "test": "node --test tests/*.test.mjs",
+    "benchmark": "node scripts/benchmark-agent.mjs",
     "build:cli": "npm run check",
     "release:dry": "npm run build:cli && npm pack --dry-run",
     "release:pack": "npm run build:cli && npm pack",
