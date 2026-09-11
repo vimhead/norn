@@ -25,6 +25,7 @@
   "files": [
     "README.md",
     "docs",
+    "adapters",
     "bin",
     "src",
     "examples",
@@ -32,6 +33,7 @@
     "tests/workflow-ref.test.mjs"
   ],
   "pi": {
+    "extensions": ["./adapters/pi.ts"],
     "skills": ["./skills"]
   },
   "exports": {
