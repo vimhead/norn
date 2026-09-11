@@ -17,7 +17,7 @@ const documentation = {
 	storage: "installation", version: "0.1.0", commit: null, assetDigest: null,
 	paths: {
 		root: "/installation/norn", readme: "/installation/norn/README.md", index: "/installation/norn/docs/README.md",
-		docs: "/installation/norn/docs", examples: "/installation/norn/examples", skill: "/installation/norn/skills/norn/SKILL.md",
+		docs: "/installation/norn/docs", examples: "/installation/norn/examples",
 	},
 };
 
@@ -30,7 +30,7 @@ test("intro is compact, deterministic, and points to the index instead of copyin
 	assert.match(intro, /authored, exercised, repaired, and reused during a task/);
 	assert.match(intro, /Norn is optional/);
 	assert.match(intro, /build commit: unknown/);
-	for (const key of ["readme", "index", "docs", "examples", "skill"]) assert.ok(intro.includes(JSON.stringify(documentation.paths[key])));
+	for (const key of ["readme", "index", "docs", "examples"]) assert.ok(intro.includes(JSON.stringify(documentation.paths[key])));
 	assert.ok(intro.includes('["workflows", "list"]'));
 	assert.ok(intro.includes('["workflows", "inspect", "<workflow-id>"]'));
 	assert.ok(!intro.includes("agents.md"), "topic-to-page mapping stays in the documentation index");

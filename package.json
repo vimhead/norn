@@ -6,7 +6,6 @@
   "license": "MIT",
   "keywords": [
     "pi-package",
-    "agent-skills",
     "coding-agent",
     "workflows",
     "api"
@@ -29,12 +28,10 @@
     "bin",
     "src",
     "examples",
-    "skills",
     "tests/workflow-ref.test.mjs"
   ],
   "pi": {
-    "extensions": ["./adapters/pi.ts"],
-    "skills": ["./skills"]
+    "extensions": ["./adapters/pi.ts"]
   },
   "exports": {
     ".": "./src/index.ts",
@@ -64,7 +61,7 @@
   },
   "scripts": {
     "documentation:generate": "node scripts/generate-documentation-assets.mjs",
-    "check": "npm run documentation:generate && tsc --noEmit && node scripts/validate-skill-package.mjs",
+    "check": "npm run documentation:generate && tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
     "build:cli": "npm run check",
     "release:dry": "npm run build:cli && npm pack --dry-run",

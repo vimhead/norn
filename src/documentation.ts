@@ -16,7 +16,7 @@ export type NornDocumentationLocation = {
 	readonly version: string;
 	readonly commit: string | null;
 	readonly assetDigest: string | null;
-	readonly paths: { readonly root: string; readonly readme: string; readonly index: string; readonly docs: string; readonly examples: string; readonly skill: string };
+	readonly paths: { readonly root: string; readonly readme: string; readonly index: string; readonly docs: string; readonly examples: string };
 };
 
 export function resolveDocumentationCacheRoot(input: {
@@ -65,7 +65,6 @@ export async function resolveNornDocumentation(input: {
 			index: join(root, DOCUMENTATION_PATHS.index),
 			docs: join(root, DOCUMENTATION_PATHS.docs),
 			examples: join(root, DOCUMENTATION_PATHS.examples),
-			skill: join(root, DOCUMENTATION_PATHS.skill),
 		},
 	};
 }

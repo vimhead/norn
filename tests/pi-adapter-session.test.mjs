@@ -62,11 +62,11 @@ async function writeExecutable(path, source) {
 	await chmod(path, 0o700);
 }
 
-test("Pi package loading advertises the skill and appends fresh runtime-selected context across turns and reload", { skip: process.platform === "win32", timeout: 60_000 }, async context => {
+test("Pi package loading delivers runtime-selected context and preserves unrelated skills across reload", { skip: process.platform === "win32", timeout: 60_000 }, async context => {
 	const fixture = await createFixture(context);
 	const runtimeRoot = join(fixture.root, "other installation");
 	await mkdir(runtimeRoot);
-	for (const path of ["src", "bin", "docs", "examples", "skills", "adapters", "README.md", "package.json"]) await cp(join(packageRoot, path), join(runtimeRoot, path), { recursive: true });
+	for (const path of ["src", "bin", "docs", "examples", "adapters", "README.md", "package.json"]) await cp(join(packageRoot, path), join(runtimeRoot, path), { recursive: true });
 	await symlink(join(packageRoot, "node_modules"), join(runtimeRoot, "node_modules"));
 	const manifest = JSON.parse(await readFile(join(runtimeRoot, "package.json"), "utf8"));
 	manifest.version = "9.9.9";
@@ -91,7 +91,6 @@ test("Pi package loading advertises the skill and appends fresh runtime-selected
 	await loader.reload();
 	assert.deepEqual(loader.getExtensions().errors, []);
 	assert.ok(loader.getExtensions().extensions.some(extension => extension.path.endsWith("adapters/pi.ts")));
-	assert.ok(loader.getSkills().skills.some(skill => skill.name === "norn" && skill.filePath === join(packageRoot, "skills/norn/SKILL.md")), JSON.stringify(loader.getSkills()));
 	const { session } = await createAgentSession({ cwd: fixture.cwd, agentDir: fixture.agentDir, resourceLoader: loader, settingsManager, sessionManager: SessionManager.inMemory(fixture.cwd), model, tools: ["read"] });
 	context.after(() => session.dispose());
 	loader.getExtensions().runtime.flagValues.set("norn-executable", join(runtimeRoot, "bin/norn.mjs"));
@@ -103,8 +102,6 @@ test("Pi package loading advertises the skill and appends fresh runtime-selected
 	assert.ok(first.startsWith("CUSTOM SYSTEM PROMPT"));
 	assert.ok(first.includes("PROJECT CONTEXT"));
 	assert.ok(first.includes("OTHER EXTENSION"));
-	assert.ok(first.includes("<available_skills>"));
-	assert.ok(first.includes(join(packageRoot, "skills/norn/SKILL.md")));
 	assert.ok(first.includes('Version: "9.9.9"'), first);
 	assert.ok(first.includes("other installation/docs/README.md"));
 	assert.ok(!first.includes("PATH runtime introduction"));
@@ -128,8 +125,13 @@ test("Pi package loading advertises the skill and appends fresh runtime-selected
 	await session.prompt("Next ordinary task");
 	assert.ok(captured.at(-1).systemPrompt.includes('Version: "9.9.10"'));
 	assert.ok(!captured.at(-1).systemPrompt.includes('Version: "9.9.9"'));
+	const unrelatedSkillPath = join(fixture.agentDir, "skills/test-guidance/SKILL.md");
+	await mkdir(join(fixture.agentDir, "skills/test-guidance"), { recursive: true });
+	await writeFile(unrelatedSkillPath, "---\nname: test-guidance\ndescription: Use when exercising the unrelated skill fixture.\n---\n\n# Test guidance\n");
 	await session.reload();
 	await session.prompt("Task after reload");
+	assert.deepEqual(loader.getSkills().skills.map(skill => skill.name), ["test-guidance"]);
+	assert.ok(captured.at(-1).systemPrompt.includes(unrelatedSkillPath));
 	assert.equal(captured.at(-1).systemPrompt.split("<norn-docs-intro>").length - 1, 1);
 	assert.ok(captured.at(-1).systemPrompt.includes('Version: "9.9.10"'));
 

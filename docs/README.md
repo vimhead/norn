@@ -13,7 +13,7 @@ Norn capabilities are ordinary TypeScript plugins: an agent can write one during
 | Reuse a workflow with a caller-selected continuation | [Composition](composition.md) | [Worktree development loop](../examples/worktree-development-loop/README.md) — larger, optional |
 | Repair a failed run without repeating earlier work | [Recovery and gates](recovery.md) | [Analysis-only repair](../examples/worker-then-analysis/README.md#repair-only-the-analysis-step) |
 
-[Public types](../src/api.ts) are the authoritative authoring interface. CLI discovery exposes the currently loaded project, not a documentation-time workflow catalogue. [Installation](../README.md#installation) and the [agent skill](../skills/norn/SKILL.md) are separate from these capability references.
+[Public types](../src/api.ts) are the authoritative authoring interface. CLI discovery exposes the currently loaded project, not a documentation-time workflow catalogue. See [installation](../README.md#installation) for runtime setup.
 
 | Decision | GOOD | BAD |
 |---|---|---|

@@ -42,24 +42,6 @@ and keeping examples/docs matched to the executable. Upgrade discovery:
 norn upgrade --dry-run
 ```
 
-## Installing the agent skill
-
-The [norn skill](skills/norn/SKILL.md) teaches task-time creation, use, composition,
-and repair. Install it separately with the Skills CLI:
-
-```bash
-npx skills add vimhead/norn --skill norn
-```
-
-List available skills without installing:
-
-```bash
-npx skills add vimhead/norn --list
-```
-
-This installs the skill, not the runtime. No Pi integration extension is required.
-The package also advertises `skills/` through Pi package metadata.
-
 ## Setting up a Norn project
 
 [Projects and loading](docs/projects.md) covers initialization, registration,
@@ -91,4 +73,4 @@ npm test
 npm run pack:dry
 ```
 
-Checks cover TypeScript (including examples and adapters), skill packaging, and regression tests.
+Checks cover TypeScript (including examples and adapters) and regression tests.
