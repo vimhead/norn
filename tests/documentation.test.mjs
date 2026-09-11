@@ -172,7 +172,8 @@ test("asset collection excludes runtime/dependency files and refuses symlinked a
 		await writeFile(join(root, file.path), file.content);
 	}
 	const collected = await collectDocumentationBundle({ packageRoot: root });
-	assert.equal(collected.files.length, bundle.files.length + 3);
+	assert.equal(collected.files.length, bundle.files.length + 2);
+	assert.ok(!collected.files.some(file => file.path.startsWith("adapters/")));
 	assert.ok(!collected.files.some(file => /private run|dependency|credential|environment|key/.test(file.content)));
 	if (process.platform !== "win32") {
 		await symlink(join(root, "README.md"), join(root, "docs/symlink.md"));
