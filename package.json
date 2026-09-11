@@ -28,7 +28,8 @@
     "bin",
     "src",
     "examples",
-    "skills"
+    "skills",
+    "tests/workflow-ref.test.mjs"
   ],
   "pi": {
     "skills": ["./skills"]
@@ -37,6 +38,7 @@
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
     "./client": "./src/client.ts",
+    "./documentation": "./src/documentation.ts",
     "./schema": "./src/schema.ts",
     "./seer": "./src/seer/index.ts",
     "./examples/worktree-development-loop": "./examples/worktree-development-loop/plugin.ts"
@@ -59,7 +61,8 @@
     "typescript": "^5.9.0"
   },
   "scripts": {
-    "check": "tsc --noEmit && node scripts/validate-skill-package.mjs",
+    "documentation:generate": "node scripts/generate-documentation-assets.mjs",
+    "check": "npm run documentation:generate && tsc --noEmit && node scripts/validate-skill-package.mjs",
     "test": "node --test tests/*.test.mjs",
     "build:cli": "npm run check",
     "release:dry": "npm run build:cli && npm pack --dry-run",

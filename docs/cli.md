@@ -18,11 +18,59 @@ norn() { node "$NORN_ROOT/bin/norn.mjs" "$@"; }
 norn version
 ```
 
-Use Node satisfying the package's engine requirement (currently `>=22.19.0`). `NORN_ROOT` here is an example shell variable, not a runtime configuration option. The npm package ships `docs/`, `examples/`, and `src/`; a standalone release binary does not itself provide a local documentation directory. Match any accompanying checkout/docs to its reported build revision. Source builds may not carry release revision metadata.
+Use Node satisfying the package's engine requirement (currently `>=22.19.0`). `NORN_ROOT` here is an example shell variable, not a runtime configuration option. Use `norn docs inspect` to locate this installation's documentation and examples;
+[local documentation assets](#local-documentation-assets) covers binary extraction.
+Source builds may not carry release revision metadata.
 
 Copied examples already contain a project file, so they skip initialization. npm
 omits `.gitignore` from the package; add `.norn/runs/` to the copy's `.gitignore`
 before committing example work. Source-checkout examples include that exclusion.
+
+## Local documentation assets
+
+```bash
+norn docs inspect
+```
+
+This explicit command works outside a Norn project and does not use the network.
+Its `documentation` result contains `storage`, `version`, `commit`, `assetDigest`,
+absolute `paths` (`root`, `readme`, `index`, `docs`, `examples`, `skill`), and
+commit-pinned `github` links when build metadata supplies a full commit SHA.
+Without that metadata, `github` is null rather than pointing at moving `main` or
+`tip` content.
+
+npm/source installations resolve files directly from their installation, not the
+current directory or another executable on PATH. Compiled binaries embed the docs,
+examples, skill, and source references, preserving relative links. The first
+inspection publishes a complete extracted tree into a build/content-specific
+cache; later calls verify and reuse it without rewriting files. Different asset
+contents or build commits use separate entries. `version` and help do not extract
+anything. No prompt augmentation, skill installation, or agent-context delivery is
+performed.
+
+Cache roots:
+
+- macOS: `~/Library/Caches/norn/docs/`
+- Linux: `$XDG_CACHE_HOME/norn/docs/`, or `~/.cache/norn/docs/`
+- Windows: `%LOCALAPPDATA%/norn/docs/`, or `~/AppData/Local/norn/docs/`
+- Explicit override: `NORN_DOCS_CACHE_DIR`
+
+Extraction uses staging directories and atomic publication. Existing cache entries
+are checked for exact file bytes, missing/extra files, and symlinks. Corrupt entries
+are not silently overwritten; the error names the entry to remove before retrying.
+This is accidental-corruption detection, not a sandbox against another process
+with access to the same user's cache. Old build entries are not automatically
+removed. The extracted tree is a documentation snapshot, not a separate runtime
+installation.
+
+| Decision | GOOD | BAD |
+|---|---|---|
+| IF an example will be edited or run, THEN copy it into the task workspace first. ELSE read the cached asset in place. | Copy `paths.examples/minimal-workflow` before starting a run. | Modify the verified cache or put `.norn/` state inside it. |
+| IF inspection reports a modified/incomplete cache, THEN preserve any wanted edits elsewhere, remove only the named cache entry, and retry. ELSE reuse the returned paths. | Remove the reported `v1-...` directory after preserving work. | Delete every build's cache or accept modified docs as matching the binary. |
+
+The same resolver is available from [`norn/documentation`](../src/documentation.ts),
+with explicit source, build metadata, and cache-root inputs. It resolves assets;
+it does not construct or deliver an agent bootstrap.
 
 ## Discover live contracts
 
