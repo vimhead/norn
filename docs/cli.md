@@ -34,10 +34,7 @@ norn docs inspect
 
 This explicit command works outside a Norn project and does not use the network.
 Its `documentation` result contains `storage`, `version`, `commit`, `assetDigest`,
-absolute `paths` (`root`, `readme`, `index`, `docs`, `examples`, `skill`), and
-commit-pinned `github` links when build metadata supplies a full commit SHA.
-Without that metadata, `github` is null rather than pointing at moving `main` or
-`tip` content.
+and absolute `paths` (`root`, `readme`, `index`, `docs`, `examples`, `skill`).
 
 npm/source installations resolve files directly from their installation, not the
 current directory or another executable on PATH. Compiled binaries embed the docs,

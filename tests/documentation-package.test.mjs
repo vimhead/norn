@@ -36,6 +36,5 @@ test("npm package file set preserves documentation links and resolves paths from
 	const canonicalRoot = await realpath(installedRoot);
 	assert.equal(result.paths.root, canonicalRoot);
 	assert.equal(result.paths.index, join(canonicalRoot, "docs/README.md"));
-	assert.equal(result.github, null);
 	await assert.rejects(access(cacheRoot), { code: "ENOENT" });
 });

@@ -15,7 +15,6 @@ export type NornDocumentationLocation = {
 	readonly commit: string | null;
 	readonly assetDigest: string | null;
 	readonly paths: { readonly root: string; readonly readme: string; readonly index: string; readonly docs: string; readonly examples: string; readonly skill: string };
-	readonly github: { readonly root: string; readonly readme: string; readonly index: string; readonly examples: string } | null;
 };
 
 export function resolveDocumentationCacheRoot(input: {
@@ -66,7 +65,6 @@ export async function resolveNornDocumentation(input: {
 			examples: join(root, DOCUMENTATION_PATHS.examples),
 			skill: join(root, DOCUMENTATION_PATHS.skill),
 		},
-		github: resolveDocumentationGithubLinks(input.build),
 	};
 }
 
@@ -76,15 +74,6 @@ async function validateLocalDocumentation(root: string): Promise<void> {
 		const isExpectedType = key === "docs" || key === "examples" ? stat.isDirectory() : stat.isFile();
 		if (!isExpectedType) throw new Error(`Invalid local documentation path: ${join(root, path)}`);
 	}
-}
-
-function resolveDocumentationGithubLinks(build: NornBuildInfo): NornDocumentationLocation["github"] {
-	if (!build.commit || !/^[a-f0-9]{40}$/i.test(build.commit)) return null;
-	const repository = "repository" in build ? build.repository : "vimhead/norn";
-	if (!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repository)) throw new Error("Invalid documentation repository metadata");
-	const root = `https://github.com/${repository}/tree/${build.commit}`;
-	const blob = `https://github.com/${repository}/blob/${build.commit}`;
-	return { root, readme: `${blob}/README.md`, index: `${blob}/docs/README.md`, examples: `${root}/examples` };
 }
 
 class NornDocumentationCache {

@@ -33,9 +33,10 @@ test("local documentation resolves from the installation, without creating a cac
 	assert.equal(result.paths.index, join(packageRoot, "docs/README.md"));
 	assert.equal(result.assetDigest, null);
 	await assert.rejects(access(input.cacheRoot), { code: "ENOENT" });
-	assert.equal(result.github.index, `https://github.com/vimhead/norn/blob/${build.commit}/docs/README.md`);
+	assert.deepEqual(Object.keys(result).sort(), ["assetDigest", "commit", "paths", "storage", "version"]);
+	assert.equal(result.commit, build.commit);
 	const unknown = await resolveNornDocumentation({ ...input, source: { kind: "local", root: packageRoot }, build: { ...build, commit: null } });
-	assert.equal(unknown.github, null);
+	assert.equal(unknown.commit, null);
 });
 
 test("embedded content is exact, cache reuse performs no rewrites, and links stay relative", async context => {

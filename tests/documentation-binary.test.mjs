@@ -44,7 +44,6 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	assert.equal(documentation.storage, "cache");
 	assert.equal(documentation.commit, commit);
 	assert.equal(documentation.version, version);
-	assert.equal(documentation.github.index, `https://github.com/vimhead/norn/blob/${commit}/docs/README.md`);
 	for (const file of expectedBundle.files) {
 		assert.deepEqual(await readFile(join(documentation.paths.root, file.path)), Buffer.from(file.content), file.path);
 	}
