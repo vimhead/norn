@@ -1,36 +1,46 @@
-# Norn repository guidance
+# Repository direction
 
-These instructions govern repository changes, not downstream agent behavior. The goal is natural task-time authoring, exercising, repair, and reuse of Norn capabilities—not compulsory Norn usage.
+## What we are building
 
-## Scope and judgment
+Norn is a harness-independent runtime for reusable agent capabilities. An agent should be able to discover an existing capability or author, exercise, repair, and retain a missing one while completing an ordinary task. We are developing that ability, not a fixed catalogue of workflows or a prescribed planner/reviewer architecture. Tasks that do not benefit from Norn can use ordinary tools.
 
-| Rule | GOOD | BAD |
+## Why the model is Pi
+
+Pi makes its own extension interfaces discoverable through a small block in its default system prompt pointing to installed documentation and examples. The agent reads the relevant material when needed and can extend Pi using its actual APIs. Optional task skills are a separate mechanism; a mandatory “use Pi” skill is not what provides this self-documentation.
+
+Norn should have the same property across harnesses: a compact introduction leads to relevant, version-matched documentation and runnable examples, which lead to working capabilities. This keeps initial context small without limiting the agent to capabilities someone anticipated beforehand. We borrow this mechanism from Pi, not a requirement that every caller use Pi as its outer harness.
+
+## Documentation ownership and structure
+
+Knowledge belongs to Norn and ships with the runtime that implements it:
+
+- `README.md` is installation and navigation, not a second manual.
+- [docs/README.md](docs/README.md) is the single capability index. Focused references own individual runtime and authoring topics; the index routes readers rather than repeating those references.
+- `examples/` contains complete, runnable examples that demonstrate the contracts and can be copied, changed, and exercised.
+- Public types and implementation define the APIs. Live CLI discovery describes the currently loaded project, rather than a documentation-time workflow catalogue.
+- `docs inspect` locates installed assets. `docs intro` supplies the compact introduction that directs an agent to them. Neither command owns delivery into a host's conversation.
+
+This separation gives each fact one owner. It avoids a monolithic agent manual, duplicate topic maps, and an umbrella skill that becomes another source of Norn instructions. Host installation details and repository-maintainer guidance are not runtime capability references.
+
+Documentation must match the executable actually invoked. Source/npm installations expose their local assets; standalone binaries carry an offline documentation snapshot that can be materialized as readable files. Relative links remain usable without a checkout or GitHub documentation fallback. Updating the selected runtime therefore updates its knowledge without rewriting every integration.
+
+## Adapters are host-specific delivery
+
+`adapters/` connects Norn to host mechanisms. An adapter selects the installed Norn executable, asks it for the introduction, and delivers the result to the intended agent context. It does not assume that its own package or checkout is the runtime the user selected.
+
+Almost everything Norn-specific is delegated to installed Norn: introduction content, asset resolution, version identity, command contracts, workflow discovery, execution, and recovery. An adapter only needs the host-specific mechanics required for what it exposes. The current Pi adapter delivers context; this is not a requirement to add execution tools to every adapter.
+
+Prompt delivery preserves the host's existing instructions and custom prompts without accumulating duplicate introductions. Session eligibility belongs at this boundary: making Norn available to an outer authoring agent does not authorize injecting authoring context into restricted delegates. Failures should surface as failures, not trigger a fallback to another installation's knowledge.
+
+Adapters are installable integrations, not documentation assets. Their delivery must account for users who do not have the development checkout. This boundary lets multiple hosts share the same Norn behavior instead of maintaining separate implementations.
+
+## How we develop
+
+Development follows a bounded working loop: identify an authoring or runtime limitation, inspect the relevant source and contract, implement the smallest missing behavior, exercise it, inspect its outputs, and repair it. The result should remain usable by another caller, not depend on the development conversation.
+
+| Decision | GOOD | BAD |
 |---|---|---|
-| IF the next action is within the user's approved scope, THEN execute it and resolve uncertainty from available evidence. ELSE ask for the missing authorization or fact. | Inspect the implementation before changing it; report a concrete blocker. | Treat a question as approval for implementation, require unnecessary human approval, or substitute progress language for execution. |
-| IF the user challenges an addition, THEN reconsider whether it is needed before defending its implementation or location. ELSE question new scope before adding it. | Delete an unnecessary page and the bundling added solely to support its link. | Move the page elsewhere or justify a dependency using another unnecessary addition. |
-| IF existing code or an existing reference already owns the behavior or knowledge, THEN improve or use that source. ELSE add only the missing piece required by the task. | Make names and interfaces explicit; link to the relevant existing reference. | Add restating comments, duplicate manuals, a workflow catalogue, an adapter framework, or another orchestration DSL. |
-
-## Architecture and boundaries
-
-| Rule | GOOD | BAD |
-|---|---|---|
-| IF changing capability discoverability, THEN keep introduction generation, documentation, examples, and asset resolution in Norn; adapters only deliver the introduction. ELSE leave delivery unchanged. | `docs intro` points to the capability index and relevant examples. | Reintroduce a mandatory umbrella skill, copy topic maps into adapters, or inject whole manuals. |
-| IF changing Pi integration, THEN inspect Pi's actual implementation and use its existing extension/package mechanisms. ELSE do not infer new requirements from a superficial analogy. | Distinguish Pi's self-documentation block from optional, on-demand skills. | Assume every capability needs a skill because Pi supports skills. |
-| IF exposing docs or invocation instructions, THEN bind them to the runtime actually selected and preserve offline resolution and relative links. ELSE do not advertise another installation's assets. | Use that executable's `docs intro` and exact argv. | Invoke an older PATH binary while reading a checkout's docs, or restore GitHub documentation-link fallbacks. |
-| IF changing prompt delivery, THEN preserve chained/custom prompts, prevent accumulation, and keep restricted native workers outside authoring delivery. ELSE leave session resources untouched. | Test the effective prompt and the existing worker exclusion; design author-capable worker delivery separately. | Replace the prompt, assume global extension loading is harmless to assessors, or leak unrelated context into their evidence. |
-
-## Validation and evidence
-
-| Rule | GOOD | BAD |
-|---|---|---|
-| IF validating agent orchestration or recovery, THEN exercise native Norn ownership and analyze saved outputs. ELSE use direct tools for the changed boundary. | Native workflow → worker → saved artifact → analysis; repair the affected phase of the same run. | A cosmetic Norn wrapper around an independent coordinator that owns status, retries, and unfinished delivery. |
-| IF a test protects supported behavior or a required rejection/isolation contract, THEN keep it focused on that observable result. ELSE omit it. | Verify invalid input is rejected, recovery retains earlier evidence, or a restricted worker receives no authoring intro. | Assert that a deleted skill, file, or feature does not exist merely to memorialize its removal. |
-| IF the user explicitly requests an experiment, THEN bound its cost and cases around a concrete question. ELSE use ordinary regression checks and do not recreate benchmark infrastructure or resume paused experiments. | Reproduce one failure and exercise its repair. | Build scoring runners for a small change, restart a stopped parser trial, or force Norn into a task to improve adoption counts. |
-| IF reporting a result, THEN distinguish source observations, reproduced behavior, mocked tests, proposals, and untested claims. ELSE state the missing evidence rather than imply success. | Report offline prompt capture as such; distinguish accepted launch, failed work, and verified completion. | Treat schema validity as truth, fresh context as OS isolation, rollback as reversal of external effects, or passing staged cases as proof of natural adoption. |
-
-## Delivery
-
-| Rule | GOOD | BAD |
-|---|---|---|
-| IF changing distribution or giving installation instructions, THEN account for a user without the development checkout and distinguish local implementation from published, exercised installation. ELSE make no new distribution claim. | Check package metadata, shipped files, dependencies, and the selected executable; identify an unpushed change. | Offer only a personal absolute path, assume a local commit is remotely installable, or bundle adapter code as documentation to solve distribution. |
-| IF changing this repository, THEN run checks appropriate to the diff, review it, commit only task-related files, and report the commit and validation limits. ELSE do not modify user installations or configuration. | Use the [development checks](README.md#development), Mason-backed LSP diagnostics for typed edits, and full regressions for runtime/packaging changes. | Add machinery to validate this instruction file, silently modify global settings, stage credentials or sessions, or claim checks passed when they could not run. |
+| IF a change concerns a runtime contract, THEN change Norn and its owning reference/example. ELSE keep host-specific delivery in the adapter. | Add a discovery contract once in Norn and consume it from a host. | Reimplement schemas, documentation lookup, or workflow state in each adapter. |
+| IF validating agent orchestration or recovery, THEN let native Norn workflows own that execution and analyze saved artifacts. ELSE test the changed boundary directly. | Exercise worker → saved output → analysis and repair the affected phase. | A cosmetic Norn wrapper around an independent coordinator, or orchestration added to a trivial task. |
+| IF adding a test, THEN identify the supported behavior or required failure/isolation contract it protects. ELSE leave the suite unchanged. | Verify usable docs from a standalone installation, effective prompt delivery, or recovery retaining earlier work. | Assert that a deleted feature stays absent, or create a benchmark framework for a bounded change. |
+| IF changing code, THEN run the [development checks](README.md#development) and exercise the affected behavior; use the full suite for runtime or packaging changes. ELSE validate the actual artifact changed. | Distinguish an offline SDK test, a native binary run, and an untested installation path. | Treat schema validity or passing staged examples as proof of task correctness or natural adoption. |
