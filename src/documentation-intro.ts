@@ -16,7 +16,6 @@ export function renderNornDocumentationIntro(input: {
 		`Main README: ${JSON.stringify(documentation.paths.readme)}`,
 		`Documentation directory: ${JSON.stringify(documentation.paths.docs)}`,
 		`Runnable examples: ${JSON.stringify(documentation.paths.examples)}`,
-		`Task-time guidance (skill): ${JSON.stringify(documentation.paths.skill)}`,
 		"Relative documentation links resolve from the containing file, not the task's working directory.",
 		"",
 		"| Rule | GOOD | BAD |",

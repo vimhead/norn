@@ -34,16 +34,15 @@ norn docs inspect
 
 This explicit command works outside a Norn project and does not use the network.
 Its `documentation` result contains `storage`, `version`, `commit`, `assetDigest`,
-and absolute `paths` (`root`, `readme`, `index`, `docs`, `examples`, `skill`).
+and absolute `paths` (`root`, `readme`, `index`, `docs`, `examples`).
 
 npm/source installations resolve files directly from their installation, not the
 current directory or another executable on PATH. Compiled binaries embed the docs,
-examples, skill, and source references, preserving relative links. The first
+examples, and source references, preserving relative links. The first
 inspection publishes a complete extracted tree into a build/content-specific
 cache; later calls verify and reuse it without rewriting files. Different asset
 contents or build commits use separate entries. `version` and help do not extract
-anything. No prompt augmentation, skill installation, or agent-context delivery is
-performed.
+anything. No prompt augmentation or agent-context delivery is performed.
 
 Cache roots:
 
@@ -75,9 +74,9 @@ norn docs intro
 ```
 
 Returns `{ "intro": "..." }`: a compact authoring introduction with runtime
-version/commit, invocation, and pointers to the documentation index, examples,
-and skill. Topic routing remains in the index; the command does not copy manuals
-or enumerate workflows. It uses the same asset resolver/cache as `docs inspect`
+version/commit, invocation, and pointers to the documentation index and examples.
+Topic routing remains in the index; the command does not copy manuals or enumerate
+workflows. It uses the same asset resolver/cache as `docs inspect`
 and works without a valid project.
 
 The invocation is a JSON argument array, not a shell command string. Its first
@@ -89,7 +88,7 @@ each argument, without relying on another `norn` installation on PATH.
 `renderNornDocumentationIntro({ documentation, invocation })`, also exported from
 [`norn/documentation`](../src/documentation.ts), renders the same text from explicit
 inputs without filesystem or process access. Generating the introduction does not
-inject it into prompts, install the skill, or alter Pi/native-worker sessions.
+inject it into prompts or alter Pi/native-worker sessions.
 
 ## Discover live contracts
 

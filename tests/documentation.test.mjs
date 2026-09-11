@@ -15,7 +15,6 @@ const build = { kind: "github-release-binary", version: "0.1.0", commit: "a".rep
 const bundle = { version: "0.1.0", files: [
 	{ path: "README.md", content: "# Documentation\n" },
 	{ path: "docs/README.md", content: "[Example](../examples/demo/plugin.ts)\n" },
-	{ path: "skills/norn/SKILL.md", content: "# Skill\n" },
 	{ path: "examples/demo/plugin.ts", content: "export const greeting = 'Héllo!';\n" },
 ] };
 

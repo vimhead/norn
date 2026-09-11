@@ -16,6 +16,9 @@ test("npm package file set preserves documentation links and resolves paths from
 	const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 	const packed = JSON.parse((await execute(npm, ["pack", "--dry-run", "--ignore-scripts", "--offline", "--json"], { cwd: packageRoot, timeout: 90_000, maxBuffer: 20 * 1024 * 1024 })).stdout)[0];
 	const packageFiles = new Set(packed.files.filter(file => !file.path.startsWith("node_modules/")).map(file => file.path));
+	assert.ok(packageFiles.has("adapters/pi.ts"));
+	const manifest = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"));
+	assert.deepEqual(manifest.pi.extensions, ["./adapters/pi.ts"]);
 	const installedRoot = join(root, "package copy");
 	for (const path of packageFiles) {
 		await mkdir(dirname(join(installedRoot, path)), { recursive: true });

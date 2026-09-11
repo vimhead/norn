@@ -15,7 +15,6 @@ export const DOCUMENTATION_PATHS = {
 	index: "docs/README.md",
 	docs: "docs",
 	examples: "examples",
-	skill: "skills/norn/SKILL.md",
 } as const;
 
 export function validateDocumentationBundle(bundle: NornDocumentationBundle): void {
@@ -36,7 +35,7 @@ export function validateDocumentationBundle(bundle: NornDocumentationBundle): vo
 			if (paths.has(parts.join("/"))) throw new Error(`Documentation file/directory collision: ${path}`);
 		}
 	}
-	for (const path of [DOCUMENTATION_PATHS.readme, DOCUMENTATION_PATHS.index, DOCUMENTATION_PATHS.skill]) {
+	for (const path of [DOCUMENTATION_PATHS.readme, DOCUMENTATION_PATHS.index]) {
 		if (!bundle.files.some(file => file.path === path)) throw new Error(`Missing documentation asset: ${path}`);
 	}
 	if (!bundle.files.some(file => file.path.startsWith("examples/"))) throw new Error("Missing documentation examples");
