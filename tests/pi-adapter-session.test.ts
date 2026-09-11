@@ -78,7 +78,7 @@ async function writeExecutable(path: string, source: string) {
 	await chmod(path, 0o700);
 }
 
-test("Pi caches runtime-selected context until reload and preserves unrelated skills", { skip: process.platform === "win32", timeout: 60_000 }, async context => {
+test("Pi loads runtime-selected context before the first prompt and refreshes it on reload", { skip: process.platform === "win32", timeout: 60_000 }, async context => {
 	const fixture = await createFixture(context);
 	const runtimeRoot = join(fixture.root, "other installation");
 	await mkdir(runtimeRoot);
@@ -112,7 +112,9 @@ test("Pi caches runtime-selected context until reload and preserves unrelated sk
 	loader.getExtensions().runtime.flagValues.set("norn-executable", join(runtimeRoot, "bin/norn.mjs"));
 	const captured: CapturedRequest[] = [];
 	captureModelRequests(session, captured);
-	await session.bindExtensions({});
+	await session.bindExtensions({ uiContext: session.extensionRunner.getUIContext() });
+	manifest.version = "9.9.10";
+	await writeFile(join(runtimeRoot, "package.json"), JSON.stringify(manifest));
 	await session.prompt("First ordinary task");
 	const first = lastRequest(captured).systemPrompt;
 	assert.ok(first.startsWith("CUSTOM SYSTEM PROMPT"));
@@ -139,8 +141,6 @@ test("Pi caches runtime-selected context until reload and preserves unrelated sk
 	assert.deepEqual(inspection.workflow.paramsSchema.required, ["name"]);
 	assert.ok(!first.includes("fresh.write"));
 
-	manifest.version = "9.9.10";
-	await writeFile(join(runtimeRoot, "package.json"), JSON.stringify(manifest));
 	await session.prompt("Next ordinary task");
 	assert.ok(lastRequest(captured).systemPrompt.includes('Version: "9.9.9"'));
 	assert.ok(!lastRequest(captured).systemPrompt.includes('Version: "9.9.10"'));
@@ -163,10 +163,14 @@ test("Pi caches runtime-selected context until reload and preserves unrelated sk
 	assert.ok(lastRequest(captured).systemPrompt.includes("<available_skills>"));
 	assert.equal(lastRequest(captured).systemPrompt.split("<norn-docs-intro>").length - 1, 1);
 	loader.getExtensions().runtime.flagValues.delete("norn-executable");
+	await session.prompt("Task before reloading the changed runtime selection");
+	assert.ok(!lastRequest(captured).systemPrompt.includes("<norn-docs-intro>"));
+	await session.reload();
 	await session.prompt("Use the PATH runtime now");
 	assert.ok(lastRequest(captured).systemPrompt.includes("PATH runtime introduction"));
 	assert.ok(!lastRequest(captured).systemPrompt.includes('Version: "9.9.10"'));
 	loader.getExtensions().runtime.flagValues.set("norn-executable", join(fixture.root, "missing-executable"));
+	await session.reload();
 	await session.prompt("Task with an unavailable runtime");
 	assert.ok(lastRequest(captured).systemPrompt.includes("PROJECT CONTEXT"));
 	assert.ok(!lastRequest(captured).systemPrompt.includes("<norn-docs-intro>"));
@@ -177,14 +181,19 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 	const fixture = await createFixture(context);
 	await writeFile(join(fixture.agentDir, "settings.json"), JSON.stringify({ packages: [packageRoot], compaction: { enabled: false }, retry: { enabled: false } }));
 	const calledPath = join(fixture.root, "cli-called");
-	const executable = join(fixture.root, "norn-probe");
+	const executable = join(fixture.root, "norn");
 	await writeExecutable(executable, `require("node:fs").writeFileSync(${JSON.stringify(calledPath)}, "called"); process.stdout.write(JSON.stringify({intro:"UNWANTED AUTHORING CONTEXT"}));`);
+	const previousPath = process.env.PATH;
+	process.env.PATH = `${fixture.root}${delimiter}${previousPath ?? ""}`;
+	context.onTestFinished(() => {
+		if (previousPath === undefined) delete process.env.PATH;
+		else process.env.PATH = previousPath;
+	});
 	const captured: CapturedRequest[] = [];
 	const sessions: AgentSession[] = [];
 	const originalPrompt = AgentSession.prototype.prompt;
 	const promptSpy = vi.spyOn(AgentSession.prototype, "prompt").mockImplementation(async function (this: AgentSession, ...args) {
 		if (!sessions.includes(this)) sessions.push(this);
-		this.resourceLoader.getExtensions().runtime.flagValues.set("norn-executable", executable);
 		captureModelRequests(this, captured);
 		return originalPrompt.apply(this, args);
 	});
@@ -198,11 +207,14 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 	});
 	const worker = await runner.createSession({ label: "restricted", tools: [], systemPrompt: "SOURCE-ONLY ASSESSOR" });
 	context.onTestFinished(() => worker.dispose());
+	await assert.rejects(readFile(calledPath), { code: "ENOENT" });
 	assert.deepEqual(await worker.prompt({ prompt: "Assess only this supplied source.", response: z.object({ ok: z.boolean() }), maxAttempts: 1 }), { ok: true });
 	assert.equal(sessions.length, 1);
 	const session = sessions[0];
 	assert.ok(session.resourceLoader.getExtensions().extensions.some(extension => extension.path.endsWith("adapters/pi.ts")));
 	assert.ok(session.getAllTools().some(tool => tool.name === AGENT_RESPONSE_TOOL_NAME));
+	session.setActiveToolsByName([]);
+	await session.bindExtensions({ uiContext: session.extensionRunner.getUIContext() });
 	await session.reload();
 	session.setActiveToolsByName([]);
 	assert.deepEqual(session.getActiveToolNames(), []);
