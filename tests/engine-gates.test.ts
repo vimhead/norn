@@ -2,18 +2,16 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
-import { createJiti } from "jiti";
+import { test, type TestContext } from "vitest";
 import { z } from "zod";
 
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { definePlugin, definePluginManifest } = await jiti.import("../src/api.ts");
-const { NornEngine } = await jiti.import("../src/internal/engine.ts");
-const { writeRunResumeRequest, readOptionalRunResumeRequest } = await jiti.import("../src/internal/launch-request.ts");
+import { definePlugin, definePluginManifest } from "../src/api.ts";
+import { NornEngine } from "../src/internal/engine.ts";
+import { writeRunResumeRequest, readOptionalRunResumeRequest, type NornRunResumeRequest } from "../src/internal/launch-request.ts";
 
-async function createFixture(context, gateMode, isEntrypoint) {
+async function createFixture(context: TestContext, gateMode: "pause" | "auto" | undefined, isEntrypoint: boolean) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-gate-test-"));
-	context.after(() => rm(cwd, { recursive: true, force: true }));
+	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	const manifest = definePluginManifest({ id: "gates", workflows: {
 		decide: { instructions: "Use to supply the test decision.", isEntrypoint, params: z.object({ answer: z.boolean() }), gate: { enabled: true, fields: ["answer"] } },
 	} });
@@ -35,12 +33,12 @@ for (const isEntrypoint of [true, false]) {
 		const runRoot = join(fixture.cwd, ".norn/runs", interrupted.id);
 		const completed = await fixture.engine.resumeWorkflow(runRoot, { answer: true });
 		assert.equal(completed.status, "completed");
-		assert.deepEqual(completed.metadata.data, { answer: true });
+		assert.deepEqual(completed.metadata?.data, { answer: true });
 		assert.equal(fixture.count(), 1);
 	});
 }
 
-for (const gateMode of ["auto", undefined]) {
+for (const gateMode of ["auto", undefined] as const) {
 	test(`direct gates execute in ${gateMode ?? "default"} mode`, async (context) => {
 		const fixture = await createFixture(context, gateMode, true);
 		assert.equal((await fixture.engine.runWorkflow(fixture.workflow, { answer: true }, undefined)).status, "completed");
@@ -65,7 +63,9 @@ test("rollback of a terminal checkpoint cannot discard dirty evidence", async co
 	const checkpoints = await fixture.engine.listRunCheckpoints(runRoot);
 	const evidence = join(runRoot, "current/after-completion.txt");
 	await writeFile(evidence, "retain this");
-	await assert.rejects(fixture.engine.rollbackRun(runRoot, checkpoints.at(-1).id), /without a current step/);
+	const terminalCheckpoint = checkpoints.at(-1);
+	assert.ok(terminalCheckpoint);
+	await assert.rejects(fixture.engine.rollbackRun(runRoot, terminalCheckpoint.id), /without a current step/);
 	assert.equal(await readFile(evidence, "utf8"), "retain this");
 	assert.deepEqual(await fixture.engine.listRunCheckpoints(runRoot), checkpoints);
 });
@@ -76,7 +76,7 @@ for (const isExpired of [false, true]) {
 		const interrupted = await fixture.engine.runWorkflow(fixture.workflow, { answer: false }, undefined);
 		const runRoot = join(fixture.cwd, ".norn/runs", interrupted.id);
 		const [initial] = await fixture.engine.listRunCheckpoints(runRoot);
-		const request = { version: 1, type: "resume", id: interrupted.id, requestId: "old-request", params: { answer: true }, createdAt: new Date(Date.now() - (isExpired ? 120000 : 0)).toISOString() };
+		const request: NornRunResumeRequest = { version: 1, type: "resume", id: interrupted.id, requestId: "old-request", params: { answer: true }, createdAt: new Date(Date.now() - (isExpired ? 120000 : 0)).toISOString() };
 		await writeRunResumeRequest(runRoot, request);
 		if (isExpired) {
 			assert.equal((await fixture.engine.rollbackRun(runRoot, initial.id)).status, "pendingResume");

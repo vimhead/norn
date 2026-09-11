@@ -5,16 +5,16 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { test } from "node:test";
+import { test } from "vitest";
 
 const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 
 test("npm package file set preserves documentation links and resolves paths from the installed copy", { timeout: 120_000 }, async context => {
 	const root = await mkdtemp(join(tmpdir(), "norn-package-documentation-"));
-	context.after(() => rm(root, { recursive: true, force: true }));
+	context.onTestFinished(() => rm(root, { recursive: true, force: true }));
 	const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-	const packed = JSON.parse((await execute(npm, ["pack", "--dry-run", "--ignore-scripts", "--offline", "--json"], { cwd: packageRoot, timeout: 90_000, maxBuffer: 20 * 1024 * 1024 })).stdout)[0];
+	const packed: { files: { path: string }[] } = JSON.parse((await execute(npm, ["pack", "--dry-run", "--ignore-scripts", "--offline", "--json"], { cwd: packageRoot, timeout: 90_000, maxBuffer: 20 * 1024 * 1024 })).stdout)[0];
 	const packageFiles = new Set(packed.files.filter(file => !file.path.startsWith("node_modules/")).map(file => file.path));
 	assert.ok(packageFiles.has("adapters/pi.ts"));
 	const manifest = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"));

@@ -3,24 +3,25 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { test } from "node:test";
-import { createJiti } from "jiti";
+import { test, vi, type TestContext } from "vitest";
+import { NornCommandRunner } from "../src/internal/commands.ts";
+import { NornRunLogs } from "../src/internal/logs.ts";
+import { NornRunLogger } from "../src/internal/run-log.ts";
+import { isNodeError } from "../src/internal/errors.ts";
 
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { NornCommandRunner } = await jiti.import("../src/internal/commands.ts");
-const { NornRunLogs } = await jiti.import("../src/internal/logs.ts");
-
-async function createFixture(context, signal) {
+async function createFixture(context: TestContext, signal?: AbortSignal) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-command-test-"));
-	context.after(() => rm(cwd, { recursive: true, force: true }));
+	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	const logs = new NornRunLogs(join(cwd, "logs"));
-	const events = [];
-	const runner = new NornCommandRunner({ cwd, boundaryRoot: cwd, boundaryName: "test", signal, logs, logger: { record: async event => { events.push(event); } } });
-	return { cwd, logs, events, runner };
+	const events: Parameters<NornRunLogger["record"]>[0][] = [];
+	const logger = new NornRunLogger(join(cwd, "manifest.json"), { id: "commands", name: "commands", workflowId: "test.commands", runRoot: cwd, workspace: cwd, initialCwd: cwd, startedAt: new Date().toISOString() });
+	vi.spyOn(logger, "record").mockImplementation(async event => { events.push(event); });
+	const runner = new NornCommandRunner({ cwd, boundaryRoot: cwd, boundaryName: "test", signal, logs, logger });
+	return { cwd, logs, logger, events, runner };
 }
 
-function printCommand(text) {
-	return [process.execPath, "-e", `process.stdout.write(${JSON.stringify(text)}); process.stderr.write(${JSON.stringify(`error:${text}`)})`];
+function printCommand(text: string) {
+	return [process.execPath, "-e", `process.stdout.write(${JSON.stringify(text)}); process.stderr.write(${JSON.stringify(`error:${text}`)})`] as const;
 }
 
 test("repeated labels retain each invocation's stdout and stderr", async context => {
@@ -42,7 +43,7 @@ test("concurrent commands and new runner instances cannot collide on labels", as
 	const fixture = await createFixture(context);
 	const inputs = Array.from({ length: 8 }, (_, index) => ({ label: index % 2 ? "a/b" : "a_b", command: printCommand(String(index)) }));
 	const results = await Promise.all(inputs.map(input => fixture.runner.run(input)));
-	const nextRunner = new NornCommandRunner({ cwd: fixture.cwd, boundaryRoot: fixture.cwd, boundaryName: "test", logs: fixture.logs, logger: { record: async () => {} } });
+	const nextRunner = new NornCommandRunner({ cwd: fixture.cwd, boundaryRoot: fixture.cwd, boundaryName: "test", logs: fixture.logs, logger: fixture.logger });
 	results.push(await nextRunner.run({ label: "a_b", command: printCommand("8") }));
 	assert.equal(new Set(results.flatMap(result => [result.stdoutLog.id, result.stderrLog.id])).size, 18);
 	for (const [index, result] of results.entries()) assert.equal(await fixture.logs.read(result.stdoutLog), String(index));
@@ -53,20 +54,20 @@ for (const cancellation of ["timeout", "abort"]) {
 		const controller = new AbortController();
 		const fixture = await createFixture(context, controller.signal);
 		const pidPath = join(fixture.cwd, "child.pid");
-		let pid;
-		context.after(() => {
+		let pid: number | undefined;
+		context.onTestFinished(() => {
 			if (pid === undefined) return;
-			try { process.kill(pid, "SIGKILL"); } catch (error) { if (error.code !== "ESRCH") throw error; }
+			try { process.kill(pid, "SIGKILL"); } catch (error) { if (!isNodeError(error) || error.code !== "ESRCH") throw error; }
 		});
 		const script = `process.on("SIGTERM", () => process.stdout.write("ignored\\n")); require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000);`;
 		const startedAt = Date.now();
 		const resultPromise = fixture.runner.run({ label: "stubborn", command: [process.execPath, "-e", script, pidPath], timeoutMs: cancellation === "timeout" ? 800 : 2000 });
 		for (let attempt = 0; attempt < 100; attempt++) {
 			try { pid = Number(await readFile(pidPath, "utf8")); break; }
-			catch (error) { if (error.code !== "ENOENT") throw error; }
+			catch (error) { if (!isNodeError(error) || error.code !== "ENOENT") throw error; }
 			await delay(20);
 		}
-		assert.ok(pid > 0, "child registered its signal handler");
+		assert.ok(pid !== undefined && pid > 0, "child registered its signal handler");
 		if (cancellation === "abort") controller.abort();
 		const result = await resultPromise;
 		assert.equal(result.killed, true);

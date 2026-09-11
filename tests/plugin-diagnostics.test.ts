@@ -4,26 +4,29 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
-import { createJiti } from "jiti";
+import { expect, test, type TestContext } from "vitest";
+import { discoverNornProject, inspectNornWorkflow, loadNornProject } from "../src/plugin-loader.ts";
+import { createNornClient, NornProjectLoadError } from "../src/client.ts";
+import { readOptionalRunResumeRequest } from "../src/internal/launch-request.ts";
+import { getRunLeaseOwner } from "../src/internal/run-lease.ts";
+import type { NornProjectInspection, NornProjectLoadStatus, NornRunInfo, NornWorkflowCatalogInfo, NornWorkflowInspection } from "../src/api.ts";
 
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { discoverNornProject, inspectNornWorkflow, loadNornProject } = await jiti.import("../src/plugin-loader.ts");
-const { createNornClient, NornProjectLoadError } = await jiti.import("../src/client.ts");
-const { readOptionalRunResumeRequest } = await jiti.import("../src/internal/launch-request.ts");
-const { getRunLeaseOwner } = await jiti.import("../src/internal/run-lease.ts");
 const cliPath = fileURLToPath(new URL("../bin/norn.mjs", import.meta.url));
+type DiscoveryOutput = NornProjectLoadStatus & Partial<NornProjectInspection & NornWorkflowCatalogInfo & NornWorkflowInspection>;
+type RunOutput = { run: NornRunInfo };
+type ProjectErrorOutput = { error: Pick<NornProjectLoadError, "code" | "message" | "isComplete" | "diagnostics"> };
+type CliResult<Output> = { exitCode: string | number; result: Output; stderr: string };
 
-function createPluginSource({ id, workflows = '{ step: { instructions: "Use to complete the fixture step.", isEntrypoint: true, params: z.object({}) } }', implementation = '{ workflows: { step: { execute: run => run.complete() } } }', configSchema = "undefined" }) {
+function createPluginSource({ id, workflows = '{ step: { instructions: "Use to complete the fixture step.", isEntrypoint: true, params: z.object({}) } }', implementation = '{ workflows: { step: { execute: run => run.complete() } } }', configSchema = "undefined" }: { id: string; workflows?: string; implementation?: string; configSchema?: string }) {
 	return `import { definePlugin, definePluginManifest } from "norn";
 import { z } from "zod";
 const manifest = definePluginManifest({ id: ${JSON.stringify(id)}, config: ${configSchema}, workflows: ${workflows} });
 export default definePlugin(manifest, ${implementation});`;
 }
 
-async function createFixture(context, { files, config = {}, includes = [] }) {
+async function createFixture(context: TestContext, { files, config = {}, includes = [] }: { files: Record<string, string>; config?: Record<string, unknown>; includes?: string[] }) {
 	const cwd = await realpath(await mkdtemp(join(tmpdir(), "norn-plugin-diagnostics-")));
-	context.after(() => rm(cwd, { recursive: true, force: true }));
+	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	for (const [name, source] of Object.entries(files)) {
 		await mkdir(dirname(join(cwd, name)), { recursive: true });
 		await writeFile(join(cwd, name), source);
@@ -32,17 +35,18 @@ async function createFixture(context, { files, config = {}, includes = [] }) {
 	return cwd;
 }
 
-async function executeCli({ cwd, args, input }) {
+async function executeCli<Output>({ cwd, args, input }: { cwd: string; args: readonly string[]; input?: unknown }): Promise<CliResult<Output>> {
 	return new Promise((resolve, reject) => {
 		const child = execFile(process.execPath, [cliPath, ...args], { cwd, timeout: 20000, maxBuffer: 2 * 1024 * 1024 }, (error, stdout, stderr) => {
 			try { resolve({ exitCode: error?.code ?? 0, result: JSON.parse(stdout), stderr }); }
 			catch { reject(error ?? new Error(`Invalid CLI JSON: ${stdout}\n${stderr}`)); }
 		});
+		assert.ok(child.stdin);
 		child.stdin.end(input === undefined ? "" : JSON.stringify(input));
 	});
 }
 
-function assertInvalidProject(result, expectedCount) {
+function assertInvalidProject(result: CliResult<ProjectErrorOutput>, expectedCount: number) {
 	assert.notEqual(result.exitCode, 0);
 	assert.equal(result.result.error.code, "NORN_PROJECT_INVALID");
 	assert.equal(result.result.error.isComplete, false);
@@ -67,18 +71,19 @@ test("discovery collects import, export, config, factory and declaration failure
 	const byFile = new Map(result.diagnostics.map(diagnostic => [diagnostic.pluginPath, diagnostic]));
 	for (const [file, stage] of [["broken.ts", "import"], ["export.ts", "declaration"], ["config.ts", "config"], ["factory.ts", "implementation"], ["unguided.ts", "declaration"]]) {
 		const diagnostic = byFile.get(join(cwd, file));
+		assert.ok(diagnostic);
 		assert.equal(diagnostic.configPath, join(cwd, "norn.project.json"));
 		assert.equal(diagnostic.stage, stage);
 		assert.ok(diagnostic.message.length > 0);
 	}
-	assert.equal(byFile.get(join(cwd, "unguided.ts")).workflowId, "unguided.step");
-	assert.deepEqual(byFile.get(join(cwd, "config.ts")).issues.map(issue => issue.path), [["port"]]);
-	assert.equal(byFile.get(join(cwd, "config.ts")).pluginId, "config");
-	assert.equal(byFile.get(join(cwd, "broken.ts")).pluginId, null);
+	assert.equal(byFile.get(join(cwd, "unguided.ts"))?.workflowId, "unguided.step");
+	assert.deepEqual(byFile.get(join(cwd, "config.ts"))?.issues.map(issue => issue.path), [["port"]]);
+	assert.equal(byFile.get(join(cwd, "config.ts"))?.pluginId, "config");
+	assert.equal(byFile.get(join(cwd, "broken.ts"))?.pluginId, null);
 	assert.equal("registry" in result, false);
 	assert.equal("state" in result, false);
 	assert.equal("implementation" in result.workflows[0], false);
-	await assert.rejects(loadNornProject(cwd), error => error.code === "NORN_PROJECT_INVALID" && error.diagnostics.length === 5);
+	await assert.rejects(loadNornProject(cwd), error => error instanceof NornProjectLoadError && error.diagnostics.length === 5);
 });
 
 test("syntax errors and missing imports retain source paths and do not block later discovery", async context => {
@@ -158,23 +163,27 @@ test("CLI discovery reports incomplete status and schemas while execution fails 
 		"broken.ts": 'throw new Error("broken sibling");', "another.ts": "export default false;",
 	} });
 	for (const args of [["project", "inspect"], ["workflows", "list"], ["workflows", "list", "--all"], ["workflows", "inspect", "good.step"], ["workflows", "inspect", "broken.step"]]) {
-		const { exitCode, result } = await executeCli({ cwd, args });
+		const { exitCode, result } = await executeCli<DiscoveryOutput>({ cwd, args });
 		assert.equal(exitCode, 0);
 		assert.equal(result.isComplete, false);
 		assert.equal(result.diagnostics.length, 2);
-		if (args[0] === "project") assert.deepEqual(result.project.plugins.map(plugin => plugin.id), ["good"]);
-		else if (args[1] === "list") {
+		if (args[0] === "project") {
+			assert.ok(result.project);
+			assert.deepEqual(result.project.plugins.map(plugin => plugin.id), ["good"]);
+		} else if (args[1] === "list") {
+			assert.ok(result.workflows);
 			assert.equal(result.workflows.length, args.includes("--all") ? 2 : 1);
-			assert.equal(result.workflows.find(workflow => workflow.id === "good.step").instructions, "Use to complete the fixture step.");
+			assert.equal(result.workflows.find(workflow => workflow.id === "good.step")?.instructions, "Use to complete the fixture step.");
 		} else if (args[2] === "good.step") {
+			assert.ok(result.workflow);
 			assert.equal(result.workflow.paramsSchema.type, "object");
 			assert.equal(result.workflow.instructions, "Use to complete the fixture step.");
 		}
 		else assert.equal(result.workflow, null);
 	}
-	assertInvalidProject(await executeCli({ cwd, args: ["runs", "start", "good.step"], input: { params: {} } }), 2);
+	assertInvalidProject(await executeCli<ProjectErrorOutput>({ cwd, args: ["runs", "start", "good.step"], input: { params: {} } }), 2);
 	await assert.rejects(stat(join(cwd, ".norn/runs")), { code: "ENOENT" });
-	const conflictingFlags = await executeCli({ cwd, args: ["workflows", "list", "--all", "--entrypoints"] });
+	const conflictingFlags = await executeCli<{ error: { message: string } }>({ cwd, args: ["workflows", "list", "--all", "--entrypoints"] });
 	assert.notEqual(conflictingFlags.exitCode, 0);
 	assert.match(conflictingFlags.result.error.message, /either/);
 });
@@ -183,9 +192,9 @@ test("strict resume preserves the existing interruption and does not queue a req
 	const cwd = await createFixture(context, { files: {
 		"gate.ts": createPluginSource({ id: "gate", workflows: '{ step: { instructions: "Use to decide whether to proceed.", isEntrypoint: true, params: z.object({ approved: z.boolean() }), gate: { enabled: true, fields: ["approved"] } } }' }),
 	} });
-	const started = await executeCli({ cwd, args: ["runs", "start", "gate.step"], input: { params: { approved: false } } });
+	const started = await executeCli<RunOutput>({ cwd, args: ["runs", "start", "gate.step"], input: { params: { approved: false } } });
 	assert.equal(started.exitCode, 0, JSON.stringify(started.result));
-	const { run } = (await executeCli({ cwd, args: ["runs", "wait", started.result.run.id] })).result;
+	const { run } = (await executeCli<RunOutput>({ cwd, args: ["runs", "wait", started.result.run.id] })).result;
 	assert.equal(run.status, "interrupted");
 	const projectPath = join(cwd, "norn.project.json");
 	const config = JSON.parse(await readFile(projectPath, "utf8"));
@@ -193,9 +202,9 @@ test("strict resume preserves the existing interruption and does not queue a req
 	await writeFile(projectPath, JSON.stringify(config));
 	await writeFile(join(cwd, "broken.ts"), 'throw new Error("broken sibling");');
 	await writeFile(join(cwd, "another.ts"), "export default null;");
-	const resumed = await executeCli({ cwd, args: ["runs", "resume", run.id], input: { params: { approved: true } } });
+	const resumed = await executeCli<ProjectErrorOutput>({ cwd, args: ["runs", "resume", run.id], input: { params: { approved: true } } });
 	assertInvalidProject(resumed, 2);
-	const inspected = (await executeCli({ cwd, args: ["runs", "inspect", run.id] })).result.run;
+	const inspected = (await executeCli<RunOutput>({ cwd, args: ["runs", "inspect", run.id] })).result.run;
 	assert.deepEqual(inspected, run);
 	assert.equal(await readOptionalRunResumeRequest(run.path), undefined);
 	assert.equal(await getRunLeaseOwner(run.path), undefined);
@@ -203,7 +212,7 @@ test("strict resume preserves the existing interruption and does not queue a req
 	await writeFile(join(cwd, "broken.ts"), createPluginSource({ id: "repaired" }));
 	await writeFile(join(cwd, "another.ts"), createPluginSource({ id: "another" }));
 	assert.equal((await executeCli({ cwd, args: ["runs", "resume", run.id], input: { params: { approved: true } } })).exitCode, 0);
-	assert.equal((await executeCli({ cwd, args: ["runs", "wait", run.id] })).result.run.status, "completed");
+	assert.equal((await executeCli<RunOutput>({ cwd, args: ["runs", "wait", run.id] })).result.run.status, "completed");
 });
 
 test("client discovery preserves status and diagnostics, and execution errors retain their structured details", { timeout: 20000 }, async context => {
@@ -212,11 +221,11 @@ test("client discovery preserves status and diagnostics, and execution errors re
 	for (const result of [await client.project.inspect(), await client.workflows.list(), await client.workflows.inspect("good.step")]) {
 		assert.equal(result.isComplete, false);
 		assert.equal(result.diagnostics.length, 1);
-		if (result.workflow) assert.equal(result.workflow.instructions, "Use to complete the fixture step.");
-		if (result.workflows) assert.equal(result.workflows[0].instructions, "Use to complete the fixture step.");
+		if ("workflow" in result && result.workflow) assert.equal(result.workflow.instructions, "Use to complete the fixture step.");
+		if ("workflows" in result) assert.equal(result.workflows[0].instructions, "Use to complete the fixture step.");
 	}
 	await assert.rejects(client.runs.start({ workflowId: "good.step", params: {} }), error => error instanceof NornProjectLoadError && error.diagnostics[0].stage === "import");
-	await assert.rejects(client.workflows.entries(), error => error.code === "NORN_PROJECT_INVALID" && error.diagnostics.length === 1);
+	await assert.rejects(client.workflows.entries(), error => error instanceof NornProjectLoadError && error.diagnostics.length === 1);
 	await writeFile(join(cwd, "broken.ts"), createPluginSource({ id: "repaired" }));
 	const repaired = await client.workflows.list();
 	assert.equal(repaired.isComplete, true);
@@ -230,7 +239,7 @@ test("an empty project is complete and an unknown workflow is an error only afte
 	assert.equal(result.isComplete, true);
 	assert.deepEqual(result.diagnostics, []);
 	assert.deepEqual(result.workflows, []);
-	const listed = await executeCli({ cwd, args: ["workflows", "list"] });
+	const listed = await executeCli<NornWorkflowCatalogInfo>({ cwd, args: ["workflows", "list"] });
 	assert.equal(listed.exitCode, 0);
 	assert.deepEqual(listed.result, { workflows: [], isComplete: true, diagnostics: [] });
 	await assert.rejects(inspectNornWorkflow({ cwd, workflowId: "unknown.step" }), /Unknown workflow/);
@@ -256,27 +265,28 @@ test("CLI and client inspection advertise contribution schemas without losing fo
 		} }`,
 	});
 	const cwd = await createFixture(context, { files: { "handoff.ts": source } });
-	const inspected = await executeCli({ cwd, args: ["workflows", "inspect", "handoff.collect"] });
+	const inspected = await executeCli<NornWorkflowInspection>({ cwd, args: ["workflows", "inspect", "handoff.collect"] });
 	assert.equal(inspected.exitCode, 0);
 	assert.equal(inspected.result.isComplete, true);
 	assert.deepEqual(inspected.result.diagnostics, []);
-	const next = inspected.result.workflow.paramsSchema.properties.next;
-	const contributedParamsSchema = next["x-norn-workflow-ref"].contributedParamsSchema;
-	assert.equal(contributedParamsSchema.type, "object");
-	assert.deepEqual(contributedParamsSchema.required, ["records"]);
-	assert.deepEqual(contributedParamsSchema.properties.records.properties, { path: { type: "string" } });
-	assert.deepEqual(contributedParamsSchema.properties.records.required, ["path"]);
-	assert.equal(next.anyOf[1].properties.forwardParams.type, "object");
-	assert.deepEqual(next.anyOf[1].properties.forwardParams.additionalProperties, {});
-	assert.deepEqual(next.anyOf[1].required, ["workflow", "forwardParams"]);
+	assert.ok(inspected.result.workflow);
+	const schema = inspected.result.workflow.paramsSchema;
+	const contributionPath = "properties.next.x-norn-workflow-ref.contributedParamsSchema";
+	expect(schema).toHaveProperty(`${contributionPath}.type`, "object");
+	expect(schema).toHaveProperty(`${contributionPath}.required`, ["records"]);
+	expect(schema).toHaveProperty(`${contributionPath}.properties.records.properties`, { path: { type: "string" } });
+	expect(schema).toHaveProperty(`${contributionPath}.properties.records.required`, ["path"]);
+	expect(schema).toHaveProperty("properties.next.anyOf.1.properties.forwardParams.type", "object");
+	expect(schema).toHaveProperty("properties.next.anyOf.1.properties.forwardParams.additionalProperties", {});
+	expect(schema).toHaveProperty("properties.next.anyOf.1.required", ["workflow", "forwardParams"]);
 	const client = createNornClient({ spawnCwd: cwd, executablePath: cliPath });
 	assert.deepEqual(await client.workflows.inspect("handoff.collect"), inspected.result);
 	const params = { taskId: "task-42", context: { labels: ["one", "two"], nested: { enabled: false, absent: null } } };
-	const started = await executeCli({ cwd, args: ["runs", "start", "handoff.caller"], input: { params } });
+	const started = await executeCli<RunOutput>({ cwd, args: ["runs", "start", "handoff.caller"], input: { params } });
 	assert.equal(started.exitCode, 0, JSON.stringify(started.result));
-	const completed = (await executeCli({ cwd, args: ["runs", "wait", started.result.run.id] })).result.run;
+	const completed = (await executeCli<RunOutput>({ cwd, args: ["runs", "wait", started.result.run.id] })).result.run;
 	assert.equal(completed.status, "completed");
-	assert.deepEqual(completed.outcome.metadata.data, { ...params, records: { path: "records.json" } });
+	assert.deepEqual(completed.outcome?.metadata?.data, { ...params, records: { path: "records.json" } });
 	assert.deepEqual(JSON.parse(await readFile(join(completed.path, "current/artifacts/records.json"), "utf8")), ["recent incidents"]);
 });
 

@@ -4,29 +4,35 @@ import { tmpdir } from "node:os";
 import { syncBuiltinESMExports } from "node:module";
 import { join, sep } from "node:path";
 import { gzipSync } from "node:zlib";
-import { after, mock, test } from "node:test";
-import { createJiti } from "jiti";
+import { afterAll, test, vi, type TestContext } from "vitest";
+import { NornRunStore } from "../src/internal/run-store.ts";
+import { z } from "zod";
 
-let activeFault;
-for (const operation of ["writeFile", "rename"]) {
-	const original = fs[operation];
-	mock.method(fs, operation, async (...args) => {
-		if (activeFault?.operation === operation && activeFault.matches(...args)) {
-			activeFault.triggered = true;
-			throw Object.assign(new Error(`Injected ${operation} failure`), { code: "EIO" });
-		}
-		return original(...args);
-	});
+type FileSystemFault = { operation: "writeFile" | "rename"; matches: (...args: unknown[]) => boolean; triggered: boolean };
+let activeFault: FileSystemFault | undefined;
+
+function throwInjectedFault(operation: FileSystemFault["operation"], args: unknown[]): void {
+	if (activeFault?.operation !== operation || !activeFault.matches(...args)) return;
+	activeFault.triggered = true;
+	throw Object.assign(new Error(`Injected ${operation} failure`), { code: "EIO" });
 }
+
+const originalWriteFile = fs.writeFile;
+vi.spyOn(fs, "writeFile").mockImplementation(async (...args) => {
+	throwInjectedFault("writeFile", args);
+	return originalWriteFile(...args);
+});
+const originalRename = fs.rename;
+vi.spyOn(fs, "rename").mockImplementation(async (...args) => {
+	throwInjectedFault("rename", args);
+	return originalRename(...args);
+});
 syncBuiltinESMExports();
-after(() => { mock.restoreAll(); syncBuiltinESMExports(); });
+afterAll(() => { vi.restoreAllMocks(); syncBuiltinESMExports(); });
 
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { NornRunStore } = await jiti.import("../src/internal/run-store.ts");
-
-async function createFixture(context) {
+async function createFixture(context: TestContext) {
 	const root = await fs.mkdtemp(join(tmpdir(), "norn-store-test-"));
-	context.after(() => fs.rm(root, { recursive: true, force: true }));
+	context.onTestFinished(() => fs.rm(root, { recursive: true, force: true }));
 	const store = await NornRunStore.initialize(root);
 	const evidencePath = join(root, "current/evidence.txt");
 	await fs.writeFile(evidencePath, "original");
@@ -38,29 +44,32 @@ async function createFixture(context) {
 	return { root, store, evidencePath, first, second, history };
 }
 
-async function assertCurrentUnchanged(fixture) {
+async function assertCurrentUnchanged(fixture: Awaited<ReturnType<typeof createFixture>>) {
 	assert.equal(await fs.readFile(fixture.evidencePath, "utf8"), "dirty evidence must survive failure");
 	assert.equal(await fs.readFile(join(fixture.root, "current/checkpoints.json"), "utf8"), fixture.history);
 	assert.equal(await fixture.store.currentSnapshotRef(), fixture.second.id);
 	assert.equal((await fs.readdir(fixture.root)).some(name => /^\.(restore|previous)-/.test(name)), false);
 }
 
-function failOperation(context, operation, matches) {
-	const fault = { operation, matches, triggered: false };
+function failOperation(context: TestContext, operation: FileSystemFault["operation"], matches: FileSystemFault["matches"]) {
+	const fault: FileSystemFault = { operation, matches, triggered: false };
 	activeFault = fault;
-	context.after(() => { activeFault = undefined; });
+	context.onTestFinished(() => { activeFault = undefined; });
 	return () => assert.equal(fault.triggered, true, "the intended filesystem fault was exercised");
 }
+
+const snapshotSchema = z.looseObject({ entries: z.array(z.looseObject({ path: z.string(), type: z.string(), sha256: z.string().optional() })) });
 
 for (const corruption of ["missing", "invalid gzip", "checksum mismatch"]) {
 	test(`${corruption} snapshot object leaves current files, history and ref intact`, async context => {
 		const fixture = await createFixture(context);
-		const snapshot = JSON.parse(await fs.readFile(join(fixture.root, fixture.first.path), "utf8"));
+		const snapshot = snapshotSchema.parse(JSON.parse(await fs.readFile(join(fixture.root, fixture.first.path), "utf8")));
 		const entry = snapshot.entries.find(entry => entry.path === "evidence.txt");
+		assert.ok(entry?.sha256);
 		const objectPath = join(fixture.root, "store/objects/sha256", entry.sha256.slice(0, 2), entry.sha256.slice(2, 4), `${entry.sha256}.gz`);
 		if (corruption === "missing") await fs.rm(objectPath);
 		else await fs.writeFile(objectPath, corruption === "invalid gzip" ? "broken gzip" : gzipSync("wrong contents"));
-		await assert.rejects(fixture.store.restoreSnapshot(fixture.first.id, undefined), corruption === "checksum mismatch" ? /checksum mismatch/ : undefined);
+		await assert.rejects(fixture.store.restoreSnapshot(fixture.first.id, undefined), corruption === "checksum mismatch" ? /checksum mismatch/ : Error);
 		await assertCurrentUnchanged(fixture);
 	});
 }
@@ -96,7 +105,7 @@ for (const fault of ["object storage", "manifest publication", "history publicat
 
 test("failed first snapshot leaves no checkpoint history or current ref", async context => {
 	const root = await fs.mkdtemp(join(tmpdir(), "norn-first-snapshot-test-"));
-	context.after(() => fs.rm(root, { recursive: true, force: true }));
+	context.onTestFinished(() => fs.rm(root, { recursive: true, force: true }));
 	const store = await NornRunStore.initialize(root);
 	const assertTriggered = failOperation(context, "rename", (_source, destination) => destination === join(root, "store/refs/current"));
 	await assert.rejects(store.snapshotCurrent("first"), /Injected/);
@@ -132,8 +141,9 @@ test("snapshot symlink parents cannot redirect materialization outside staging",
 	const external = join(fixture.root, "external");
 	await fs.mkdir(external);
 	const snapshotPath = join(fixture.root, fixture.first.path);
-	const snapshot = JSON.parse(await fs.readFile(snapshotPath, "utf8"));
+	const snapshot = snapshotSchema.parse(JSON.parse(await fs.readFile(snapshotPath, "utf8")));
 	const file = snapshot.entries.find(entry => entry.path === "evidence.txt");
+	assert.ok(file);
 	snapshot.entries.push({ path: "link", type: "symlink", target: external }, { ...file, path: "link/escaped.txt" });
 	await fs.writeFile(snapshotPath, JSON.stringify(snapshot));
 	await assert.rejects(fixture.store.restoreSnapshot(fixture.first.id, undefined), /parent is not a directory/);

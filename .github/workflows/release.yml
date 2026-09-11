@@ -78,7 +78,7 @@ jobs:
             target="$1"
             output="$2"
             write_binary_build_info "$output"
-            node scripts/generate-documentation-assets.mjs
+            npm run documentation:generate
             bun build --compile --target="$target" ./src/bun/cli.ts --outfile "dist/release/$output"
             chmod +x "dist/release/$output"
           }

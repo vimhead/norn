@@ -3,19 +3,17 @@ import { getEventListeners } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
-import { createJiti } from "jiti";
+import { test, type TestContext } from "vitest";
 import { z } from "zod";
 
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { definePlugin, definePluginManifest } = await jiti.import("../src/api.ts");
-const { NornEngine } = await jiti.import("../src/internal/engine.ts");
-const { getRunInfo } = await jiti.import("../src/internal/run-state.ts");
-const { getRunLeaseOwner } = await jiti.import("../src/internal/run-lease.ts");
+import { definePlugin, definePluginManifest } from "../src/api.ts";
+import { NornEngine } from "../src/internal/engine.ts";
+import { getRunInfo } from "../src/internal/run-state.ts";
+import { getRunLeaseOwner } from "../src/internal/run-lease.ts";
 
-async function createInterruptedRun(context) {
+async function createInterruptedRun(context: TestContext) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-resume-test-"));
-	context.after(() => rm(cwd, { recursive: true, force: true }));
+	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	const controller = new AbortController();
 	const engine = new NornEngine({ cwd, gateMode: "pause", signal: controller.signal });
 	const manifest = definePluginManifest({
@@ -63,7 +61,7 @@ async function createInterruptedRun(context) {
 		async assertCorrectedResumeCompletes() {
 			const completed = await engine.resumeWorkflow(runRoot, { decision: "accept" });
 			assert.equal(completed.status, "completed");
-			assert.deepEqual(completed.metadata.data, { decision: "accept", evidence: "original" });
+			assert.deepEqual(completed.metadata?.data, { decision: "accept", evidence: "original" });
 			assert.equal(executionCount, 1);
 			assert.equal(await getRunLeaseOwner(runRoot), undefined);
 			assert.equal(getEventListeners(controller.signal, "abort").length, 0);

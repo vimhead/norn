@@ -1,26 +1,25 @@
 import { lstat, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createJiti } from "jiti";
+import { validateDocumentationBundle, hashDocumentationBundle, type NornDocumentationBundle, type NornDocumentationFile } from "../src/internal/documentation-bundle.ts";
 
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { validateDocumentationBundle, hashDocumentationBundle } = await jiti.import("../src/internal/documentation-bundle.ts");
-const ASSET_ROOTS = ["README.md", "docs", "examples", "src", "tests/workflow-ref.test.mjs"];
+const ASSET_ROOTS = ["README.md", "docs", "examples", "src", "tests/workflow-ref.test.ts"];
 const EXCLUDED_DIRECTORIES = new Set([".git", ".norn", "node_modules", "dist"]);
 const TEXT_EXTENSIONS = new Set([".md", ".ts", ".mjs", ".json"]);
 const GENERATED_ASSET_PATH = "src/bun/documentation-assets.generated.ts";
 
-export async function collectDocumentationBundle({ packageRoot }) {
-	const files = [];
-	for (const path of ASSET_ROOTS) await collectDocumentationFiles({ packageRoot, path, files });
+export async function collectDocumentationBundle(input: { readonly packageRoot: string }): Promise<NornDocumentationBundle> {
+	const files: NornDocumentationFile[] = [];
+	for (const path of ASSET_ROOTS) await collectDocumentationFiles({ packageRoot: input.packageRoot, path, files });
 	files.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
-	const { version } = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8"));
+	const { version }: { version: string } = JSON.parse(await readFile(join(input.packageRoot, "package.json"), "utf8"));
 	const bundle = { version, files };
 	validateDocumentationBundle(bundle);
 	return bundle;
 }
 
-async function collectDocumentationFiles({ packageRoot, path, files }) {
+async function collectDocumentationFiles(input: { readonly packageRoot: string; readonly path: string; readonly files: NornDocumentationFile[] }): Promise<void> {
+	const { packageRoot, path, files } = input;
 	const absolutePath = join(packageRoot, path);
 	const stat = await lstat(absolutePath);
 	if (stat.isSymbolicLink()) throw new Error(`Documentation assets must not be symlinks: ${path}`);
@@ -36,11 +35,11 @@ async function collectDocumentationFiles({ packageRoot, path, files }) {
 	files.push({ path, content: await readFile(absolutePath, "utf8") });
 }
 
-export async function generateDocumentationAssets({ packageRoot, outputPath }) {
-	const bundle = await collectDocumentationBundle({ packageRoot });
+export async function generateDocumentationAssets(input: { readonly packageRoot: string; readonly outputPath: string }): Promise<{ files: number; bytes: number; digest: string }> {
+	const bundle = await collectDocumentationBundle({ packageRoot: input.packageRoot });
 	const content = `import type { NornDocumentationBundle } from "../internal/documentation-bundle.ts";\n\nexport const documentationAssets: NornDocumentationBundle = ${JSON.stringify(bundle)};\n`;
-	await mkdir(dirname(outputPath), { recursive: true });
-	await writeFile(outputPath, content, "utf8");
+	await mkdir(dirname(input.outputPath), { recursive: true });
+	await writeFile(input.outputPath, content, "utf8");
 	return { files: bundle.files.length, bytes: Buffer.byteLength(content), digest: hashDocumentationBundle(bundle) };
 }
 
