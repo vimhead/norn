@@ -53,7 +53,7 @@ async function createAdapterFixture(context: TestContext): Promise<AdapterFixtur
 	return fixture;
 }
 
-test("adapter appends to the chained prompt, refreshes each turn, and prevents duplicate blocks", async context => {
+test("adapter caches the introduction while preserving each turn's chained prompt and preventing duplicate blocks", async context => {
 	const fixture = await createAdapterFixture(context);
 	const base = "Custom system prompt\nEarlier extension content";
 	const first = await fixture.before(base);
@@ -63,11 +63,10 @@ test("adapter appends to the chained prompt, refreshes each turn, and prevents d
 	assert.equal(await fixture.before(first.systemPrompt), undefined);
 	assert.equal(fixture.calls.length, 1);
 	fixture.result = { stdout: JSON.stringify({ intro: "Changed Norn introduction" }), stderr: "", code: 0, killed: false };
-	const next = await fixture.before(base);
-	assert.ok(next?.systemPrompt);
-	assert.ok(next.systemPrompt.includes("Changed Norn introduction"));
-	assert.ok(!next.systemPrompt.includes("Current Norn introduction"));
-	assert.equal(fixture.calls.length, 2);
+	const nextBase = "Changed system prompt\nNew extension content";
+	const next = await fixture.before(nextBase);
+	assert.equal(next?.systemPrompt, `${nextBase}\n\n<norn-docs-intro>\nCurrent Norn introduction\n</norn-docs-intro>`);
+	assert.equal(fixture.calls.length, 1);
 	assert.equal(fixture.warnings.length, 0);
 });
 
@@ -78,12 +77,35 @@ test("explicit executable paths are passed as executable names, never shell comm
 	assert.equal(fixture.calls[0][0], "/other installation/norn");
 });
 
-test("registered native response tools exclude workers without invoking the CLI", async context => {
+test("registered native response tools exclude workers even with a cached introduction", async context => {
 	const fixture = await createAdapterFixture(context);
 	fixture.tools = [{ name: AGENT_RESPONSE_TOOL_NAME, description: "Structured worker response", parameters: { type: "object" }, sourceInfo: { path: "<test-response-tool>", source: "custom", scope: "temporary", origin: "top-level" } }];
 	assert.equal(await fixture.before("Source-only worker prompt"), undefined);
 	assert.equal(fixture.calls.length, 0);
+	const workerTools = fixture.tools;
+	fixture.tools = [];
+	assert.ok((await fixture.before("Outer authoring prompt"))?.systemPrompt);
+	fixture.tools = workerTools;
+	assert.equal(await fixture.before("Source-only worker prompt"), undefined);
+	assert.equal(fixture.calls.length, 1);
 	assert.equal(fixture.warnings.length, 0);
+});
+
+test("changing the executable discards the previous introduction even when the new runtime fails", async context => {
+	const fixture = await createAdapterFixture(context);
+	assert.ok((await fixture.before("base"))?.systemPrompt?.includes("Current Norn introduction"));
+	fixture.flags.set("norn-executable", "/missing/norn");
+	fixture.result = new Error("unavailable runtime");
+	assert.equal(await fixture.before("base"), undefined);
+	assert.equal(fixture.calls.length, 2);
+	assert.equal(fixture.calls[1][0], "/missing/norn");
+	fixture.flags.delete("norn-executable");
+	fixture.result = { stdout: '{"intro":"Reselected runtime introduction"}', stderr: "", code: 0, killed: false };
+	assert.ok((await fixture.before("base"))?.systemPrompt?.includes("Reselected runtime introduction"));
+	assert.equal(fixture.calls.length, 3);
+	assert.equal(fixture.calls[2][0], "norn");
+	await fixture.before("another task");
+	assert.equal(fixture.calls.length, 3);
 });
 
 const failures: [string, ExecResult | Error][] = [
@@ -109,7 +131,10 @@ for (const [label, result] of failures) {
 		fixture.result = { stdout: '{"intro":"recovered"}', stderr: "", code: 0, killed: false };
 		assert.ok((await fixture.before("base"))?.systemPrompt?.includes("recovered"));
 		fixture.result = result;
-		await fixture.before("base");
+		assert.ok((await fixture.before("base"))?.systemPrompt?.includes("recovered"));
+		assert.equal(fixture.calls.length, 3);
+		fixture.flags.set("norn-executable", "/other/norn");
+		assert.equal(await fixture.before("base"), undefined);
 		assert.equal(fixture.warnings.length, 2);
 	});
 }

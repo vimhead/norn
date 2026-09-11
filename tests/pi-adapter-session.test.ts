@@ -78,7 +78,7 @@ async function writeExecutable(path: string, source: string) {
 	await chmod(path, 0o700);
 }
 
-test("Pi package loading delivers runtime-selected context and preserves unrelated skills across reload", { skip: process.platform === "win32", timeout: 60_000 }, async context => {
+test("Pi caches runtime-selected context until reload and preserves unrelated skills", { skip: process.platform === "win32", timeout: 60_000 }, async context => {
 	const fixture = await createFixture(context);
 	const runtimeRoot = join(fixture.root, "other installation");
 	await mkdir(runtimeRoot);
@@ -142,8 +142,8 @@ test("Pi package loading delivers runtime-selected context and preserves unrelat
 	manifest.version = "9.9.10";
 	await writeFile(join(runtimeRoot, "package.json"), JSON.stringify(manifest));
 	await session.prompt("Next ordinary task");
-	assert.ok(lastRequest(captured).systemPrompt.includes('Version: "9.9.10"'));
-	assert.ok(!lastRequest(captured).systemPrompt.includes('Version: "9.9.9"'));
+	assert.ok(lastRequest(captured).systemPrompt.includes('Version: "9.9.9"'));
+	assert.ok(!lastRequest(captured).systemPrompt.includes('Version: "9.9.10"'));
 	const unrelatedSkillPath = join(fixture.agentDir, "skills/test-guidance/SKILL.md");
 	await mkdir(join(fixture.agentDir, "skills/test-guidance"), { recursive: true });
 	await writeFile(unrelatedSkillPath, "---\nname: test-guidance\ndescription: Use when exercising the unrelated skill fixture.\n---\n\n# Test guidance\n");
@@ -153,6 +153,7 @@ test("Pi package loading delivers runtime-selected context and preserves unrelat
 	assert.ok(lastRequest(captured).systemPrompt.includes(unrelatedSkillPath));
 	assert.equal(lastRequest(captured).systemPrompt.split("<norn-docs-intro>").length - 1, 1);
 	assert.ok(lastRequest(captured).systemPrompt.includes('Version: "9.9.10"'));
+	assert.ok(!lastRequest(captured).systemPrompt.includes('Version: "9.9.9"'));
 
 	useCustomPrompt = false;
 	await session.reload();
