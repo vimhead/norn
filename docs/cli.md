@@ -66,8 +66,30 @@ installation.
 | IF inspection reports a modified/incomplete cache, THEN preserve any wanted edits elsewhere, remove only the named cache entry, and retry. ELSE reuse the returned paths. | Remove the reported `v1-...` directory after preserving work. | Delete every build's cache or accept modified docs as matching the binary. |
 
 The same resolver is available from [`norn/documentation`](../src/documentation.ts),
-with explicit source, build metadata, and cache-root inputs. It resolves assets;
-it does not construct or deliver an agent bootstrap.
+with explicit source, build metadata, and cache-root inputs.
+
+## Documentation introduction
+
+```bash
+norn docs intro
+```
+
+Returns `{ "intro": "..." }`: a compact authoring introduction with runtime
+version/commit, invocation, and pointers to the documentation index, examples,
+and skill. Topic routing remains in the index; the command does not copy manuals
+or enumerate workflows. It uses the same asset resolver/cache as `docs inspect`
+and works without a valid project.
+
+The invocation is a JSON argument array, not a shell command string. Its first
+entry is the executable; remaining entries precede CLI arguments. Source/npm
+invocations include the Node executable and this installation's `bin/norn.mjs`;
+compiled invocations contain the binary path. Spaces and quotes remain part of
+each argument, without relying on another `norn` installation on PATH.
+
+`renderNornDocumentationIntro({ documentation, invocation })`, also exported from
+[`norn/documentation`](../src/documentation.ts), renders the same text from explicit
+inputs without filesystem or process access. Generating the introduction does not
+inject it into prompts, install the skill, or alter Pi/native-worker sessions.
 
 ## Discover live contracts
 

@@ -10,13 +10,13 @@ import { test } from "node:test";
 const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 
-test("npm package file set preserves documentation links and resolves paths from the installed copy", { timeout: 60_000 }, async context => {
+test("npm package file set preserves documentation links and resolves paths from the installed copy", { timeout: 120_000 }, async context => {
 	const root = await mkdtemp(join(tmpdir(), "norn-package-documentation-"));
 	context.after(() => rm(root, { recursive: true, force: true }));
 	const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-	const packed = JSON.parse((await execute(npm, ["pack", "--dry-run", "--ignore-scripts", "--json"], { cwd: packageRoot, timeout: 45_000, maxBuffer: 20 * 1024 * 1024 })).stdout)[0];
+	const packed = JSON.parse((await execute(npm, ["pack", "--dry-run", "--ignore-scripts", "--offline", "--json"], { cwd: packageRoot, timeout: 90_000, maxBuffer: 20 * 1024 * 1024 })).stdout)[0];
 	const packageFiles = new Set(packed.files.filter(file => !file.path.startsWith("node_modules/")).map(file => file.path));
-	const installedRoot = join(root, "package");
+	const installedRoot = join(root, "package copy");
 	for (const path of packageFiles) {
 		await mkdir(dirname(join(installedRoot, path)), { recursive: true });
 		await copyFile(join(packageRoot, path), join(installedRoot, path));
@@ -36,5 +36,11 @@ test("npm package file set preserves documentation links and resolves paths from
 	const canonicalRoot = await realpath(installedRoot);
 	assert.equal(result.paths.root, canonicalRoot);
 	assert.equal(result.paths.index, join(canonicalRoot, "docs/README.md"));
+	const { intro } = JSON.parse((await execute(process.execPath, [join(installedRoot, "bin/norn.mjs"), "docs", "intro"], { cwd: root, env: { ...process.env, NORN_DOCS_CACHE_DIR: cacheRoot, PATH: "" }, timeout: 30_000 })).stdout);
+	const invocation = JSON.parse(intro.match(/^Runtime argv .*: (.+)$/m)[1]);
+	assert.deepEqual(invocation, [process.execPath, join(canonicalRoot, "bin/norn.mjs")]);
+	assert.ok(intro.includes(JSON.stringify(result.paths.index)));
+	const reinvoked = JSON.parse((await execute(invocation[0], [...invocation.slice(1), "docs", "inspect"], { cwd: root, timeout: 30_000 })).stdout).documentation;
+	assert.equal(reinvoked.paths.root, canonicalRoot);
 	await assert.rejects(access(cacheRoot), { code: "ENOENT" });
 });

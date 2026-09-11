@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { resolveDocumentationCacheRoot, resolveNornDocumentation, type NornDocumentationSource } from "./documentation.ts";
+import { renderNornDocumentationIntro, resolveDocumentationCacheRoot, resolveNornDocumentation, type NornDocumentationSource } from "./documentation.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import { discoverNornProject, findNornProject, inspectNornWorkflow, loadNornProject, NORN_PROJECT_FILE_NAME } from "./plugin-loader.ts";
 import { type NornAnyWorkflowDeclaration, type DeletedNornRunInfo, type NornRunInfo } from "./api.ts";
@@ -61,10 +61,23 @@ const COMMANDS: readonly CliCommand[] = [
 		examples: ["norn docs inspect"],
 		execute: async (args, documentationSource) => {
 			assertNoExtraArgs("docs inspect", args);
-			writeJson({ documentation: await resolveNornDocumentation({
-				source: documentationSource,
-				build: NORN_BUILD_INFO,
-				cacheRoot: resolveDocumentationCacheRoot({ platform: process.platform, home: homedir(), environment: process.env }),
+			writeJson({ documentation: await resolveCliDocumentation(documentationSource) });
+		},
+	},
+	{
+		id: "docs.intro",
+		path: ["docs", "intro"],
+		description: "Produce a compact introduction to Norn authoring with this runtime's invocation and matching local documentation pointers. Does not load a project, list workflows, or deliver context to agents.",
+		usage: "norn docs intro",
+		output: "JSON object with introduction text under intro. Uses the same asset resolution and NORN_DOCS_CACHE_DIR override as docs inspect.",
+		examples: ["norn docs intro"],
+		execute: async (args, documentationSource) => {
+			assertNoExtraArgs("docs intro", args);
+			writeJson({ intro: renderNornDocumentationIntro({
+				documentation: await resolveCliDocumentation(documentationSource),
+				invocation: documentationSource.kind === "embedded"
+					? [process.execPath]
+					: [process.execPath, resolve(documentationSource.root, "bin/norn.mjs")],
 			}) });
 		},
 	},
@@ -342,6 +355,7 @@ const HELP_COMMAND_ORDER = [
 	"commands.list",
 	"commands.inspect",
 	"docs.inspect",
+	"docs.intro",
 	"workflows.list",
 	"workflows.inspect",
 	"runs.start",
@@ -368,6 +382,7 @@ const HUMAN_COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
 	"commands.list": "List machine-readable command metadata.",
 	"commands.inspect": "Inspect one command's machine-readable contract.",
 	"docs.inspect": "Locate matching documentation and examples offline.",
+	"docs.intro": "Produce a compact authoring introduction with local documentation pointers.",
 	"workflows.list": "List Norn workflows.",
 	"workflows.inspect": "Inspect a workflow schema and source.",
 	"runs.start": "Start a workflow run.",
@@ -573,6 +588,14 @@ function visibleCommands(): readonly CliCommand[] {
 
 function startsWithPath(value: readonly string[], path: readonly string[]): boolean {
 	return path.every((segment, index) => value[index] === segment);
+}
+
+async function resolveCliDocumentation(source: NornDocumentationSource) {
+	return resolveNornDocumentation({
+		source,
+		build: NORN_BUILD_INFO,
+		cacheRoot: resolveDocumentationCacheRoot({ platform: process.platform, home: homedir(), environment: process.env }),
+	});
 }
 
 async function versionInfo(): Promise<{ readonly version: string; readonly build: NornBuildInfo }> {
