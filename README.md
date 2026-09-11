@@ -13,6 +13,11 @@ retain a missing capability while completing an ordinary task.
 
 ## Installation
 
+Install the CLI, then install the adapter for your agent harness. CLI-only usage
+does not require an adapter.
+
+### 1. Install the CLI
+
 Install the CLI from the rolling `tip` release:
 
 ```bash
@@ -41,6 +46,30 @@ and keeping examples/docs matched to the executable. Upgrade discovery:
 ```bash
 norn upgrade --dry-run
 ```
+
+### 2. Install an adapter
+
+Adapters connect your agent harness to the CLI installed in step 1; installing
+the CLI alone does not register an adapter in your harness.
+
+#### Pi
+
+With Pi already installed and `norn` available on `PATH`, install the adapter
+and start a new session:
+
+```bash
+pi install git:github.com/vimhead/norn
+pi
+```
+
+To select a CLI executable outside `PATH`:
+
+```bash
+pi --norn-executable /absolute/path/to/norn
+```
+
+Need an adapter for another harness? [Open an issue](https://github.com/vimhead/norn/issues/new)
+with the harness name.
 
 ## Setting up a Norn project
 
