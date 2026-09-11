@@ -14,6 +14,7 @@ type AdapterFixture = {
 	flags: Map<string, string | boolean>;
 	calls: Parameters<ExtensionAPI["exec"]>[];
 	warnings: Parameters<ExtensionUIContext["notify"]>[];
+	start(): Promise<void>;
 	before(systemPrompt: string): ReturnType<ExtensionRunner["emitBeforeAgentStart"]>;
 };
 
@@ -26,6 +27,7 @@ async function createAdapterFixture(context: TestContext): Promise<AdapterFixtur
 		cwd,
 		result: { stdout: JSON.stringify({ intro: "Current Norn introduction" }), stderr: "", code: 0, killed: false },
 		tools: [], flags: new Map(), calls: [], warnings: [],
+		start: () => runner.emit({ type: "session_start", reason: "startup" }),
 		before: systemPrompt => runner.emitBeforeAgentStart("task", undefined, systemPrompt, { cwd }),
 	};
 	const loader = new DefaultResourceLoader({
@@ -53,9 +55,13 @@ async function createAdapterFixture(context: TestContext): Promise<AdapterFixtur
 	return fixture;
 }
 
-test("adapter caches the introduction while preserving each turn's chained prompt and preventing duplicate blocks", async context => {
+test("adapter loads at session start and only appends cached context when a prompt is submitted", async context => {
 	const fixture = await createAdapterFixture(context);
 	const base = "Custom system prompt\nEarlier extension content";
+	assert.equal(await fixture.before(base), undefined);
+	assert.equal(fixture.calls.length, 0);
+	await fixture.start();
+	assert.equal(fixture.calls.length, 1);
 	const first = await fixture.before(base);
 	assert.ok(first?.systemPrompt);
 	assert.equal(first.systemPrompt, `${base}\n\n<norn-docs-intro>\nCurrent Norn introduction\n</norn-docs-intro>`);
@@ -73,17 +79,19 @@ test("adapter caches the introduction while preserving each turn's chained promp
 test("explicit executable paths are passed as executable names, never shell commands", async context => {
 	const fixture = await createAdapterFixture(context);
 	fixture.flags.set("norn-executable", "/other installation/norn");
-	await fixture.before("base");
+	await fixture.start();
 	assert.equal(fixture.calls[0][0], "/other installation/norn");
 });
 
 test("registered native response tools exclude workers even with a cached introduction", async context => {
 	const fixture = await createAdapterFixture(context);
 	fixture.tools = [{ name: AGENT_RESPONSE_TOOL_NAME, description: "Structured worker response", parameters: { type: "object" }, sourceInfo: { path: "<test-response-tool>", source: "custom", scope: "temporary", origin: "top-level" } }];
+	await fixture.start();
 	assert.equal(await fixture.before("Source-only worker prompt"), undefined);
 	assert.equal(fixture.calls.length, 0);
 	const workerTools = fixture.tools;
 	fixture.tools = [];
+	await fixture.start();
 	assert.ok((await fixture.before("Outer authoring prompt"))?.systemPrompt);
 	fixture.tools = workerTools;
 	assert.equal(await fixture.before("Source-only worker prompt"), undefined);
@@ -91,16 +99,24 @@ test("registered native response tools exclude workers even with a cached introd
 	assert.equal(fixture.warnings.length, 0);
 });
 
-test("changing the executable discards the previous introduction even when the new runtime fails", async context => {
+test("changing the executable invalidates context without running a subprocess at prompt submission", async context => {
 	const fixture = await createAdapterFixture(context);
+	await fixture.start();
 	assert.ok((await fixture.before("base"))?.systemPrompt?.includes("Current Norn introduction"));
 	fixture.flags.set("norn-executable", "/missing/norn");
 	fixture.result = new Error("unavailable runtime");
+	assert.equal(await fixture.before("base"), undefined);
+	assert.equal(await fixture.before("another task"), undefined);
+	assert.equal(fixture.calls.length, 1);
+	assert.equal(fixture.warnings.length, 1);
+	assert.ok(fixture.warnings[0][0].includes("/reload"));
+	await fixture.start();
 	assert.equal(await fixture.before("base"), undefined);
 	assert.equal(fixture.calls.length, 2);
 	assert.equal(fixture.calls[1][0], "/missing/norn");
 	fixture.flags.delete("norn-executable");
 	fixture.result = { stdout: '{"intro":"Reselected runtime introduction"}', stderr: "", code: 0, killed: false };
+	await fixture.start();
 	assert.ok((await fixture.before("base"))?.systemPrompt?.includes("Reselected runtime introduction"));
 	assert.equal(fixture.calls.length, 3);
 	assert.equal(fixture.calls[2][0], "norn");
@@ -121,20 +137,26 @@ const failures: [string, ExecResult | Error][] = [
 ];
 
 for (const [label, result] of failures) {
-	test(`${label} preserves the prompt, warns once, and permits later recovery`, async context => {
+	test(`${label} warns at startup without retrying on prompts and permits recovery at the next session start`, async context => {
 		const fixture = await createAdapterFixture(context);
 		fixture.result = result;
+		await fixture.start();
 		assert.equal(await fixture.before("base"), undefined);
 		assert.equal(await fixture.before("base"), undefined);
 		assert.equal(fixture.warnings.length, 1);
+		assert.ok(fixture.warnings[0][0].includes("/reload"));
 		assert.ok(!JSON.stringify(fixture.warnings).includes("secret diagnostic"));
 		fixture.result = { stdout: '{"intro":"recovered"}', stderr: "", code: 0, killed: false };
+		assert.equal(await fixture.before("base"), undefined);
+		assert.equal(fixture.calls.length, 1);
+		await fixture.start();
 		assert.ok((await fixture.before("base"))?.systemPrompt?.includes("recovered"));
 		fixture.result = result;
 		assert.ok((await fixture.before("base"))?.systemPrompt?.includes("recovered"));
-		assert.equal(fixture.calls.length, 3);
-		fixture.flags.set("norn-executable", "/other/norn");
+		assert.equal(fixture.calls.length, 2);
+		await fixture.start();
 		assert.equal(await fixture.before("base"), undefined);
+		assert.equal(fixture.calls.length, 3);
 		assert.equal(fixture.warnings.length, 2);
 	});
 }
