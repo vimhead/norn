@@ -3,21 +3,19 @@ import fs from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, mock, test } from "node:test";
-import { createJiti } from "jiti";
+import { afterAll, test, vi } from "vitest";
+import { NornRunStateStore, getRunInfo, RUN_STATE_FILE_NAME } from "../src/internal/run-state.ts";
+import { writeRunResumeRequest, RESUME_REQUEST_FILE_NAME } from "../src/internal/launch-request.ts";
 
 const originalReadFile = fs.readFile;
-let readFileOverride;
-mock.method(fs, "readFile", (...args) => readFileOverride ? readFileOverride(...args) : originalReadFile(...args));
+let readFileOverride: ((...args: Parameters<typeof fs.readFile>) => ReturnType<typeof fs.readFile>) | undefined;
+vi.spyOn(fs, "readFile").mockImplementation((...args) => readFileOverride ? readFileOverride(...args) : originalReadFile(...args));
 syncBuiltinESMExports();
-after(() => { mock.restoreAll(); syncBuiltinESMExports(); });
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { NornRunStateStore, getRunInfo, RUN_STATE_FILE_NAME } = await jiti.import("../src/internal/run-state.ts");
-const { writeRunResumeRequest, RESUME_REQUEST_FILE_NAME } = await jiti.import("../src/internal/launch-request.ts");
+afterAll(() => { vi.restoreAllMocks(); syncBuiltinESMExports(); });
 
 test("inspection cannot pair an old interruption with a just-cleared resume request", async context => {
 	const root = await fs.mkdtemp(join(tmpdir(), "norn-inspection-race-test-"));
-	context.after(() => { readFileOverride = undefined; return fs.rm(root, { recursive: true, force: true }); });
+	context.onTestFinished(() => { readFileOverride = undefined; return fs.rm(root, { recursive: true, force: true }); });
 	const state = await NornRunStateStore.create(root, {
 		id: "race", name: "race", entrypointWorkflowId: "test.step", workspace: join(root, "current/workspace"),
 		current: { workflowId: "test.step", params: {}, cwd: root, env: {} }, startedAt: new Date().toISOString(),

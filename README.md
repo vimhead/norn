@@ -73,4 +73,4 @@ npm test
 npm run pack:dry
 ```
 
-Checks cover TypeScript (including examples and adapters) and regression tests.
+Checks cover TypeScript (including examples, adapters, scripts, and tests) and Vitest regressions.

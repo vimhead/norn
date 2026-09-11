@@ -1,17 +1,31 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { createJiti } from "jiti";
+import { test } from "vitest";
 import { z } from "zod";
 
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { definePluginManifest } = await jiti.import("../src/api.ts");
-const { NornWorkflowRegistry } = await jiti.import("../src/internal/workflow-registry.ts");
+import { definePluginManifest, type NornRun } from "../src/api.ts";
+import { NornWorkflowRegistry } from "../src/internal/workflow-registry.ts";
 
-function createWorkflow(overrides) {
-	return definePluginManifest({ id: "metadata", workflows: {
-		step: { isEntrypoint: true, params: z.object({}), ...overrides },
+function createWorkflow({ instructions, isEntrypoint = true, gate }: { instructions?: unknown; isEntrypoint?: boolean; gate?: { enabled: true } }) {
+	const workflow = definePluginManifest({ id: "metadata", workflows: {
+		step: { isEntrypoint: true, instructions: "Fixture instructions", params: z.object({}), gate },
 	} }).workflows.step;
+	Reflect.set(workflow, "isEntrypoint", isEntrypoint);
+	Reflect.set(workflow, "instructions", instructions);
+	return workflow;
 }
+
+function unexpectedRunOperation(): never {
+	throw new Error("These gate descriptions must not invoke run operations");
+}
+
+const run: NornRun = {
+	id: "metadata", workspace: "/workspace", cwd: "/workspace",
+	path: unexpectedRunOperation, next: unexpectedRunOperation, complete: unexpectedRunOperation, fail: unexpectedRunOperation,
+	state: { get: unexpectedRunOperation, getOptional: unexpectedRunOperation, set: unexpectedRunOperation },
+	artifacts: { read: unexpectedRunOperation, write: unexpectedRunOperation },
+	logs: { read: unexpectedRunOperation }, commands: { run: unexpectedRunOperation },
+	agents: { createSession: unexpectedRunOperation, prompt: unexpectedRunOperation },
+};
 
 for (const instructions of [undefined, "", " \n\t ", null, 42]) {
 	test(`entrypoints reject invalid instructions: ${JSON.stringify(instructions)}`, () => {
@@ -26,7 +40,9 @@ test("internal steps may omit instructions but supplied instructions must be non
 	const registry = new NornWorkflowRegistry();
 	const workflow = createWorkflow({ isEntrypoint: false });
 	registry.register(workflow, { execute: run => run.complete() });
-	assert.equal(registry.inspect(workflow.id).instructions, undefined);
+	const inspected = registry.inspect(workflow.id);
+	assert.ok(inspected);
+	assert.equal(inspected.instructions, undefined);
 	for (const instructions of ["", " \n ", null, 42]) {
 		const invalid = createWorkflow({ isEntrypoint: false, instructions });
 		assert.throws(() => new NornWorkflowRegistry().register(invalid, { execute: run => run.complete() }), /instructions/);
@@ -46,14 +62,14 @@ test("discovery uses workflow IDs for identity and sorting and publishes caller 
 		{ id: "metadata.alpha", instructions: "Zebra guidance for the first workflow.", isEntrypoint: true, isolation: { mode: "runWorkspace" } },
 		{ id: "metadata.zebra", instructions: "Alpha guidance for the last workflow.", isEntrypoint: true, isolation: { mode: "runWorkspace" } },
 	]);
-	assert.equal(registry.inspect("metadata.alpha").instructions, "Zebra guidance for the first workflow.");
+	assert.equal(registry.inspect("metadata.alpha")?.instructions, "Zebra guidance for the first workflow.");
 });
 
 test("gate fallback is the workflow ID, not caller instructions", async () => {
 	const registry = new NornWorkflowRegistry();
 	const workflow = createWorkflow({ instructions: "Use to collect records, not as a gate decision request.", gate: { enabled: true } });
 	registry.register(workflow, { execute: run => run.complete() });
-	assert.equal(await registry.describeGate(workflow, {}, {}), workflow.id);
+	assert.equal(await registry.describeGate(workflow, run, {}), workflow.id);
 });
 
 test("gate-specific descriptions remain independent from caller instructions", async () => {
@@ -63,6 +79,6 @@ test("gate-specific descriptions remain independent from caller instructions", a
 		gate: { describe: () => "Check the collected evidence before proceeding." },
 		execute: run => run.complete(),
 	});
-	assert.equal(await registry.describeGate(workflow, {}, {}), "Check the collected evidence before proceeding.");
-	assert.equal(registry.inspect(workflow.id).instructions, "Use to collect records.");
+	assert.equal(await registry.describeGate(workflow, run, {}), "Check the collected evidence before proceeding.");
+	assert.equal(registry.inspect(workflow.id)?.instructions, "Use to collect records.");
 });

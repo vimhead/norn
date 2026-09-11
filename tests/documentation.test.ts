@@ -3,25 +3,23 @@ import { access, lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFil
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
-import { createJiti } from "jiti";
-import { collectDocumentationBundle, generateDocumentationAssets } from "../scripts/generate-documentation-assets.mjs";
-
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { resolveNornDocumentation, resolveDocumentationCacheRoot } = await jiti.import("../src/documentation.ts");
-const { validateDocumentationBundle, hashDocumentationBundle } = await jiti.import("../src/internal/documentation-bundle.ts");
+import { test, type TestContext } from "vitest";
+import { collectDocumentationBundle, generateDocumentationAssets } from "../scripts/generate-documentation-assets.ts";
+import { resolveNornDocumentation, resolveDocumentationCacheRoot } from "../src/documentation.ts";
+import { validateDocumentationBundle, hashDocumentationBundle } from "../src/internal/documentation-bundle.ts";
+import type { NornBuildInfo } from "../src/build-info.ts";
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const build = { kind: "github-release-binary", version: "0.1.0", commit: "a".repeat(40), repository: "vimhead/norn", releaseTag: "tip", assetName: "norn-test", checksumAssetName: "norn-test.sha256" };
+const build: NornBuildInfo = { kind: "github-release-binary", version: "0.1.0", commit: "a".repeat(40), repository: "vimhead/norn", releaseTag: "tip", assetName: "norn-test", checksumAssetName: "norn-test.sha256" };
 const bundle = { version: "0.1.0", files: [
 	{ path: "README.md", content: "# Documentation\n" },
 	{ path: "docs/README.md", content: "[Example](../examples/demo/plugin.ts)\n" },
 	{ path: "examples/demo/plugin.ts", content: "export const greeting = 'Héllo!';\n" },
 ] };
 
-async function createFixture(context) {
+async function createFixture(context: TestContext) {
 	const root = await mkdtemp(join(tmpdir(), "norn-documentation-"));
-	context.after(() => rm(root, { recursive: true, force: true }));
-	return { root, input: { source: { kind: "embedded", bundle }, build, cacheRoot: join(root, "cache") } };
+	context.onTestFinished(() => rm(root, { recursive: true, force: true }));
+	return { root, input: { source: { kind: "embedded" as const, bundle }, build, cacheRoot: join(root, "cache") } };
 }
 
 test("local documentation resolves from the installation, without creating a cache", async context => {
@@ -108,7 +106,7 @@ for (const target of ["file", "directory", "entry", "cacheRoot"]) {
 test("byte verification does not conflate invalid UTF-8 with replacement characters", async context => {
 	const { input } = await createFixture(context);
 	const replacementBundle = { ...bundle, files: bundle.files.map(file => file.path === "README.md" ? { ...file, content: "\ufffd" } : file) };
-	const replacementInput = { ...input, source: { kind: "embedded", bundle: replacementBundle } };
+	const replacementInput = { ...input, source: { kind: "embedded" as const, bundle: replacementBundle } };
 	const result = await resolveNornDocumentation(replacementInput);
 	await writeFile(result.paths.readme, Buffer.from([0xff]));
 	await assert.rejects(resolveNornDocumentation(replacementInput), /modified/);
@@ -160,7 +158,7 @@ test("asset generation is deterministic, excludes itself, and includes every loc
 
 test("asset collection excludes runtime/dependency files and refuses symlinked assets", async context => {
 	const { root } = await createFixture(context);
-	for (const file of [...bundle.files, { path: "package.json", content: '{"version":"0.1.0"}' }, { path: "src/api.ts", content: "export {};" }, { path: "adapters/pi.ts", content: "export {};" }, { path: "tests/workflow-ref.test.mjs", content: "" },
+	for (const file of [...bundle.files, { path: "package.json", content: '{"version":"0.1.0"}' }, { path: "src/api.ts", content: "export {};" }, { path: "adapters/pi.ts", content: "export {};" }, { path: "tests/workflow-ref.test.ts", content: "" },
 		{ path: "examples/.norn/runs/private.json", content: "private run" },
 		{ path: "examples/node_modules/dependency/index.ts", content: "dependency" },
 		{ path: "examples/demo/auth.json", content: "credential" },

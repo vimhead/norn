@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { test } from "node:test";
-import { collectDocumentationBundle, generateDocumentationAssets } from "../scripts/generate-documentation-assets.mjs";
+import { test } from "vitest";
+import type { NornRunInfo } from "../src/api.ts";
+import { readProcessStdout } from "./helpers/process.ts";
+import { collectDocumentationBundle, generateDocumentationAssets } from "../scripts/generate-documentation-assets.ts";
 
 const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -14,12 +16,12 @@ const bun = join(packageRoot, "node_modules/.bin", process.platform === "win32" 
 
 test("compiled binary resolves complete offline docs without source and runs an extracted example", { timeout: 180_000 }, async context => {
 	const root = await mkdtemp(join(tmpdir(), "norn-binary-documentation-"));
-	context.after(() => rm(root, { recursive: true, force: true }));
+	context.onTestFinished(() => rm(root, { recursive: true, force: true }));
 	const buildRoot = join(root, "build");
 	const detachedRoot = join(root, "standalone copy");
 	await mkdir(buildRoot);
 	await mkdir(detachedRoot);
-	for (const path of ["src", "docs", "examples", "README.md", "package.json", "tests/workflow-ref.test.mjs"]) {
+	for (const path of ["src", "docs", "examples", "README.md", "package.json", "tests/workflow-ref.test.ts"]) {
 		await mkdir(dirname(join(buildRoot, path)), { recursive: true });
 		await cp(join(packageRoot, path), join(buildRoot, path), { recursive: true, filter: source => !source.endsWith("documentation-assets.generated.ts") });
 	}
@@ -34,7 +36,7 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	await rm(buildRoot, { recursive: true, force: true });
 	const cacheRoot = join(root, "cache");
 	const environment = { ...process.env, HOME: join(root, "home"), NORN_DOCS_CACHE_DIR: cacheRoot, PATH: "", NODE_PATH: "" };
-	const invoke = async (args, cwd = detachedRoot) => JSON.parse((await execute(binary, args, { cwd, env: environment, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 })).stdout);
+	const invoke = async (args: readonly string[], cwd = detachedRoot) => JSON.parse((await execute(binary, args, { cwd, env: environment, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 })).stdout);
 	assert.equal((await invoke(["version"])).build.commit, commit);
 	assert.equal((await invoke(["commands", "inspect", "docs.inspect"])).command.id, "docs.inspect");
 	assert.equal((await invoke(["commands", "inspect", "docs.intro"])).command.id, "docs.intro");
@@ -59,11 +61,12 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const projectRoot = join(root, "example-copy");
 	await cp(join(documentation.paths.examples, "minimal-workflow"), projectRoot, { recursive: true });
 	assert.equal((await invoke(["project", "inspect"], projectRoot)).isComplete, true);
-	const launch = await new Promise((resolve, reject) => {
+	const launch = await new Promise<{ run: NornRunInfo }>((resolve, reject) => {
 		const child = execFile(binary, ["runs", "start", "greeting.write"], { cwd: projectRoot, env: environment, timeout: 30_000 }, (error, stdout) => {
 			if (error) reject(error);
 			else { try { resolve(JSON.parse(stdout)); } catch (parseError) { reject(parseError); } }
 		});
+		assert.ok(child.stdin);
 		child.stdin.end(JSON.stringify({ params: { name: "Offline" } }));
 	});
 	const finished = (await invoke(["runs", "wait", launch.run.id], projectRoot)).run;
@@ -71,11 +74,11 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Offline!\n");
 	await writeFile(documentation.paths.index, "modified");
 	await assert.rejects(invoke(["docs", "inspect"]), error => {
-		assert.match(error.stdout, /cache is incomplete or modified/);
+		assert.match(readProcessStdout(error), /cache is incomplete or modified/);
 		return true;
 	});
 	await assert.rejects(invoke(["docs", "intro"]), error => {
-		assert.match(error.stdout, /cache is incomplete or modified/);
+		assert.match(readProcessStdout(error), /cache is incomplete or modified/);
 		return true;
 	});
 	await rm(documentation.paths.root, { recursive: true, force: true });

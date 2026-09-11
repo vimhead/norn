@@ -5,18 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { test } from "node:test";
-import { createJiti } from "jiti";
-
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { NornRunStateStore, getRunInfo } = await jiti.import("../src/internal/run-state.ts");
-const { writeRunResumeRequest, readRunResumeRequest, clearRunResumeRequest, readOptionalRunResumeRequest } = await jiti.import("../src/internal/launch-request.ts");
-const { NornRunLease } = await jiti.import("../src/internal/run-lease.ts");
+import { test, type TestContext } from "vitest";
+import { NornRunStateStore, getRunInfo } from "../src/internal/run-state.ts";
+import { writeRunResumeRequest, readRunResumeRequest, clearRunResumeRequest, readOptionalRunResumeRequest, type NornRunResumeRequest } from "../src/internal/launch-request.ts";
+import { NornRunLease } from "../src/internal/run-lease.ts";
 const cliPath = fileURLToPath(new URL("../bin/norn.mjs", import.meta.url));
 
-async function createFixture(context, status) {
+async function createFixture(context: TestContext, status: "interrupted" | "pendingResume") {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-request-test-"));
-	context.after(() => rm(cwd, { recursive: true, force: true }));
+	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	await writeFile(join(cwd, "norn.project.json"), '{"version":1}');
 	const runRoot = join(cwd, ".norn/runs/requested");
 	await mkdir(runRoot, { recursive: true });
@@ -26,11 +23,11 @@ async function createFixture(context, status) {
 	});
 	if (status === "interrupted") await state.interruptCurrent({ answer: false }, { description: "Choose", fields: ["answer"] });
 	else await state.prepareForResumeAfterRollback();
-	const request = { version: 1, type: "resume", id: "requested", params: status === "interrupted" ? { answer: true } : undefined, createdAt: new Date().toISOString() };
+	const request: NornRunResumeRequest = { version: 1, type: "resume", id: "requested", params: status === "interrupted" ? { answer: true } : undefined, createdAt: new Date().toISOString() };
 	return { cwd, runRoot, state, request };
 }
 
-for (const status of ["interrupted", "pendingResume"]) {
+for (const status of ["interrupted", "pendingResume"] as const) {
 	test(`queued resume hides old ${status} state and wait observes completion instead`, { timeout: 15000 }, async (context) => {
 		const fixture = await createFixture(context, status);
 		await writeRunResumeRequest(fixture.runRoot, fixture.request);
@@ -39,7 +36,7 @@ for (const status of ["interrupted", "pendingResume"]) {
 		assert.equal(queued.health, "healthy");
 		assert.equal(queued.interruption, undefined);
 		const child = spawn(process.execPath, [cliPath, "runs", "wait", "requested"], { cwd: fixture.cwd, stdio: ["ignore", "pipe", "pipe"] });
-		context.after(() => child.kill("SIGKILL"));
+		context.onTestFinished(() => { child.kill("SIGKILL"); });
 		let stdout = "";
 		child.stdout.on("data", chunk => stdout += chunk);
 		const closed = new Promise((resolve, reject) => { child.on("error", reject); child.on("close", resolve); });
@@ -88,7 +85,7 @@ test("executor plugin-loading errors release the queued resume request", { timeo
 	await writeFile(join(fixture.cwd, "broken.ts"), 'throw new Error("injected plugin loading failure");');
 	await writeRunResumeRequest(fixture.runRoot, fixture.request);
 	const child = spawn(process.execPath, [cliPath, "execute-run", "requested"], { cwd: fixture.cwd, stdio: ["ignore", "pipe", "pipe"] });
-	context.after(() => child.kill("SIGKILL"));
+	context.onTestFinished(() => { child.kill("SIGKILL"); });
 	let stderr = "";
 	let stdout = "";
 	child.stderr.on("data", chunk => stderr += chunk);

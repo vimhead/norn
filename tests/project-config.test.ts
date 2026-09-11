@@ -4,27 +4,28 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test } from "node:test";
+import { test, type TestContext } from "vitest";
 import { promisify } from "node:util";
-import { createJiti } from "jiti";
-
-const jiti = createJiti(import.meta.url, { moduleCache: false });
-const { findNornProject, loadNornProject } = await jiti.import("../src/plugin-loader.ts");
+import { findNornProject, loadNornProject } from "../src/plugin-loader.ts";
+import { NornProjectLoadError } from "../src/internal/errors.ts";
+import type { NornRunInfo, NornWorkflowCatalogInfo } from "../src/api.ts";
+import { z } from "zod";
+import { readProcessStdout } from "./helpers/process.ts";
 const cliPath = fileURLToPath(new URL("../bin/norn.mjs", import.meta.url));
 const executeFile = promisify(execFile);
 
-async function createProjectFixture(context) {
+async function createProjectFixture(context: TestContext) {
 	const projectRoot = await realpath(await mkdtemp(join(tmpdir(), "norn-project-config-")));
-	context.after(() => rm(projectRoot, { recursive: true, force: true }));
+	context.onTestFinished(() => rm(projectRoot, { recursive: true, force: true }));
 	return projectRoot;
 }
 
-async function writeJsonFixture({ path, value }) {
+async function writeJsonFixture({ path, value }: { path: string; value: unknown }) {
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, JSON.stringify(value));
 }
 
-async function writePluginFixture({ projectRoot, relativePath, pluginId, revision = "first" }) {
+async function writePluginFixture({ projectRoot, relativePath, pluginId, revision = "first" }: { projectRoot: string; relativePath: string; pluginId: string; revision?: string }) {
 	const path = join(projectRoot, relativePath);
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, `
@@ -44,8 +45,9 @@ export default definePlugin(manifest, { workflows: {
 `);
 }
 
-async function executeCli({ cwd, args, input }) {
+async function executeCli<Output>({ cwd, args, input }: { cwd: string; args: readonly string[]; input?: unknown }): Promise<Output> {
 	const execution = executeFile(process.execPath, [cliPath, ...args], { cwd, timeout: 20000, maxBuffer: 1024 * 1024 });
+	assert.ok(execution.child.stdin);
 	execution.child.stdin.end(input === undefined ? "" : JSON.stringify(input));
 	const { stdout } = await execution;
 	return JSON.parse(stdout);
@@ -97,12 +99,15 @@ test("local plugins compose with globbed and nested reusable configs, each relat
 	} });
 	const project = await loadNornProject(join(projectRoot, "packages/a"));
 	assert.deepEqual(project.pluginInfos.map(plugin => plugin.id).sort(), ["local", "packageA", "packageB", "shared"]);
-	for (const plugin of project.pluginInfos) assert.equal(dirname(plugin.path), dirname(plugin.configPath));
-	assert.deepEqual(project.pluginInfos.find(plugin => plugin.id === "local").config, {
+	for (const plugin of project.pluginInfos) {
+		assert.ok(plugin.path && plugin.configPath);
+		assert.equal(dirname(plugin.path), dirname(plugin.configPath));
+	}
+	assert.deepEqual(project.pluginInfos.find(plugin => plugin.id === "local")?.config, {
 		greeting: "project", options: { keep: "shared", replace: "project" },
 	});
-	assert.deepEqual(project.pluginInfos.find(plugin => plugin.id === "packageA").config, { greeting: "project" });
-	assert.deepEqual(project.pluginInfos.find(plugin => plugin.id === "shared").config, { greeting: "shared" });
+	assert.deepEqual(project.pluginInfos.find(plugin => plugin.id === "packageA")?.config, { greeting: "project" });
+	assert.deepEqual(project.pluginInfos.find(plugin => plugin.id === "shared")?.config, { greeting: "shared" });
 	assert.equal(project.configFiles.length, 4);
 	assert.equal(project.seerMode, undefined);
 });
@@ -122,7 +127,7 @@ for (const plugins of ["./plugin.ts", [42], [""]]) {
 	test(`invalid project plugins are rejected rather than discarded: ${JSON.stringify(plugins)}`, async context => {
 		const projectRoot = await createProjectFixture(context);
 		await writeJsonFixture({ path: join(projectRoot, "norn.project.json"), value: { plugins } });
-		await assert.rejects(findNornProject(projectRoot), error => error.issues.some(issue => issue.path[0] === "plugins"));
+		await assert.rejects(findNornProject(projectRoot), error => error instanceof z.ZodError && error.issues.some(issue => issue.path[0] === "plugins"));
 	});
 }
 
@@ -132,7 +137,7 @@ test("project-local plugin config is validated by its manifest", async context =
 	await writeJsonFixture({ path: join(projectRoot, "norn.project.json"), value: {
 		plugins: ["./plugin.ts"], config: { local: { greeting: 42 } },
 	} });
-	await assert.rejects(loadNornProject(projectRoot), error => error.code === "NORN_PROJECT_INVALID"
+	await assert.rejects(loadNornProject(projectRoot), error => error instanceof NornProjectLoadError
 		&& error.diagnostics.some(diagnostic => diagnostic.stage === "config" && diagnostic.issues.some(issue => issue.path[0] === "greeting")));
 });
 
@@ -174,7 +179,7 @@ test("init is self-contained and supports authoring and executing directly after
 	await executeCli({ cwd: projectRoot, args: ["project", "init"], input: undefined });
 	const projectPath = join(projectRoot, "norn.project.json");
 	const config = JSON.parse(await readFile(projectPath, "utf8"));
-	assert.deepEqual(config, { version: 1, plugins: [], includes: [], config: {} });
+	assert.deepEqual(config, { version: 1, plugins: [] as string[], includes: [] as string[], config: {} });
 	assert.equal((await stat(join(projectRoot, ".norn/runs"))).isDirectory(), true);
 	await assert.rejects(stat(join(projectRoot, "norn.json")), { code: "ENOENT" });
 	const emptyProject = await loadNornProject(projectRoot);
@@ -183,14 +188,14 @@ test("init is self-contained and supports authoring and executing directly after
 	await writeJsonFixture({ path: projectPath, value: config });
 	for (const revision of ["first", "second"]) {
 		await writePluginFixture({ projectRoot, relativePath: "plugin.ts", pluginId: "local", revision });
-		const { workflows } = await executeCli({ cwd: projectRoot, args: ["workflows", "list"], input: undefined });
+		const { workflows } = await executeCli<NornWorkflowCatalogInfo>({ cwd: projectRoot, args: ["workflows", "list"], input: undefined });
 		assert.deepEqual(workflows.map(workflow => workflow.id), ["local.echo"]);
-		const { run } = await executeCli({ cwd: projectRoot, args: ["runs", "start", "local.echo"], input: { params: { value: "saved" } } });
-		const finished = await executeCli({ cwd: projectRoot, args: ["runs", "wait", run.id], input: undefined });
+		const { run } = await executeCli<{ run: NornRunInfo }>({ cwd: projectRoot, args: ["runs", "start", "local.echo"], input: { params: { value: "saved" } } });
+		const finished = await executeCli<{ run: NornRunInfo }>({ cwd: projectRoot, args: ["runs", "wait", run.id], input: undefined });
 		assert.equal(finished.run.status, "completed");
-		assert.deepEqual(finished.run.outcome.metadata.data, { value: "saved", revision });
+		assert.deepEqual(finished.run.outcome?.metadata?.data, { value: "saved", revision });
 	}
-	await assert.rejects(executeCli({ cwd: projectRoot, args: ["project", "init"], input: undefined }), error => /Norn project already exists/.test(error.stdout));
+	await assert.rejects(executeCli({ cwd: projectRoot, args: ["project", "init"], input: undefined }), error => /Norn project already exists/.test(readProcessStdout(error)));
 	assert.deepEqual(JSON.parse(await readFile(projectPath, "utf8")), config);
 });
 
