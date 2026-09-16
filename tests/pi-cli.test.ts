@@ -56,6 +56,12 @@ test("Pi arguments, help, version and failures bypass Norn's CLI envelope withou
 	});
 });
 
+test("source CLI loads Codex OAuth through its login method prompt without authorization", { timeout: 30_000 }, async context => {
+	const fixture = await createFixture(context);
+	const result = await fixture.invoke(["pi", "--extension", join(packageRoot, "tests/fixtures/pi-oauth-probe.ts"), "--list-models", "openai-codex"]);
+	assert.match(result.stdout, /Codex OAuth login reached method selection/, result.stderr);
+});
+
 test.for(["default", "override"] as const)("norn pi and SDK workers use their own %s directory without inheriting or modifying Pi credentials", { timeout: 60_000 }, async (directoryMode, context) => {
 	const fixture = await createFixture(context, directoryMode);
 	const providerPath = join(fixture.root, "provider with spaces");

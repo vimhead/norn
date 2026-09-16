@@ -104,6 +104,10 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const piManifest = JSON.parse(await readFile(join(packageRoot, "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
 	assert.equal((await invokePi(["--version"])).stdout.trim(), piManifest.version);
 	assert.match((await invokePi(["--help"])).stdout, /pi - AI coding assistant/);
+	const oauthProbe = join(detachedRoot, "oauth-probe.ts");
+	await cp(join(packageRoot, "tests/fixtures/pi-oauth-probe.ts"), oauthProbe);
+	const oauthLogin = await invokePi(["--extension", oauthProbe, "--list-models", "openai-codex"]);
+	assert.match(oauthLogin.stdout, /Codex OAuth login reached method selection/, oauthLogin.stderr);
 	const providerPath = join(root, "installed provider");
 	await cp(join(packageRoot, "tests/fixtures/pi-provider"), providerPath, { recursive: true });
 	await invokePi(["install", providerPath]);

@@ -1,5 +1,6 @@
 import { lstat, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import { createJiti } from "jiti";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import type { PiAssetFile } from "../src/internal/pi-assets.ts";
@@ -31,14 +32,19 @@ async function collectPiAssets(input: { readonly source: string; readonly target
 
 export async function generatePiAssets(input: { readonly packageRoot: string; readonly outputPath: string }): Promise<void> {
 	const piRoot = await realpath(join(input.packageRoot, "node_modules/@earendil-works/pi-coding-agent"));
+	await mkdir(dirname(input.outputPath), { recursive: true });
+	const outputDirectory = await realpath(dirname(input.outputPath));
+	// Pi's bundled pi-ai owns a separate OAuth registry from Norn's dev dependency.
+	const oauthModule = createJiti(join(piRoot, "package.json")).esmResolve("@earendil-works/pi-ai/bun-oauth");
+	const oauthPath = relative(outputDirectory, fileURLToPath(oauthModule));
+	const oauthImport = (isAbsolute(oauthPath) ? oauthPath : `./${oauthPath}`).split(sep).join("/");
 	const files: PiAssetFile[] = [];
 	for (const [source, target] of ASSET_LOCATIONS) {
 		await collectPiAssets({ source: join(piRoot, source), target, files });
 	}
 	files.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
 	const archive = gzipSync(JSON.stringify(files)).toString("base64");
-	await mkdir(dirname(input.outputPath), { recursive: true });
-	await writeFile(input.outputPath, `export const piAssetArchive = ${JSON.stringify(archive)};\n`, "utf8");
+	await writeFile(input.outputPath, `export { registerBunOAuthFlows } from ${JSON.stringify(oauthImport)};\nexport const piAssetArchive = ${JSON.stringify(archive)};\n`, "utf8");
 }
 
 if (process.argv[1] && await realpath(process.argv[1]) === fileURLToPath(import.meta.url)) {
