@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { NornRunResources } from "../resources.ts";
+import { createRunFileCoordinator } from "../files.ts";
 import {
 	type NornAnyWorkflowDeclaration,
 	type NornAnyWorkflowPluginManifest,
@@ -25,11 +27,10 @@ import { NornRunLogger } from "./run-log.ts";
 import { NornRunStore, runCurrentRoot } from "./run-store.ts";
 import { NornRunStateStore, getRunInfo, mergeInterruptedWorkflowParams, resolveRunRoot, type NornRunState } from "./run-state.ts";
 import { NornRunContext } from "./run.ts";
-import { NornJsonWorkflowState, NornMemoryWorkflowState } from "./state-store.ts";
+import { NornMemoryWorkflowState } from "./state-store.ts";
 import { NornWorkflowRegistry, type NornRegisteredWorkflow, type NornWorkflowStepResult } from "./workflow-registry.ts";
 
 const RUNS_DIR_NAME = ".norn";
-const STATE_FILE_NAME = "state.json";
 const MANIFEST_FILE_NAME = "manifest.json";
 
 export type NornEngineInput = {
@@ -294,7 +295,7 @@ export class NornEngine {
 		try {
 			const runStore = await NornRunStore.initialize(runRoot);
 			await mkdir(workspace, { recursive: true });
-			const logger = new NornRunLogger(join(currentRoot, MANIFEST_FILE_NAME), {
+			const logger = new NornRunLogger({ manifestPath: join(currentRoot, MANIFEST_FILE_NAME), files: createRunFileCoordinator(runRoot), manifest: {
 				id,
 				name,
 				workflowId: workflow.id,
@@ -302,7 +303,7 @@ export class NornEngine {
 				workspace,
 				initialCwd: cwd,
 				startedAt,
-			});
+			} });
 			const run = await this.buildRun({ id, currentRoot, workspace, cwd, isolationMode: workflow.isolation.mode, signal: activeRun.controller.signal, logger });
 			const state = await NornRunStateStore.create(runRoot, {
 				id,
@@ -335,7 +336,7 @@ export class NornEngine {
 			if (currentState.status === "completed") throw new Error(`Run is already completed: ${runRoot}`);
 			const runStore = await NornRunStore.open(runRoot);
 			const currentRoot = runCurrentRoot(runRoot);
-			const logger = await NornRunLogger.load(join(currentRoot, MANIFEST_FILE_NAME));
+			const logger = await NornRunLogger.load(join(currentRoot, MANIFEST_FILE_NAME), createRunFileCoordinator(runRoot));
 			const workflow = currentState.current ? this.registry.workflowById(currentState.current.workflowId) : undefined;
 			const isolationMode = workflow?.isolation.mode ?? "runWorkspace";
 			const cwd = workflowDefaultCwd(this.input.cwd, currentState.workspace, workflow);
@@ -361,6 +362,7 @@ export class NornEngine {
 		await mkdir(input.workspace, { recursive: true });
 		await mkdir(artifactsRoot, { recursive: true });
 		await mkdir(logsRoot, { recursive: true });
+		const resources = await NornRunResources.initialize(dirname(input.currentRoot));
 		return new NornRunContext({
 			id: input.id,
 			runRoot: input.currentRoot,
@@ -371,10 +373,10 @@ export class NornEngine {
 			signal: input.signal,
 			agentDir: this.input.agentDir,
 			responseCollector: this.responseCollector,
-			state: new NornJsonWorkflowState(join(input.currentRoot, STATE_FILE_NAME)),
+			resources,
 			logger: input.logger,
-			artifacts: new NornArtifacts(artifactsRoot),
-			logs: new NornRunLogs(logsRoot),
+			artifacts: new NornArtifacts(artifactsRoot, resources.files),
+			logs: new NornRunLogs(logsRoot, resources.files),
 		});
 	}
 

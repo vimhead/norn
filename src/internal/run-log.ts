@@ -1,4 +1,6 @@
 import { readFile } from "node:fs/promises";
+import type { NornFileCoordinator } from "../files.ts";
+import { isNodeError } from "./errors.ts";
 import { writeJsonAtomically } from "./json-file.ts";
 
 export type NornRunManifestEvent = {
@@ -19,27 +21,39 @@ export type NornRunManifest = {
 };
 
 export class NornRunLogger {
-	private readonly events: NornRunManifestEvent[] = [];
-	private writeChain: Promise<void> = Promise.resolve();
+	private isInitialized = false;
 
-	constructor(
-		private readonly manifestPath: string,
-		private readonly manifest: Omit<NornRunManifest, "events">,
-		initialEvents: readonly NornRunManifestEvent[] = [],
-	) {
-		this.events.push(...initialEvents);
+	constructor(private readonly input: {
+		readonly manifestPath: string;
+		readonly manifest: Omit<NornRunManifest, "events">;
+		readonly files: NornFileCoordinator;
+	}) {}
+
+	static async load(manifestPath: string, files: NornFileCoordinator): Promise<NornRunLogger> {
+		const manifest = parseManifest(await files.readText(manifestPath));
+		const logger = new NornRunLogger({ manifestPath, manifest, files });
+		logger.isInitialized = true;
+		return logger;
 	}
-
-	static async load(manifestPath: string): Promise<NornRunLogger> {
-		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as NornRunManifest;
-		const { events, ...manifestHeader } = manifest;
-		return new NornRunLogger(manifestPath, manifestHeader, events);
-	}
-
 
 	async record(event: { readonly type: string; readonly [key: string]: unknown }): Promise<void> {
-		this.events.push({ at: new Date().toISOString(), ...event });
-		this.writeChain = this.writeChain.then(() => writeJsonAtomically(this.manifestPath, { ...this.manifest, events: this.events }));
-		await this.writeChain;
+		await this.input.files.withExclusiveLock(this.input.manifestPath, async (path) => {
+			let manifest: NornRunManifest;
+			try {
+				manifest = parseManifest(await readFile(path, "utf8"));
+			} catch (error) {
+				if (this.isInitialized || !isNodeError(error) || error.code !== "ENOENT") throw error;
+				manifest = { ...this.input.manifest, events: [] };
+			}
+			if (manifest.id !== this.input.manifest.id) throw new Error("Run manifest identity changed");
+			await writeJsonAtomically(path, { ...manifest, events: [...manifest.events, { ...event, at: new Date().toISOString() }] });
+			this.isInitialized = true;
+		});
 	}
+}
+
+function parseManifest(content: string): NornRunManifest {
+	const manifest = JSON.parse(content) as NornRunManifest;
+	if (!manifest || typeof manifest !== "object" || typeof manifest.id !== "string" || !Array.isArray(manifest.events)) throw new Error("Invalid run manifest");
+	return manifest;
 }

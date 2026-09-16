@@ -48,7 +48,7 @@ Successful results and raw attempts are written under `current/logs/agents/`; Pi
 
 ## Prompts, tools, and resource loading
 
-The default tool allowlist is `read`, `bash`, `edit`, `write`, plus the response tool. An explicit `tools: []` requests no task tools, but still includes the response tool.
+The default tool allowlist is `read`, `bash`, `edit`, `write`, plus the response tool. An explicit `tools: []` requests no built-in task tools, but still includes the response tool and any explicitly attached [resource-family tools](resources.md#explicit-agent-attachment). `resources` is accepted by both session creation and one-shot prompting; omitting it attaches no workflow state.
 
 Each session constructs a Pi resource loader at its `cwd`, using the engine's `agentDir` or Pi's default agent directory. Discoverable settings, skills, context files, and extensions can therefore affect it. It does **not** inherit the outer conversation or its in-memory tool registrations. Loaded extensions may change active tools; the requested tool list alone is not an adversarial restriction.
 

@@ -9,6 +9,7 @@ Norn capabilities are ordinary TypeScript plugins: an agent can write one during
 | Create, register, or diagnose a plugin | [Projects and loading](projects.md), [Workflow authoring](workflows.md) | [Create → run → change](../examples/minimal-workflow/README.md) |
 | Discover contracts or invoke Norn from another harness | [CLI and client](cli.md) | [Create → run → change](../examples/minimal-workflow/README.md) |
 | Delegate work with explicit inputs and structured results | [Agents](agents.md) | [Worker → saved artifact → analysis](../examples/worker-then-analysis/README.md) |
+| Initialize shared resources, attach state tools, or coordinate file mutations | [Resources and locking](resources.md) | [Explicit shared state](../examples/shared-state/README.md) |
 | Retain evidence or choose a filesystem boundary | [State, artifacts, and workspaces](persistence.md) | [Worker → saved artifact → analysis](../examples/worker-then-analysis/README.md) |
 | Reuse a workflow with a caller-selected continuation | [Composition](composition.md) | [Worktree development loop](../examples/worktree-development-loop/README.md) — larger, optional |
 | Repair a failed run without repeating earlier work | [Recovery and gates](recovery.md) | [Analysis-only repair](../examples/worker-then-analysis/README.md#repair-only-the-analysis-step) |

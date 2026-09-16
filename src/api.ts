@@ -497,6 +497,7 @@ export type NornAgentBeforeSessionStartContext = {
 };
 
 export type NornAgentCreateSessionInput = {
+	readonly resources?: readonly import("./resources.ts").NornResourceFamily[];
 	readonly label: string;
 	readonly cwd?: string;
 	readonly tools?: string[];
@@ -638,6 +639,7 @@ type NornRunBase = {
 	next<TWorkflow extends NornWorkflowTarget<any>>(workflow: TWorkflow, params: NornWorkflowTargetParamsInput<TWorkflow>): NornRunNext;
 	complete(metadata?: NornRunOutcomeMetadata): NornRunComplete;
 	fail(metadata: NornRunOutcomeMetadata & { readonly summary: string }): NornRunFail;
+	resources: import("./resources.ts").NornRunResources;
 	state: NornWorkflowState;
 	artifacts: {
 		write(path: string, content: string): Promise<NornArtifactRef>;

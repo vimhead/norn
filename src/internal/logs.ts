@@ -1,5 +1,6 @@
 import { createWriteStream, type WriteStream } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
+import type { NornFileCoordinator } from "../files.ts";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { NornLogRef } from "../api.ts";
 
@@ -9,16 +10,14 @@ export type NornLogWriteStream = {
 };
 
 export class NornRunLogs {
-	constructor(private readonly logsRoot: string) {}
+	constructor(private readonly logsRoot: string, private readonly files: NornFileCoordinator) {}
 
 	async write(path: string, content: string): Promise<void> {
-		const absolutePath = this.resolveLogPath(path);
-		await mkdir(dirname(absolutePath), { recursive: true });
-		await writeFile(absolutePath, content, "utf8");
+		await this.files.writeText(this.resolveLogPath(path), content);
 	}
 
 	async read(log: NornLogRef): Promise<string> {
-		return readFile(this.resolveLogPath(`${log.id}.log`), "utf8");
+		return this.files.readText(this.resolveLogPath(`${log.id}.log`));
 	}
 
 	async createWriteStream(log: NornLogRef): Promise<NornLogWriteStream> {
