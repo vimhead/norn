@@ -87,7 +87,7 @@ with the harness name.
 
 ### 3. Configure worker providers
 
-Use [providers and authentication](docs/providers.md) to authenticate and install
+Use [providers and authentication](setup/providers.md) to authenticate and install
 third-party providers through `norn pi`, without a separate Pi installation.
 This setup is needed for native agent workers, not model-free workflows.
 

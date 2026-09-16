@@ -25,6 +25,7 @@
     "README.md",
     ".cursor-plugin",
     "docs",
+    "setup",
     "adapters",
     "bin",
     "src",

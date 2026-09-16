@@ -92,7 +92,7 @@ test("Pi loads runtime-selected context before the first prompt and refreshes it
 	const fixture = await createFixture(context);
 	const runtimeRoot = join(fixture.root, "other installation");
 	await mkdir(runtimeRoot);
-	for (const path of ["src", "bin", "docs", "examples", "adapters", "README.md", "package.json"]) await cp(join(packageRoot, path), join(runtimeRoot, path), { recursive: true });
+	for (const path of ["src", "bin", "docs", "setup", "examples", "adapters", "README.md", "package.json"]) await cp(join(packageRoot, path), join(runtimeRoot, path), { recursive: true });
 	await symlink(join(packageRoot, "node_modules"), join(runtimeRoot, "node_modules"));
 	const manifest = JSON.parse(await readFile(join(runtimeRoot, "package.json"), "utf8"));
 	manifest.version = "9.9.9";

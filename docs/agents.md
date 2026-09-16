@@ -32,7 +32,7 @@ try {
 }
 ```
 
-`task` and both Zod schemas are capability-specific inputs in this fragment. `model` and `thinkingLevel` can be selected per session; when omitted, selection falls through to the engine/Pi configuration. [Configure providers and authentication](providers.md) through `norn pi` before CLI execution; detached workers cannot conduct an interactive login.
+`task` and both Zod schemas are capability-specific inputs in this fragment. [Provider setup](../setup/providers.md) is a prerequisite for native workers; detached execution cannot conduct an interactive login.
 
 ## Response contract and evidence
 
@@ -50,7 +50,7 @@ Successful results and raw attempts are written under `current/logs/agents/`; Pi
 
 The default tool allowlist is `read`, `bash`, `edit`, `write`, plus the response tool. An explicit `tools: []` requests no built-in task tools, but still includes the response tool and any explicitly attached [resource-family tools](resources.md#explicit-agent-attachment). `resources` is accepted by both session creation and one-shot prompting; omitting it attaches no workflow state.
 
-Each session constructs a Pi resource loader at its `cwd`, using the engine's `agentDir` or Pi's default agent directory. Discoverable settings, skills, context files, and extensions can therefore affect it. It does **not** inherit the outer conversation or its in-memory tool registrations. Loaded extensions may change active tools; the requested tool list alone is not an adversarial restriction.
+Each session constructs Pi runtime services at its `cwd`, using the engine's `agentDir` or Pi's default agent directory. Installed provider extensions register before default-model selection. Model selection uses the session's explicit `model`, then the engine's model, then Pi's model configuration. `thinkingLevel` similarly falls through from session to engine to Pi configuration. Discoverable settings, skills, context files, and extensions can therefore affect it. It does **not** inherit the outer conversation or its in-memory tool registrations. Loaded extensions may change active tools; the requested tool list alone is not an adversarial restriction.
 
 `systemPrompt` replaces the base prompt; `appendSystemPrompt` adds to resource-loader append content. Pi's default self-documentation block is absent with a custom base prompt. Context files and applicable skill advertisements can still be appended by Pi. Norn currently does not automatically inject a Norn authoring bootstrap.
 

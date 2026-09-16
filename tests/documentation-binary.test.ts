@@ -22,7 +22,7 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const detachedRoot = join(root, "standalone copy");
 	await mkdir(buildRoot);
 	await mkdir(detachedRoot);
-	for (const path of ["src", "docs", "examples", "README.md", "package.json", "tests/workflow-ref.test.ts"]) {
+	for (const path of ["src", "docs", "setup", "examples", "README.md", "package.json", "tests/workflow-ref.test.ts"]) {
 		await mkdir(dirname(join(buildRoot, path)), { recursive: true });
 		await cp(join(packageRoot, path), join(buildRoot, path), { recursive: true, filter: source => !source.endsWith("documentation-assets.generated.ts") });
 	}

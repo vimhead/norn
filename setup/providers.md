@@ -49,9 +49,9 @@ norn pi --list-models cursor
 norn pi
 ```
 
-This installs into the shared Pi configuration. Native workers load installed
-extensions before choosing their default model. Select the new provider using
-`/model`; an explicit workflow model takes precedence over that saved default.
+This installs into the shared Pi configuration. Select the new provider using
+`/model`. Worker discovery and model precedence are covered in
+[Agents](../docs/agents.md#prompts-tools-and-resource-loading).
 Use `norn pi list` to inspect installations and `norn pi remove <source>` to remove
 one. Upgrade bundled Pi by upgrading Norn, not by using Pi's self-update command.
 `norn pi update --extensions` updates unpinned extension packages.

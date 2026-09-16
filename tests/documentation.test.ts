@@ -158,7 +158,7 @@ test("asset generation is deterministic, excludes itself, and includes every loc
 
 test("asset collection excludes runtime/dependency files and refuses symlinked assets", async context => {
 	const { root } = await createFixture(context);
-	for (const file of [...bundle.files, { path: "package.json", content: '{"version":"0.1.0"}' }, { path: "src/api.ts", content: "export {};" }, { path: "adapters/pi.ts", content: "export {};" }, { path: "tests/workflow-ref.test.ts", content: "" },
+	for (const file of [...bundle.files, { path: "package.json", content: '{"version":"0.1.0"}' }, { path: "src/api.ts", content: "export {};" }, { path: "adapters/pi.ts", content: "export {};" }, { path: "tests/workflow-ref.test.ts", content: "" }, { path: "setup/providers.md", content: "# Provider setup\n" },
 		{ path: "examples/.norn/runs/private.json", content: "private run" },
 		{ path: "examples/node_modules/dependency/index.ts", content: "dependency" },
 		{ path: "examples/demo/auth.json", content: "credential" },
@@ -169,7 +169,7 @@ test("asset collection excludes runtime/dependency files and refuses symlinked a
 		await writeFile(join(root, file.path), file.content);
 	}
 	const collected = await collectDocumentationBundle({ packageRoot: root });
-	assert.equal(collected.files.length, bundle.files.length + 2);
+	assert.equal(collected.files.length, bundle.files.length + 3);
 	assert.ok(!collected.files.some(file => file.path.startsWith("adapters/")));
 	assert.ok(!collected.files.some(file => /private run|dependency|credential|environment|key/.test(file.content)));
 	if (process.platform !== "win32") {
