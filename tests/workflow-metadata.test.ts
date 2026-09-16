@@ -19,6 +19,7 @@ function unexpectedRunOperation(): never {
 }
 
 const run: NornRun = {
+	get resources() { return unexpectedRunOperation(); },
 	id: "metadata", workspace: "/workspace", cwd: "/workspace",
 	path: unexpectedRunOperation, next: unexpectedRunOperation, complete: unexpectedRunOperation, fail: unexpectedRunOperation,
 	state: { get: unexpectedRunOperation, getOptional: unexpectedRunOperation, set: unexpectedRunOperation },

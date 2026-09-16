@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type { NornWorkflowStateDefinition, NornWorkflowState } from "../api.ts";
+import type { NornFileCoordinator } from "../files.ts";
 import { isNodeError } from "./errors.ts";
 import { writeJsonAtomically } from "./json-file.ts";
 
@@ -23,9 +24,18 @@ export class NornMemoryWorkflowState implements NornWorkflowState {
 }
 
 export class NornJsonWorkflowState implements NornWorkflowState {
-	private writeChain: Promise<void> = Promise.resolve();
+	constructor(readonly stateFile: string, private readonly files: NornFileCoordinator) {}
 
-	constructor(private readonly stateFile: string) {}
+	async initialize(mode: "create" | "open"): Promise<void> {
+		await this.files.withExclusiveLock(this.stateFile, async (path) => {
+			try {
+				await this.readStateFile(path);
+			} catch (error) {
+				if (mode !== "create" || !isNodeError(error) || error.code !== "ENOENT") throw error;
+				await writeJsonAtomically(path, {});
+			}
+		});
+	}
 
 	async get<T>(state: NornWorkflowStateDefinition<T>): Promise<T> {
 		const value = await this.getOptional(state);
@@ -34,30 +44,24 @@ export class NornJsonWorkflowState implements NornWorkflowState {
 	}
 
 	async getOptional<T>(state: NornWorkflowStateDefinition<T>): Promise<T | undefined> {
-		const data = await this.readStateFile();
+		const data = await this.files.withExclusiveLock(this.stateFile, (path) => this.readStateFile(path));
 		if (!Object.prototype.hasOwnProperty.call(data, state.id)) return undefined;
 		return state.schema.parse(data[state.id]);
 	}
 
 	async set<T>(state: NornWorkflowStateDefinition<T>, value: T): Promise<void> {
 		const parsedValue = state.schema.parse(value);
-		this.writeChain = this.writeChain.then(async () => {
-			const data = await this.readStateFile();
-			data[state.id] = parsedValue;
-			await writeJsonAtomically(this.stateFile, data);
+		await this.files.withExclusiveLock(this.stateFile, async (path) => {
+			const data = await this.readStateFile(path);
+			Object.defineProperty(data, state.id, { value: parsedValue, enumerable: true, configurable: true, writable: true });
+			await writeJsonAtomically(path, data);
 		});
-		await this.writeChain;
 	}
 
-	private async readStateFile(): Promise<Record<string, unknown>> {
-		try {
-			const content = await readFile(this.stateFile, "utf8");
-			const parsed = JSON.parse(content) as unknown;
-			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
-			return {};
-		} catch (error) {
-			if (isNodeError(error) && error.code === "ENOENT") return {};
-			throw error;
-		}
+	private async readStateFile(path: string): Promise<Record<string, unknown>> {
+		const content = await readFile(path, "utf8");
+		const parsed = JSON.parse(content) as unknown;
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+		throw new Error(`Invalid workflow state document: ${path}`);
 	}
 }

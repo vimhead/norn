@@ -1,10 +1,11 @@
-import { readdir, readFile } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { mkdir, readdir, readFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { NornRunHealth, NornRunStatus, NornRunOutcomeMetadata, NornRunInfo, NornRunInterruption, NornRunOutcomeInfo, NornRunFailureInfo } from "../api.ts";
 import { isNodeError } from "./errors.ts";
 import { readRunLaunchRequest, readOptionalRunResumeRequest, RESUME_START_GRACE_MS } from "./launch-request.ts";
 import { getRunLeaseHealth } from "./run-lease.ts";
 import { writeJsonAtomically } from "./json-file.ts";
+import { createRunFileCoordinator, type NornFileCoordinator } from "../files.ts";
 import { runCurrentRoot } from "./run-store.ts";
 
 export const RUN_STATE_FILE_NAME = "run-state.json";
@@ -81,12 +82,15 @@ type CreateNornRunStateInput = {
 };
 
 export class NornRunStateStore {
-	private writeChain: Promise<void> = Promise.resolve();
+	private readonly path: string;
+	private state: NornRunState;
+	private readonly files: NornFileCoordinator;
 
-	private constructor(
-		private readonly path: string,
-		private state: NornRunState,
-	) {}
+	private constructor(input: { readonly path: string; readonly state: NornRunState; readonly files: NornFileCoordinator }) {
+		this.path = input.path;
+		this.state = input.state;
+		this.files = input.files;
+	}
 
 	static async create(runRoot: string, input: CreateNornRunStateInput): Promise<NornRunStateStore> {
 		const now = input.startedAt;
@@ -105,15 +109,16 @@ export class NornRunStateStore {
 			startedAt: now,
 			updatedAt: now,
 		};
-		const store = new NornRunStateStore(join(runCurrentRoot(runRoot), RUN_STATE_FILE_NAME), state);
+		const store = new NornRunStateStore({ path: join(runCurrentRoot(runRoot), RUN_STATE_FILE_NAME), state, files: createRunFileCoordinator(runRoot) });
 		await store.write();
 		return store;
 	}
 
 	static async load(runRoot: string): Promise<NornRunStateStore> {
 		const currentRoot = runCurrentRoot(runRoot);
-		const state = parseNornRunState(await readRunStateJson(currentRoot));
-		return new NornRunStateStore(join(currentRoot, RUN_STATE_FILE_NAME), state);
+		const files = createRunFileCoordinator(runRoot);
+		const state = await files.withExclusiveLock(join(currentRoot, RUN_STATE_FILE_NAME), async (path) => parseNornRunState(await readRunStateFile({ path, legacyPath: join(currentRoot, LEGACY_RUN_STATE_FILE_NAME) })));
+		return new NornRunStateStore({ path: join(currentRoot, RUN_STATE_FILE_NAME), state, files });
 	}
 
 	currentState(): NornRunState {
@@ -200,13 +205,17 @@ export class NornRunStateStore {
 	}
 
 	private async update(patch: Partial<NornRunState>): Promise<void> {
-		this.state = { ...this.state, ...patch, updatedAt: new Date().toISOString() };
-		await this.write();
+		await this.files.withExclusiveLock(this.path, async (path) => {
+			const current = parseNornRunState(await readRunStateFile({ path, legacyPath: join(dirname(this.path), LEGACY_RUN_STATE_FILE_NAME) }));
+			const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
+			await writeJsonAtomically(path, next);
+			this.state = next;
+		});
 	}
 
 	private async write(): Promise<void> {
-		this.writeChain = this.writeChain.then(() => writeJsonAtomically(this.path, this.state));
-		await this.writeChain;
+		await mkdir(dirname(this.path), { recursive: true });
+		await this.files.withExclusiveLock(this.path, (path) => writeJsonAtomically(path, this.state));
 	}
 }
 
@@ -308,11 +317,15 @@ async function getLaunchedRunInfo(runRoot: string): Promise<NornRunInfo> {
 }
 
 async function readRunStateJson(currentRoot: string): Promise<unknown> {
+	return readRunStateFile({ path: join(currentRoot, RUN_STATE_FILE_NAME), legacyPath: join(currentRoot, LEGACY_RUN_STATE_FILE_NAME) });
+}
+
+async function readRunStateFile(input: { readonly path: string; readonly legacyPath: string }): Promise<unknown> {
 	try {
-		return JSON.parse(await readFile(join(currentRoot, RUN_STATE_FILE_NAME), "utf8"));
+		return JSON.parse(await readFile(input.path, "utf8"));
 	} catch (error) {
 		if (!isNodeError(error) || error.code !== "ENOENT") throw error;
-		return JSON.parse(await readFile(join(currentRoot, LEGACY_RUN_STATE_FILE_NAME), "utf8"));
+		return JSON.parse(await readFile(input.legacyPath, "utf8"));
 	}
 }
 

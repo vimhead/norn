@@ -1,17 +1,17 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+import type { NornFileCoordinator } from "../files.ts";
 import type { NornArtifactRef } from "../api.ts";
 
 export class NornArtifacts {
-	constructor(private readonly artifactsRoot: string) {}
+	constructor(private readonly artifactsRoot: string, private readonly files: NornFileCoordinator) {}
 
 	async write(path: string, content: string): Promise<NornArtifactRef> {
-		await writeTextFile(this.resolveArtifactPath(path), content);
+		await this.files.writeText(this.resolveArtifactPath(path), content);
 		return { path };
 	}
 
 	async read(ref: NornArtifactRef): Promise<string> {
-		return readFile(this.resolveArtifactPath(ref.path), "utf8");
+		return this.files.readText(this.resolveArtifactPath(ref.path));
 	}
 
 	private resolveArtifactPath(path: string): string {
@@ -23,9 +23,4 @@ export class NornArtifacts {
 		}
 		return resolvedPath;
 	}
-}
-
-async function writeTextFile(path: string, content: string): Promise<void> {
-	await mkdir(dirname(path), { recursive: true });
-	await writeFile(path, content, "utf8");
 }

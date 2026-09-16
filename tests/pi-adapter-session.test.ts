@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRunFileCoordinator } from "../src/files.ts";
 import { execFileSync } from "node:child_process";
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,6 +12,8 @@ import { AgentSession, createAgentSession, DefaultResourceLoader, SessionManager
 import { z } from "zod";
 
 import { NornAgentRunner } from "../src/internal/agents.ts";
+import { NornRunResources, type NornResourceFamily } from "../src/resources.ts";
+import { State } from "../src/state.ts";
 import { NornRunLogs } from "../src/internal/logs.ts";
 import { NornRunLogger } from "../src/internal/run-log.ts";
 import type { NornWorkflowCatalogInfo, NornWorkflowInspection } from "../src/api.ts";
@@ -48,7 +51,8 @@ function lastRequest(captured: readonly CapturedRequest[]): CapturedRequest {
 	return request;
 }
 
-function captureModelRequests(session: AgentSession, captured: CapturedRequest[]) {
+function captureModelRequests(session: AgentSession, captured: CapturedRequest[], resourceCalls: readonly { name: string; arguments: Record<string, unknown> }[] = []) {
+	let nextCall = 0;
 	session.modelRuntime.hasConfiguredAuth = () => true;
 	session.agent.streamFunction = (_model, context) => {
 		assert.ok(context.systemPrompt);
@@ -65,6 +69,12 @@ function captureModelRequests(session: AgentSession, captured: CapturedRequest[]
 			const label = text.match(/Pass label exactly as: (.+)/);
 			assert.ok(runId && label);
 			message.content = [{ type: "toolCall", id: "offline-response", name: AGENT_RESPONSE_TOOL_NAME, arguments: { runId: runId[1], label: label[1], response: { ok: true } } }];
+			message.stopReason = "toolUse";
+		}
+		const resourceCall = resourceCalls[nextCall++];
+		if (resourceCall) {
+			assert.ok(tools.some(tool => tool.name === resourceCall.name), `Attached tool is active: ${resourceCall.name}`);
+			message.content = [{ type: "toolCall", id: `resource-${nextCall}`, ...resourceCall }];
 			message.stopReason = "toolUse";
 		}
 		stream.push({ type: "done", reason: message.stopReason === "toolUse" ? "toolUse" : "stop", message });
@@ -198,11 +208,12 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 		return originalPrompt.apply(this, args);
 	});
 	context.onTestFinished(() => { promptSpy.mockRestore(); });
+	const files = createRunFileCoordinator(fixture.root);
 	const runner = new NornAgentRunner({
 		id: "native-adapter-test", runRoot: join(fixture.root, "run"), boundaryRoot: fixture.cwd, boundaryName: "test", cwd: fixture.cwd,
 		agentDir: fixture.agentDir, model,
-		logs: new NornRunLogs(join(fixture.root, "logs")),
-		logger: new NornRunLogger(join(fixture.root, "manifest.json"), { id: "native-adapter-test", name: "native-adapter-test", workflowId: "test.worker", runRoot: join(fixture.root, "run"), workspace: fixture.cwd, initialCwd: fixture.cwd, startedAt: new Date().toISOString() }),
+		logs: new NornRunLogs(join(fixture.root, "logs"), files),
+		logger: new NornRunLogger({ manifestPath: join(fixture.root, "manifest.json"), files, manifest: { id: "native-adapter-test", name: "native-adapter-test", workflowId: "test.worker", runRoot: join(fixture.root, "run"), workspace: fixture.cwd, initialCwd: fixture.cwd, startedAt: new Date().toISOString() } }),
 		responseCollector: new NornAgentResponseCollector(),
 	});
 	const worker = await runner.createSession({ label: "restricted", tools: [], systemPrompt: "SOURCE-ONLY ASSESSOR" });
@@ -227,4 +238,66 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 		assert.ok(!request.systemPrompt.includes("UNWANTED AUTHORING CONTEXT"));
 	}
 	await assert.rejects(readFile(calledPath), { code: "ENOENT" });
+});
+
+test("native resource tools are explicit, persist across sessions, and clean up on disposal and startup failure", { timeout: 30000 }, async context => {
+	const fixture = await createFixture(context);
+	const resources = await NornRunResources.initialize(fixture.root);
+	const field = { id: "count", schema: z.number().int() };
+	const hidden = { id: "private", schema: z.string() };
+	await resources.state.set(hidden, "not attached");
+	const captured: CapturedRequest[] = [];
+	const nativeSessions: AgentSession[] = [];
+	const calls = [
+		{ name: "norn_state_list", arguments: { offset: 0, limit: 10000 } },
+		{ name: "norn_state_get", arguments: { key: "private", offset: 0, limit: 10000 } },
+		{ name: "norn_state_set", arguments: { key: "count", value: "invalid" } },
+		{ name: "norn_state_set", arguments: { key: "count", value: 7 } },
+		{ name: "norn_state_get", arguments: { key: "count", offset: 0, limit: 10000 } },
+	];
+	const originalPrompt = AgentSession.prototype.prompt;
+	const promptSpy = vi.spyOn(AgentSession.prototype, "prompt").mockImplementation(async function (this: AgentSession, ...args) {
+		if (!nativeSessions.includes(this)) {
+			nativeSessions.push(this);
+			captureModelRequests(this, captured, nativeSessions.length === 1 ? calls : []);
+		}
+		return originalPrompt.apply(this, args);
+	});
+	context.onTestFinished(() => promptSpy.mockRestore());
+	const runner = new NornAgentRunner({
+		id: "resource-sdk", runRoot: join(fixture.root, "current"), boundaryRoot: fixture.cwd, boundaryName: "test", cwd: fixture.cwd,
+		agentDir: fixture.agentDir, model,
+		logs: new NornRunLogs(join(fixture.root, "current", "logs"), resources.files),
+		logger: new NornRunLogger({ manifestPath: join(fixture.root, "current", "manifest.json"), files: resources.files, manifest: { id: "resource-sdk", name: "resource-sdk", workflowId: "test.worker", runRoot: fixture.root, workspace: fixture.cwd, initialCwd: fixture.cwd, startedAt: new Date().toISOString() } }),
+		responseCollector: new NornAgentResponseCollector(),
+	});
+	let disposals = 0;
+	const lifecycle: NornResourceFamily = { name: "test.lifecycle", async bind() { return { tools: [], async dispose() { disposals++; } }; } };
+	const attachment = State({ state: resources.state, fields: [{ field, access: "read-write" }] });
+	const worker = await runner.createSession({ label: "writer", tools: [], resources: [attachment, lifecycle] });
+	context.onTestFinished(() => worker.dispose());
+	assert.deepEqual(await worker.prompt({ prompt: "Exercise attached state", response: z.object({ ok: z.boolean() }), maxAttempts: 1 }), { ok: true });
+	assert.deepEqual(new Set(captured[0].tools), new Set([AGENT_RESPONSE_TOOL_NAME, "norn_state_list", "norn_state_get", "norn_state_set"]));
+	assert.equal(await resources.state.get(field), 7);
+	const results = nativeSessions[0].messages.filter(message => message.role === "toolResult");
+	assert.equal(results.filter(message => message.isError).length, 2);
+	await worker.dispose();
+	await worker.dispose();
+	assert.equal(disposals, 1);
+	await runner.prompt({ label: "unattached", tools: [], prompt: "Return the result", response: z.object({ ok: z.boolean() }), maxAttempts: 1 });
+	assert.deepEqual(lastRequest(captured).tools, [AGENT_RESPONSE_TOOL_NAME]);
+	assert.equal(await (await NornRunResources.initialize(fixture.root)).state.get(field), 7);
+	await runner.prompt({ label: "attached-one-shot", tools: [], resources: [attachment, lifecycle], prompt: "Return the result", response: z.object({ ok: z.boolean() }), maxAttempts: 1 });
+	assert.ok(lastRequest(captured).tools.includes("norn_state_get"));
+	assert.equal(disposals, 2);
+	await assert.rejects(runner.createSession({ label: "broken-start", resources: [lifecycle], beforeSessionStart() { throw new Error("startup failure"); } }), /startup failure/);
+	assert.equal(disposals, 3);
+	await assert.rejects(runner.createSession({ label: "duplicate", resources: [lifecycle, lifecycle] }), /Duplicate resource family/);
+	assert.equal(disposals, 4);
+	const collision: NornResourceFamily = { name: "test.collision", async bind() {
+		const binding = await attachment.bind({ runId: "test", label: "collision" });
+		return { tools: [{ ...binding.tools[0], name: "read" }], async dispose() { disposals++; } };
+	} };
+	await assert.rejects(runner.createSession({ label: "collision", resources: [lifecycle, collision] }), /tool name collision/);
+	assert.equal(disposals, 6);
 });
