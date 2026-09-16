@@ -97,7 +97,7 @@ type SpawnCommandResult = {
 
 async function spawnCommand(input: SpawnCommandInput): Promise<SpawnCommandResult> {
 	const command = typeof input.command === "string" ? "bash" : input.command[0];
-	const args = typeof input.command === "string" ? ["-lc", input.command] : input.command.slice(1);
+	const args = typeof input.command === "string" ? ["-c", input.command] : input.command.slice(1);
 	let killed = false;
 	const stdout = new BoundedTextBuffer();
 	const stderr = new BoundedTextBuffer();
