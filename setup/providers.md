@@ -15,18 +15,24 @@ save a default model, and `/quit` to exit. Configure these before launching nati
 workers: detached execution cannot conduct interactive login. Authentication in
 the outer harness does not automatically authenticate a worker's provider.
 
-## Shared configuration
+## Norn configuration
 
-The proxy and native workers use Pi's agent directory, normally `~/.pi/agent/`:
+The proxy and native workers share Norn's agent directory, normally `~/.norn/agent/`.
+It is independent of the outer Pi harness's global configuration:
 
 - `settings.json` — installed packages and default provider/model
 - `auth.json` — saved API keys and OAuth credentials
 - `models.json` — custom endpoints, models, and authentication configuration
 
-`PI_CODING_AGENT_DIR` selects another directory. Set it consistently for both
+`NORN_AGENT_DIR` selects another directory. Set it consistently for both
 `norn pi` and workflow execution. An SDK caller supplying `agentDir` must point
-the setup command at that same directory. Project settings and extension discovery
-also depend on the working directory; installing a provider globally avoids making
+the setup command at that same directory. Norn does not use an inherited
+`PI_CODING_AGENT_DIR` to select its global configuration. Existing Pi packages and
+credentials are not imported or linked: install providers and authenticate through
+`norn pi`, even when Pi is the outer harness.
+
+Project-local `.pi` settings and extension discovery still depend on the working
+directory; installing a provider globally avoids making
 it available only in one project or worktree.
 
 Login is optional when credentials are supplied another way. Workers inherit
@@ -49,7 +55,7 @@ norn pi --list-models cursor
 norn pi
 ```
 
-This installs into the shared Pi configuration. Select the new provider using
+This installs into Norn's global configuration. Select the new provider using
 `/model`. Worker discovery and model precedence are covered in
 [Agents](../docs/agents.md#prompts-tools-and-resource-loading).
 Use `norn pi list` to inspect installations and `norn pi remove <source>` to remove

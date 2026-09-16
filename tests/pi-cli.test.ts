@@ -17,18 +17,28 @@ const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const cli = join(packageRoot, "bin/norn.mjs");
 
-async function createFixture(context: TestContext) {
+async function createFixture(context: TestContext, directoryMode: "default" | "override" = "default") {
 	const root = await mkdtemp(join(tmpdir(), "norn-pi-cli-"));
 	context.onTestFinished(() => rm(root, { recursive: true, force: true }));
-	const agentDir = join(root, "agent");
-	await mkdir(agentDir);
-	const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, HOME: root, PI_CODING_AGENT_DIR: agentDir, PI_PACKAGE_DIR: "/unrelated-pi", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1" };
+	const agentDir = directoryMode === "default" ? join(root, ".norn", "agent") : join(root, "custom-agent");
+	const piAgentDir = join(root, ".pi", "agent");
+	const piSettings = JSON.stringify({ defaultProvider: "outer-harness", packages: [] });
+	const piAuth = JSON.stringify({ "outer-harness": { type: "api_key", key: "harness-only-test-key" } });
+	await mkdir(agentDir, { recursive: true });
+	await mkdir(piAgentDir, { recursive: true });
+	await writeFile(join(piAgentDir, "settings.json"), piSettings);
+	await writeFile(join(piAgentDir, "auth.json"), piAuth, { mode: 0o600 });
+	const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, HOME: root, USERPROFILE: root, NORN_AGENT_DIR: directoryMode === "override" ? agentDir : undefined, PI_CODING_AGENT_DIR: piAgentDir, PI_PACKAGE_DIR: "/unrelated-pi", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1" };
 	const invoke = (args: string[], stdin = "") => {
 		const execution = execute(process.execPath, [cli, ...args], { cwd: root, env, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
 		execution.child.stdin?.end(stdin);
 		return execution;
 	};
-	return { root, agentDir, invoke };
+	const assertPiConfigurationUnchanged = async () => {
+		assert.equal(await readFile(join(piAgentDir, "settings.json"), "utf8"), piSettings);
+		assert.equal(await readFile(join(piAgentDir, "auth.json"), "utf8"), piAuth);
+	};
+	return { root, agentDir, piAgentDir, env, invoke, assertPiConfigurationUnchanged };
 }
 
 test("Pi arguments, help, version and failures bypass Norn's CLI envelope without a project", { timeout: 30_000 }, async context => {
@@ -46,8 +56,8 @@ test("Pi arguments, help, version and failures bypass Norn's CLI envelope withou
 	});
 });
 
-test("a provider installed through norn pi is selectable in Pi and native Norn workers using the same credentials", { timeout: 60_000 }, async context => {
-	const fixture = await createFixture(context);
+test.for(["default", "override"] as const)("norn pi and SDK workers use their own %s directory without inheriting or modifying Pi credentials", { timeout: 60_000 }, async (directoryMode, context) => {
+	const fixture = await createFixture(context, directoryMode);
 	const providerPath = join(fixture.root, "provider with spaces");
 	await cp(join(packageRoot, "tests/fixtures/pi-provider"), providerPath, { recursive: true });
 	await fixture.invoke(["pi", "install", providerPath]);
@@ -67,17 +77,25 @@ test("a provider installed through norn pi is selectable in Pi and native Norn w
 	const events = (await fixture.invoke(["pi", "--no-session", "--mode", "json", "-p", prompt])).stdout.trim().split("\n").map(line => JSON.parse(line));
 	assert.ok(events.some(event => event.type === "message_end" && event.message.role === "assistant"));
 
-	vi.stubEnv("PI_OFFLINE", "1");
 	context.onTestFinished(() => { vi.unstubAllEnvs(); });
+	vi.stubEnv("PI_OFFLINE", "1");
+	vi.stubEnv("HOME", fixture.root);
+	vi.stubEnv("USERPROFILE", fixture.root);
+	vi.stubEnv("NORN_AGENT_DIR", fixture.env.NORN_AGENT_DIR);
+	vi.stubEnv("PI_CODING_AGENT_DIR", fixture.piAgentDir);
 	const files = createRunFileCoordinator(fixture.root);
 	const runner = new NornAgentRunner({
 		id: "provider-worker", runRoot: fixture.root, boundaryRoot: fixture.root, boundaryName: "test", cwd: fixture.root,
-		agentDir: fixture.agentDir,
 		logs: new NornRunLogs(join(fixture.root, "logs"), files),
 		logger: new NornRunLogger({ manifestPath: join(fixture.root, "manifest.json"), files, manifest: { id: "provider-worker", name: "provider-worker", workflowId: "test.worker", runRoot: fixture.root, workspace: fixture.root, initialCwd: fixture.root, startedAt: new Date().toISOString() } }),
 		responseCollector: new NornAgentResponseCollector(),
 	});
 	assert.deepEqual(await runner.prompt({ label: "worker", tools: [], prompt: "Return ok", response: z.object({ ok: z.boolean() }), maxAttempts: 1 }), { ok: true });
+	assert.equal(process.env.PI_CODING_AGENT_DIR, fixture.piAgentDir);
+	assert.equal(process.env.NORN_AGENT_DIR, fixture.env.NORN_AGENT_DIR);
 	await fixture.invoke(["pi", "remove", providerPath]);
 	assert.deepEqual(JSON.parse(await readFile(settingsPath, "utf8")).packages, []);
+	const credentials = JSON.parse(await readFile(join(fixture.agentDir, "auth.json"), "utf8"));
+	assert.deepEqual(Object.keys(credentials), ["norn-offline"]);
+	await fixture.assertPiConfigurationUnchanged();
 });

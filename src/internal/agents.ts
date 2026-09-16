@@ -3,12 +3,12 @@ import {
 	createAgentSessionServices,
 	createAgentSessionFromServices,
 	createEventBus,
-	getAgentDir,
 	type AgentSession,
 	type CreateAgentSessionOptions,
 } from "@earendil-works/pi-coding-agent";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import type { NornAgentCreateSessionInput, NornAgentPromptInput, NornAgentRunRawAttempt, NornAgentRunResult, NornAgentSessionEvents, NornAgentSession, NornAgentSinglePromptInput, NornAgentUsage } from "../api.ts";
@@ -18,6 +18,7 @@ import {
 	NornAgentResponseToolFactory,
 	type NornCapturedAgentResponse,
 } from "./agent-response-tool.ts";
+import { resolveNornAgentDirectory } from "./agent-directory.ts";
 import { errorMessage } from "./errors.ts";
 import type { NornRunLogs } from "./logs.ts";
 import { safeFileName } from "./file-names.ts";
@@ -64,7 +65,7 @@ export class NornAgentRunner {
 		await mkdir(sessionDir, { recursive: true });
 
 		const eventBus = createEventBus();
-		const agentDir = this.input.agentDir ?? getAgentDir();
+		const agentDir = this.input.agentDir ?? resolveNornAgentDirectory({ home: homedir(), environment: process.env });
 		const services = await createAgentSessionServices({
 			cwd,
 			agentDir,

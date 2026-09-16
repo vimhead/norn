@@ -37,8 +37,13 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	await execute(bun, ["build", "--compile", join(buildRoot, "src/bun/cli.ts"), "--outfile", binary], { cwd: buildRoot, timeout: 120_000, maxBuffer: 1024 * 1024 });
 	await rm(buildRoot, { recursive: true, force: true });
 	const cacheRoot = join(root, "cache");
-	const agentDir = join(root, "agent");
-	const environment = { SystemRoot: process.env.SystemRoot, HOME: join(root, "home"), PI_CODING_AGENT_DIR: agentDir, PI_PACKAGE_DIR: "/unrelated-pi", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", NORN_PI_CACHE_DIR: join(root, "pi-assets"), NORN_DOCS_CACHE_DIR: cacheRoot, PATH: "", NODE_PATH: "" };
+	const home = join(root, "home");
+	const agentDir = join(home, ".norn", "agent");
+	const piAgentDir = join(home, ".pi", "agent");
+	const piAuth = JSON.stringify({ "outer-harness": { type: "api_key", key: "harness-only-test-key" } });
+	await mkdir(piAgentDir, { recursive: true });
+	await writeFile(join(piAgentDir, "auth.json"), piAuth, { mode: 0o600 });
+	const environment = { SystemRoot: process.env.SystemRoot, HOME: home, USERPROFILE: home, PI_CODING_AGENT_DIR: piAgentDir, PI_PACKAGE_DIR: "/unrelated-pi", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", NORN_PI_CACHE_DIR: join(root, "pi-assets"), NORN_DOCS_CACHE_DIR: cacheRoot, PATH: "", NODE_PATH: "" };
 	const invoke = async (args: readonly string[], cwd = detachedRoot) => {
 		const execution = execute(binary, args, { cwd, env: environment, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
 		execution.child.stdin?.end();
@@ -120,6 +125,8 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const completedWorker = (await invoke(["runs", "wait", workerRun.id], workerProject)).run;
 	assert.equal(completedWorker.status, "completed", JSON.stringify(completedWorker));
 	assert.deepEqual(JSON.parse(await readFile(join(completedWorker.path, "current/artifacts/result.json"), "utf8")), { ok: true });
+	assert.equal(await readFile(join(piAgentDir, "auth.json"), "utf8"), piAuth);
+	await assert.rejects(access(join(piAgentDir, "settings.json")), { code: "ENOENT" });
 	await writeFile(join(response.packageRoot, "theme/dark.json"), "modified");
 	await assert.rejects(invokePi(["--version"]), error => {
 		assert.match((error as { stderr: string }).stderr, /Bundled Pi assets are incomplete or modified/);
