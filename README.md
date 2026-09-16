@@ -70,9 +70,10 @@ pi --norn-executable /absolute/path/to/norn
 
 #### Cursor
 
-Cursor installs adapters as plugins. This repository includes a Cursor
-marketplace manifest, so it can be added from the repository URL and installed
-from **Customize → Plugins**.
+1. Open **Customize** in Cursor and choose **From GitHub Repository**.
+2. Enter `https://github.com/vimhead/norn` to import the marketplace.
+3. Install the **norn** plugin, choosing user or project scope.
+4. Start a new agent conversation.
 
 By default the adapter runs `norn` from `PATH`. To select a CLI executable
 outside `PATH`, start Cursor with an executable path:
