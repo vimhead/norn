@@ -2,3 +2,4 @@ node_modules/
 *.tgz
 dist/
 src/bun/documentation-assets.generated.ts
+src/bun/pi-assets.generated.ts

@@ -9,6 +9,7 @@ import { test } from "vitest";
 import type { NornRunInfo } from "../src/api.ts";
 import { readProcessStdout } from "./helpers/process.ts";
 import { collectDocumentationBundle, generateDocumentationAssets } from "../scripts/generate-documentation-assets.ts";
+import { generatePiAssets } from "../scripts/generate-pi-assets.ts";
 
 const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -29,14 +30,20 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const version = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")).version;
 	const commit = "b".repeat(40);
 	await writeFile(join(buildRoot, "src/generated-build-info.ts"), `export const NORN_GENERATED_BUILD_INFO = ${JSON.stringify({ kind: "github-release-binary", version, commit, repository: "vimhead/norn", releaseTag: "tip", assetName: "norn-test", checksumAssetName: "norn-test.sha256" })} as const;\n`);
+	await generatePiAssets({ packageRoot: buildRoot, outputPath: join(buildRoot, "src/bun/pi-assets.generated.ts") });
 	await generateDocumentationAssets({ packageRoot: buildRoot, outputPath: join(buildRoot, "src/bun/documentation-assets.generated.ts") });
 	const expectedBundle = await collectDocumentationBundle({ packageRoot: buildRoot });
 	const binary = join(detachedRoot, process.platform === "win32" ? "norn.exe" : "norn");
 	await execute(bun, ["build", "--compile", join(buildRoot, "src/bun/cli.ts"), "--outfile", binary], { cwd: buildRoot, timeout: 120_000, maxBuffer: 1024 * 1024 });
 	await rm(buildRoot, { recursive: true, force: true });
 	const cacheRoot = join(root, "cache");
-	const environment = { ...process.env, HOME: join(root, "home"), NORN_DOCS_CACHE_DIR: cacheRoot, PATH: "", NODE_PATH: "" };
-	const invoke = async (args: readonly string[], cwd = detachedRoot) => JSON.parse((await execute(binary, args, { cwd, env: environment, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 })).stdout);
+	const agentDir = join(root, "agent");
+	const environment = { SystemRoot: process.env.SystemRoot, HOME: join(root, "home"), PI_CODING_AGENT_DIR: agentDir, PI_PACKAGE_DIR: "/unrelated-pi", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", NORN_PI_CACHE_DIR: join(root, "pi-assets"), NORN_DOCS_CACHE_DIR: cacheRoot, PATH: "", NODE_PATH: "" };
+	const invoke = async (args: readonly string[], cwd = detachedRoot) => {
+		const execution = execute(binary, args, { cwd, env: environment, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
+		execution.child.stdin?.end();
+		return JSON.parse((await execution).stdout);
+	};
 	assert.equal((await invoke(["version"])).build.commit, commit);
 	assert.equal((await invoke(["commands", "inspect", "docs.inspect"])).command.id, "docs.inspect");
 	assert.equal((await invoke(["commands", "inspect", "docs.intro"])).command.id, "docs.intro");
@@ -83,4 +90,39 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	});
 	await rm(documentation.paths.root, { recursive: true, force: true });
 	assert.equal((await invoke(["docs", "inspect"])).documentation.paths.root, documentation.paths.root);
+
+	const invokePi = (args: string[]) => {
+		const execution = execute(binary, ["pi", ...args], { cwd: detachedRoot, env: environment, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
+		execution.child.stdin?.end();
+		return execution;
+	};
+	const piManifest = JSON.parse(await readFile(join(packageRoot, "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
+	assert.equal((await invokePi(["--version"])).stdout.trim(), piManifest.version);
+	assert.match((await invokePi(["--help"])).stdout, /pi - AI coding assistant/);
+	const providerPath = join(root, "installed provider");
+	await cp(join(packageRoot, "tests/fixtures/pi-provider"), providerPath, { recursive: true });
+	await invokePi(["install", providerPath]);
+	const settingsPath = join(agentDir, "settings.json");
+	const settings = JSON.parse(await readFile(settingsPath, "utf8"));
+	assert.equal(await realpath(join(agentDir, settings.packages[0])), await realpath(providerPath));
+	await writeFile(settingsPath, JSON.stringify({ ...settings, defaultProvider: "norn-offline", defaultModel: "fixture", retry: { enabled: false }, compaction: { enabled: false } }));
+	await writeFile(join(agentDir, "auth.json"), JSON.stringify({ "norn-offline": { type: "api_key", key: "offline-test-key" } }), { mode: 0o600 });
+	assert.match((await invokePi(["--list-models", "norn-offline"])).stdout, /fixture/);
+	const response = JSON.parse((await invokePi(["--no-session", "-p", "literal --help && echo untouched"])).stdout);
+	assert.equal(response.prompt, "literal --help && echo untouched");
+	assert.ok((await readFile(join(response.docs, "custom-provider.md"), "utf8")).includes("pi.registerProvider"));
+	assert.equal(JSON.parse(await readFile(join(response.packageRoot, "package.json"), "utf8")).version, piManifest.version);
+	await access(join(response.packageRoot, "theme/dark.json"));
+	await access(join(response.packageRoot, "export-html/template.html"));
+	const workerProject = join(root, "worker-project");
+	await cp(join(packageRoot, "tests/fixtures/pi-worker-project"), workerProject, { recursive: true });
+	const { run: workerRun } = await invoke(["runs", "start", "provider.check"], workerProject);
+	const completedWorker = (await invoke(["runs", "wait", workerRun.id], workerProject)).run;
+	assert.equal(completedWorker.status, "completed", JSON.stringify(completedWorker));
+	assert.deepEqual(JSON.parse(await readFile(join(completedWorker.path, "current/artifacts/result.json"), "utf8")), { ok: true });
+	await writeFile(join(response.packageRoot, "theme/dark.json"), "modified");
+	await assert.rejects(invokePi(["--version"]), error => {
+		assert.match((error as { stderr: string }).stderr, /Bundled Pi assets are incomplete or modified/);
+		return true;
+	});
 });

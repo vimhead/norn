@@ -1,7 +1,7 @@
 import {
-	DefaultResourceLoader,
 	SessionManager,
-	createAgentSession,
+	createAgentSessionServices,
+	createAgentSessionFromServices,
 	createEventBus,
 	getAgentDir,
 	type AgentSession,
@@ -65,14 +65,21 @@ export class NornAgentRunner {
 
 		const eventBus = createEventBus();
 		const agentDir = this.input.agentDir ?? getAgentDir();
-		const loader = new DefaultResourceLoader({
+		const services = await createAgentSessionServices({
 			cwd,
 			agentDir,
-			eventBus,
-			systemPromptOverride: systemPromptOverride(agentInput),
-			appendSystemPromptOverride: appendSystemPromptOverride(agentInput),
+			resourceLoaderOptions: {
+				eventBus,
+				systemPromptOverride: systemPromptOverride(agentInput),
+				appendSystemPromptOverride: appendSystemPromptOverride(agentInput),
+			},
 		});
-		await loader.reload();
+		const loader = services.resourceLoader;
+		const errors = [
+			...services.diagnostics.filter(diagnostic => diagnostic.type === "error").map(diagnostic => diagnostic.message),
+			...loader.getExtensions().errors.map(error => `Failed to load extension ${error.path}: ${error.error}`),
+		];
+		if (errors.length > 0) throw new Error(errors.join("\n"));
 		const resources = new NornSessionResourceBindings();
 		let session: AgentSession | undefined;
 		try {
@@ -81,9 +88,8 @@ export class NornAgentRunner {
 				reservedTools: ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell", AGENT_RESPONSE_TOOL_NAME,
 					...loader.getExtensions().extensions.flatMap((extension) => [...extension.tools.keys()])],
 			});
-			({ session } = await createAgentSession({
-				cwd,
-				resourceLoader: loader,
+			({ session } = await createAgentSessionFromServices({
+				services,
 				sessionManager: SessionManager.create(cwd, sessionDir),
 				tools: [...withAgentResponseTool(agentInput.tools), ...resources.tools.map((tool) => tool.name)],
 				customTools: [this.responseToolFactory.create(), ...resources.tools],

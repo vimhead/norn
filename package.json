@@ -64,7 +64,8 @@
   },
   "scripts": {
     "documentation:generate": "node scripts/generate-documentation-assets.ts",
-    "check": "npm run documentation:generate && tsc --noEmit",
+    "pi:assets": "node scripts/generate-pi-assets.ts",
+    "check": "npm run pi:assets && npm run documentation:generate && tsc --noEmit",
     "test": "vitest run",
     "build:cli": "npm run check",
     "release:dry": "npm run build:cli && npm pack --dry-run",

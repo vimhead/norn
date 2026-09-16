@@ -30,7 +30,7 @@ async function collectDocumentationFiles(input: { readonly packageRoot: string; 
 		}
 		return;
 	}
-	if (path === GENERATED_ASSET_PATH) return;
+	if (path === GENERATED_ASSET_PATH || path === "src/bun/pi-assets.generated.ts") return;
 	if (!stat.isFile() || (!TEXT_EXTENSIONS.has(extname(path)) && !path.endsWith("/.gitignore"))) return;
 	files.push({ path, content: await readFile(absolutePath, "utf8") });
 }

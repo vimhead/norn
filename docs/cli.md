@@ -104,7 +104,11 @@ norn help runs start
 
 Default workflow listing shows entrypoints; `--all` includes internal steps. Workflow inspection returns instructions, params JSON Schema, isolation, gate metadata and plugin source locations. [Loading diagnostics](projects.md#diagnose-registration) are part of the discovery envelope.
 
-Help is text; ordinary results are JSON. `runs logs` emits JSONL events. Commands and schemas from the invoked executable are authoritative when a checkout and installation differ.
+Help is text; ordinary results are JSON. `runs logs` emits JSONL events.
+`norn pi [arguments...]` is a passthrough to bundled Pi, preserving Pi's native
+output and exit status rather than wrapping them in Norn JSON. Use `norn pi --help`
+for Pi's options and [providers and authentication](providers.md) for setup.
+Commands and schemas from the invoked executable are authoritative when a checkout and installation differ.
 
 ## Start, wait, inspect
 

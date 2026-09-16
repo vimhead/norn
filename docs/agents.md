@@ -32,7 +32,7 @@ try {
 }
 ```
 
-`task` and both Zod schemas are capability-specific inputs in this fragment. `model` and `thinkingLevel` can be selected per session; when omitted, selection falls through to the engine/Pi configuration. Configure Pi authentication and an available default model before CLI execution: detached workers cannot conduct an interactive login.
+`task` and both Zod schemas are capability-specific inputs in this fragment. `model` and `thinkingLevel` can be selected per session; when omitted, selection falls through to the engine/Pi configuration. [Configure providers and authentication](providers.md) through `norn pi` before CLI execution; detached workers cannot conduct an interactive login.
 
 ## Response contract and evidence
 

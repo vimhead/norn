@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { main as runPi } from "@earendil-works/pi-coding-agent";
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -22,6 +23,16 @@ const RUN_WAIT_INTERVAL_MS = 1000;
 const CLI_DESCRIPTION = "Norn runs typed, resumable workflows for coding agents. Use this JSON-native CLI to discover workflows, start or resume runs, inspect evidence, and manage the installed binary.";
 
 const COMMANDS: readonly CliCommand[] = [
+	{
+		id: "pi",
+		path: ["pi"],
+		description: "Run Norn's bundled Pi CLI for interactive authentication, provider packages, model configuration, or direct Pi use. No Norn project is required.",
+		usage: "norn pi [pi arguments...]",
+		arguments: ["pi arguments: forwarded unchanged; use norn pi --help for Pi's CLI contract"],
+		output: "Pi's native terminal, text, JSON, or RPC output and exit status; not wrapped in Norn JSON.",
+		examples: ["norn pi", "norn pi install npm:pi-cursor-sdk", "norn pi --list-models cursor", "norn pi --help"],
+		execute: args => runPi([...args]),
+	},
 	{
 		id: "commands.list",
 		path: ["commands", "list"],
@@ -373,6 +384,7 @@ const HELP_COMMAND_ORDER = [
 	"project.init",
 	"project.inspect",
 	"seer.inspect",
+	"pi",
 	"upgrade",
 	"version",
 	"help",
@@ -400,12 +412,17 @@ const HUMAN_COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
 	"project.init": "Create a Norn project in the current directory.",
 	"project.inspect": "Inspect the Norn project.",
 	"seer.inspect": "Inspect resolved Seer mode.",
+	pi: "Run bundled Pi for authentication, providers, and model setup.",
 	upgrade: "Upgrade the installed Norn CLI.",
 	version: "Print version/build info.",
 	help: "Show concise command help.",
 };
 
 export async function main(args: readonly string[], documentationSource: NornDocumentationSource): Promise<void> {
+	if (args[0] === "pi") {
+		await runPi([...args.slice(1)]);
+		return;
+	}
 	try {
 		await runCommand(args, documentationSource);
 	} catch (error) {
