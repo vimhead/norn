@@ -1,0 +1,16 @@
+{
+  "name": "norn-adapters",
+  "owner": {
+    "name": "Norn"
+  },
+  "metadata": {
+    "description": "Norn adapter plugins"
+  },
+  "plugins": [
+    {
+      "name": "norn",
+      "source": "adapters/cursor",
+      "description": "Adds runtime-selected Norn documentation context to Cursor agent sessions."
+    }
+  ]
+}

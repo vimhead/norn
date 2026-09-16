@@ -1,0 +1,11 @@
+{
+  "name": "norn",
+  "description": "Adds runtime-selected Norn documentation context to Cursor agent sessions.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Norn"
+  },
+  "homepage": "https://github.com/vimhead/norn",
+  "repository": "https://github.com/vimhead/norn",
+  "license": "MIT"
+}

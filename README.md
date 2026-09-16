@@ -68,6 +68,19 @@ To select a CLI executable outside `PATH`:
 pi --norn-executable /absolute/path/to/norn
 ```
 
+#### Cursor
+
+Cursor installs adapters as plugins. This repository includes a Cursor
+marketplace manifest, so it can be added from the repository URL and installed
+from **Customize → Plugins**.
+
+By default the adapter runs `norn` from `PATH`. To select a CLI executable
+outside `PATH`, start Cursor with an executable path:
+
+```bash
+NORN_EXECUTABLE=/absolute/path/to/norn cursor .
+```
+
 Need an adapter for another harness? [Open an issue](https://github.com/vimhead/norn/issues/new)
 with the harness name.
 

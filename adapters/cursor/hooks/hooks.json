@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "node ./hooks/norn-session-start.mjs",
+        "timeout": 10
+      }
+    ]
+  }
+}

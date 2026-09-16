@@ -23,6 +23,7 @@
   },
   "files": [
     "README.md",
+    ".cursor-plugin",
     "docs",
     "adapters",
     "bin",
