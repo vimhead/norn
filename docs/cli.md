@@ -113,7 +113,7 @@ Default workflow listing shows entrypoints; `--all` includes internal steps. Wor
 Help is text; ordinary results are JSON. `runs logs` emits JSONL events.
 `norn pi [arguments...]` is a passthrough to bundled Pi, preserving Pi's native
 output and exit status rather than wrapping them in Norn JSON. Use `norn pi --help`
-for Pi's options and [provider setup](../setup/providers.md) for operator instructions.
+for Pi's options and [provider setup](providers.md) for operator instructions.
 Commands and schemas from the invoked executable are authoritative when a checkout and installation differ.
 
 ## Start, wait, inspect

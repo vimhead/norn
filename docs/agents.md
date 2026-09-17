@@ -34,7 +34,7 @@ try {
 }
 ```
 
-`task` and both Zod schemas are capability-specific inputs in this fragment. [Provider setup](../setup/providers.md) is a prerequisite for Norn agents; detached execution cannot conduct an interactive login.
+`task` and both Zod schemas are capability-specific inputs in this fragment. [Provider setup](providers.md) is a prerequisite for Norn agents; detached execution cannot conduct an interactive login.
 
 ## Response contract and evidence
 

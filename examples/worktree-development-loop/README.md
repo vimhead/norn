@@ -55,7 +55,7 @@ Best practices shown:
 - the workspace may contain a nested `.git/` because Norn snapshots with CAS.
 
 This example uses Norn agents and requires
-[configured authentication and a default model](../../setup/providers.md).
+[configured authentication and a default model](../../docs/providers.md).
 Set `config.worktreeDevelopmentLoop.repositoryRoot` in `norn.project.json`
 to the repository you want the workflow to clone.
 

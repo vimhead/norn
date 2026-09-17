@@ -3,7 +3,7 @@ import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateDocumentationBundle, hashDocumentationBundle, type NornDocumentationBundle, type NornDocumentationFile } from "../packages/cli/src/internal/documentation-bundle.ts";
 
-const ASSET_ROOTS = ["README.md", "docs", "setup", "examples", "packages/sdk/src", "packages/cli/src", "packages/core/src", "tests/workflow-ref.test.ts"];
+const ASSET_ROOTS = ["README.md", "docs", "examples", "packages/sdk/src", "packages/cli/src", "packages/core/src", "tests/workflow-ref.test.ts"];
 const EXCLUDED_DIRECTORIES = new Set([".git", ".norn", "node_modules", "dist"]);
 const TEXT_EXTENSIONS = new Set([".md", ".ts", ".mjs", ".json"]);
 const GENERATED_ASSET_PATH = "packages/cli/src/bun/documentation-assets.generated.ts";

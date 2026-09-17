@@ -22,7 +22,7 @@ The complete plugin owns prompting and disposal. Resource initialization and age
 
 ## Run
 
-[Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this entire directory into a writable task directory, and enter it. Norn agents require [configured providers/authentication](../../setup/providers.md). The supplied four-note input normally uses two rounds: four agent prompts, up to two concurrently. Model/thinking settings come from the configured runtime and are not overridden.
+[Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this entire directory into a writable task directory, and enter it. Norn agents require [configured providers/authentication](../../docs/providers.md). The supplied four-note input normally uses two rounds: four agent prompts, up to two concurrently. Model/thinking settings come from the configured runtime and are not overridden.
 
 ```bash
 norn workflows inspect coordinatingAgents.start

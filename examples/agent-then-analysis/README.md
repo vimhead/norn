@@ -17,7 +17,7 @@ small application, not a prescribed development pipeline.
 
 [Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this
 directory to a writable task directory, and `cd` into the copy. Configure
-[Norn agent authentication and a default model](../../setup/providers.md)
+[Norn agent authentication and a default model](../../docs/providers.md)
 beforehand; this example makes live model calls and the detached executor cannot
 prompt for login.
 

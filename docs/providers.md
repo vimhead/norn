@@ -59,7 +59,7 @@ norn pi
 
 This installs into Norn's global configuration. Select the new provider using
 `/model`. Agent resource discovery and model precedence are covered in
-[Norn agents](../docs/agents.md#prompts-tools-and-resource-loading).
+[Norn agents](agents.md#prompts-tools-and-resource-loading).
 Use `norn pi list` to inspect installations and `norn pi remove <source>` to remove
 one. Upgrade bundled Pi by upgrading Norn, not by using Pi's self-update command.
 `norn pi update --extensions` updates unpinned extension packages.

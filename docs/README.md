@@ -8,6 +8,7 @@ Norn capabilities are ordinary TypeScript plugins: an agent can write one during
 |---|---|---|
 | Build, register, or diagnose workflows with the Norn SDK | [Projects and loading](projects.md), [Workflow authoring](workflows.md) | [Create → run → change](../examples/minimal-workflow/README.md) |
 | Discover contracts or invoke Norn from another harness | [CLI and client](cli.md) | [Create → run → change](../examples/minimal-workflow/README.md) |
+| Configure providers, models, and authentication for Norn agents | [Providers and authentication](providers.md) | — |
 | Delegate work with explicit inputs and structured results | [Norn agents](agents.md) | [Norn agent → saved artifact → analysis](../examples/agent-then-analysis/README.md) |
 | Initialize shared resources, attach state tools, or coordinate file mutations | [Resources and locking](resources.md) | [Explicit shared state](../examples/shared-state/README.md) |
 | Implement a custom resource and adapter to coordinate concurrent agents | [Resource contracts](resources.md) | [Example-local work queue](../examples/coordinating-multiple-agents/README.md) |

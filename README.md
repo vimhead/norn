@@ -63,7 +63,7 @@ Inside the interactive session:
 
 Model-free workflows need no provider authentication. For other credential
 methods, custom providers, and Norn's configuration directory, see
-[providers and authentication](setup/providers.md).
+[providers and authentication](docs/providers.md).
 
 ### 3. Optionally connect your harness
 
@@ -153,5 +153,4 @@ published dependency. No separate core build is needed.
 
 Checks cover package builds, TypeScript (including examples, adapters, scripts,
 and tests), runtime regressions, isolated npm installations, and standalone binaries.
-`pack:dry` creates local tarballs without publishing. See
-[release setup](setup/releases.md) for bootstrap and trusted publishing.
+`pack:dry` creates local tarballs without publishing.

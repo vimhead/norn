@@ -1,6 +1,6 @@
 # Norn agent with explicitly attached state
 
-[Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this directory to a writable task directory, and enter it. This example makes one live model call and requires [Norn agent authentication and a default model](../../setup/providers.md).
+[Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this directory to a writable task directory, and enter it. This example makes one live model call and requires [Norn agent authentication and a default model](../../docs/providers.md).
 
 ```bash
 norn workflows inspect sharedState.copy
