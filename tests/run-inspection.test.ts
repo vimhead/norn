@@ -4,8 +4,8 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test, vi } from "vitest";
-import { NornRunStateStore, getRunInfo, RUN_STATE_FILE_NAME } from "../src/internal/run-state.ts";
-import { writeRunResumeRequest, RESUME_REQUEST_FILE_NAME } from "../src/internal/launch-request.ts";
+import { NornRunStateStore, getRunInfo, RUN_STATE_FILE_NAME } from "../packages/cli/src/internal/run-state.ts";
+import { writeRunResumeRequest, RESUME_REQUEST_FILE_NAME } from "../packages/cli/src/internal/launch-request.ts";
 
 const originalReadFile = fs.readFile;
 let readFileOverride: ((...args: Parameters<typeof fs.readFile>) => ReturnType<typeof fs.readFile>) | undefined;

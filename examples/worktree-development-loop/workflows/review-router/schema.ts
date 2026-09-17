@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { artifactRefSchema } from "norn";
+import { artifactRefSchema } from "@vimhead.dev/norn";
 import { reviewDecisionSchema } from "../review/schema.ts";
 
 export const reviewRouterParamsSchema = z.object({

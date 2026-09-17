@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { NornAgentResourceAdapter } from "norn";
+import type { NornAgentResourceAdapter } from "@vimhead.dev/norn";
 import { Type, type Static } from "typebox";
 import { z } from "zod";
 import { summarySchema, type Summary, type WorkQueue } from "./work-queue.ts";

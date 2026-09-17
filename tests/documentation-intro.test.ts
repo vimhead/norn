@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { test } from "vitest";
 import { readProcessStdout } from "./helpers/process.ts";
-import { renderNornDocumentationIntro, type NornDocumentationLocation } from "../src/documentation.ts";
+import { renderNornDocumentationIntro, type NornDocumentationLocation } from "../packages/cli/src/documentation.ts";
 const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const cli = join(packageRoot, "bin/norn.mjs");
+const cli = join(packageRoot, "packages/cli/bin/norn.mjs");
 const documentation: NornDocumentationLocation = {
 	storage: "installation", version: "0.1.0", commit: null, assetDigest: null,
 	paths: {

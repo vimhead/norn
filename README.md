@@ -15,7 +15,7 @@ and code-only workflows do not require a model.
 - [Documentation index](docs/README.md) — focused references by capability
 - [Create → run → change a workflow](examples/minimal-workflow/README.md) — code-driven, no model required
 - [Norn agent → saved artifact → analysis](examples/agent-then-analysis/README.md) — agent-driven, with a recoverable transition
-- [Norn SDK types](src/api.ts)
+- [Norn SDK types](packages/sdk/src/api.ts)
 
 ## Installation
 
@@ -24,27 +24,21 @@ optionally connect your harness with an adapter. Direct CLI use needs no adapter
 
 ### 1. Install the runtime
 
-Install Norn from the rolling `tip` release:
+Install the rolling npm `tip` release (Node `>=22.19.0`):
 
 ```bash
-curl -fsSL https://github.com/vimhead/norn/releases/download/tip/install.sh | sh
+npm install -g @vimhead.dev/norn-cli@tip
 norn version
 ```
 
-Use `NORN_INSTALL_DIR` for a different binary installation directory:
+Releases are prereleases, not stable `latest` releases. For a standalone binary
+without Node, use the matching GitHub `tip` release:
 
 ```bash
-curl -fsSL https://github.com/vimhead/norn/releases/download/tip/install.sh | NORN_INSTALL_DIR=/usr/local/bin sh
+curl -fsSL https://github.com/vimhead/norn/releases/download/tip/install.sh | sh
 ```
 
-Alternatively, install the npm package from GitHub, including local docs, examples,
-and source:
-
-```bash
-npm install github:vimhead/norn
-# or
-npm install -g github:vimhead/norn
-```
+Set `NORN_INSTALL_DIR` to select a different binary installation directory.
 
 [Runtime selection](docs/cli.md#select-the-runtime) covers source checkout invocation
 and keeping examples/docs matched to the executable. Upgrade discovery:
@@ -83,7 +77,7 @@ With Pi already installed and `norn` available on `PATH`, install the adapter
 and start a new session:
 
 ```bash
-pi install git:github.com/vimhead/norn
+pi install npm:@vimhead.dev/pi-norn@tip
 pi
 ```
 
@@ -117,6 +111,16 @@ reusable configuration, dependencies, source reload, and discovery diagnostics.
 
 ## Build workflows with the Norn SDK
 
+Install SDK types and helpers for TypeScript/editor support:
+
+```bash
+npm install -D @vimhead.dev/norn@tip
+```
+
+Use the SDK version reported by `norn version` for an exact runtime match. Runtime
+execution also supplies [virtual SDK imports](docs/projects.md#import-and-reload),
+so standalone examples need no local SDK installation.
+
 [Workflow authoring](docs/workflows.md) covers declarations, implementations,
 commands, and run outcomes. Focused companion references:
 
@@ -136,9 +140,18 @@ launch/wait semantics, results, and use from other harnesses.
 ## Development
 
 ```bash
-npm run check
-npm test
-npm run pack:dry
+pnpm install --frozen-lockfile
+pnpm check
+pnpm test
+pnpm pack:dry
 ```
 
-Checks cover TypeScript (including examples, adapters, scripts, and tests) and Vitest regressions.
+Use the pnpm version pinned in `package.json`. The private root coordinates three
+published workspaces: `packages/sdk`, `packages/cli`, and `packages/pi-norn`.
+`packages/core` is private source shared through consumer builds, not a fourth
+published dependency. No separate core build is needed.
+
+Checks cover package builds, TypeScript (including examples, adapters, scripts,
+and tests), runtime regressions, isolated npm installations, and standalone binaries.
+`pack:dry` creates local tarballs without publishing. See
+[release setup](setup/releases.md) for bootstrap and trusted publishing.

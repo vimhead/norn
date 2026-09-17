@@ -1,78 +1,35 @@
 {
-  "name": "norn",
-  "version": "0.1.0",
-  "description": "Harness-agnostic runtime for agent-driven and code-driven workflows, built primarily for agents.",
+  "name": "norn-workspace",
+  "version": "0.1.0-tip.0",
+  "private": true,
   "type": "module",
   "license": "MIT",
-  "keywords": [
-    "pi-package",
-    "coding-agent",
-    "workflows",
-    "api"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/vimhead/norn.git"
-  },
-  "homepage": "https://github.com/vimhead/norn#readme",
-  "bugs": {
-    "url": "https://github.com/vimhead/norn/issues"
-  },
-  "engines": {
-    "node": ">=22.19.0"
-  },
-  "files": [
-    "README.md",
-    ".cursor-plugin",
-    "docs",
-    "setup",
-    "adapters",
-    "bin",
-    "src",
-    "examples",
-    "tests/workflow-ref.test.ts"
-  ],
-  "pi": {
-    "extensions": ["./adapters/pi.ts"]
-  },
-  "exports": {
-    ".": "./src/index.ts",
-    "./api": "./src/api.ts",
-    "./client": "./src/client.ts",
-    "./documentation": "./src/documentation.ts",
-    "./schema": "./src/schema.ts",
-    "./seer": "./src/seer/index.ts",
-    "./examples/worktree-development-loop": "./examples/worktree-development-loop/plugin.ts"
-  },
-  "bin": {
-    "norn": "./bin/norn.mjs"
-  },
-  "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.85.1",
-    "jiti": "^2.7.0",
-    "typebox": "^1.3.17",
-    "zod": "^4.4.3"
-  },
-  "bundledDependencies": [
-    "@earendil-works/pi-coding-agent"
-  ],
-  "devDependencies": {
-    "@earendil-works/pi-ai": "0.85.1",
-    "@types/node": "^26.2.0",
-    "bun": "1.4.0",
-    "typescript": "^5.9.0",
-    "vitest": "^4.1.11"
-  },
+  "packageManager": "pnpm@10.33.0",
+  "engines": { "node": ">=22.19.0" },
   "scripts": {
+    "build": "pnpm --filter @vimhead.dev/norn build && pnpm pi:assets && pnpm documentation:generate && pnpm --filter @vimhead.dev/norn-cli build && pnpm --filter @vimhead.dev/pi-norn build",
     "documentation:generate": "node scripts/generate-documentation-assets.ts",
     "pi:assets": "node scripts/generate-pi-assets.ts",
-    "check": "npm run pi:assets && npm run documentation:generate && tsc --noEmit",
+    "check": "pnpm build && tsc --noEmit",
     "test": "vitest run",
-    "build:cli": "npm run check",
-    "release:dry": "npm run build:cli && npm pack --dry-run",
-    "release:pack": "npm run build:cli && npm pack",
-    "pack:dry": "npm run release:dry",
-    "build:binary": "npm run check && bun build --compile ./src/bun/cli.ts --outfile dist/norn",
-    "release:binary": "npm run build:binary"
+    "pack:dry": "pnpm check && node scripts/pack-packages.ts",
+    "release:pack": "pnpm check && node scripts/pack-packages.ts",
+    "release:prepare": "node scripts/prepare-release.ts",
+    "release:publish": "node scripts/publish-packages.ts",
+    "build:binary": "pnpm check && bun build --compile ./packages/cli/src/bun/cli.ts --outfile dist/norn"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.85.1",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@types/node": "^26.2.0",
+    "@vimhead.dev/norn": "workspace:*",
+    "@vimhead.dev/norn-core": "workspace:*",
+    "bun": "1.4.0",
+    "esbuild": "^0.28.1",
+    "jiti": "^2.7.0",
+    "typebox": "^1.3.17",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.11",
+    "zod": "^4.4.3"
   }
 }

@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "vitest";
-import type { NornRunCheckpoint, NornRunInfo } from "../src/api.ts";
+import type { NornRunCheckpoint, NornRunInfo } from "@vimhead.dev/norn";
 
-const cliPath = fileURLToPath(new URL("../bin/norn.mjs", import.meta.url));
+const cliPath = fileURLToPath(new URL("../packages/cli/bin/norn.mjs", import.meta.url));
 
 async function cli<Output>({ cwd, args, input }: { cwd: string; args: readonly string[]; input?: unknown }): Promise<Output> {
 	const child = spawn(process.execPath, [cliPath, ...args], { cwd, stdio: "pipe" });
@@ -26,7 +26,7 @@ test("detached CLI resumes wait for the new execution, including slow plugin loa
 	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	await writeFile(join(cwd, "norn.project.json"), '{"version":1,"plugins":["./plugin.ts"]}');
 	await writeFile(join(cwd, "plugin.ts"), `
-import { definePlugin, definePluginManifest } from "norn";
+import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
 import { z } from "zod";
 if (process.argv.includes("execute-run")) await new Promise(resolve => setTimeout(resolve, 1800));
 const manifest = definePluginManifest({ id: "cli", workflows: {

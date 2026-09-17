@@ -1,6 +1,6 @@
 # Workflow authoring with the Norn SDK
 
-The Norn SDK is the TypeScript interface for building reusable workflows. A workflow can execute code and commands, delegate work to [Norn agents](agents.md), or combine both. Norn is the runtime that runs those workflows; the [CLI and client](cli.md) expose its lifecycle. The npm package currently supplies both runtime and SDK, with authoring imports from `norn`, `norn/api`, and related exports. No separate SDK package is required.
+The Norn SDK is the TypeScript interface for building reusable workflows. A workflow can execute code and commands, delegate work to [Norn agents](agents.md), or combine both. Norn is the runtime that runs those workflows; the [CLI and client](cli.md) expose its lifecycle. Import authoring APIs from `@vimhead.dev/norn`; `@vimhead.dev/norn-cli` supplies the runtime. [Installation](../README.md#build-workflows-with-the-norn-sdk) covers SDK types and version matching.
 
 Start with the complete [minimal plugin](../examples/minimal-workflow/plugin.ts) and its [write/run/change exercise](../examples/minimal-workflow/README.md). Split files only as the implementation requires; a manifest, state module, and directory per step are not prerequisites.
 
@@ -54,4 +54,4 @@ This fragment requires a working tree with dependencies at `run.cwd`; Norn's def
 
 The scheduler executes one workflow at a time (at most 1,000 steps). Ordinary TypeScript concurrency is available inside a step; shared-file writes and effect ordering still need explicit coordination. For agent orchestration, [Norn agent sessions](agents.md) expose agent lifecycle within the run rather than an independently managed coordinator.
 
-Sources: [Norn SDK public types and API](../src/api.ts), [execution registry](../src/internal/workflow-registry.ts), [commands](../src/internal/commands.ts), [scheduler](../src/internal/engine.ts).
+Sources: [Norn SDK public types and API](../packages/sdk/src/api.ts), [execution registry](../packages/cli/src/internal/workflow-registry.ts), [commands](../packages/cli/src/internal/commands.ts), [scheduler](../packages/cli/src/internal/engine.ts).

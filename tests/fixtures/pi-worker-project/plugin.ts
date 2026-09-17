@@ -1,4 +1,4 @@
-import { definePlugin, definePluginManifest } from "norn";
+import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
 import { z } from "zod";
 
 const manifest = definePluginManifest({

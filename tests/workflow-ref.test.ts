@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { expect, test } from "vitest";
 import { z } from "zod";
 
-import { artifactRefSchema, definePluginManifest, workflowRefSchema } from "../src/api.ts";
+import { artifactRefSchema, definePluginManifest, workflowRefSchema } from "@vimhead.dev/norn";
 
 const target = definePluginManifest({
 	id: "refs", workflows: { finish: { isEntrypoint: false, params: z.object({ report: z.string() }) } },

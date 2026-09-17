@@ -53,4 +53,4 @@ store/             snapshot manifests and content-addressed objects
 
 Snapshots cover `current/`, preserve symlinks as links rather than copying targets, and do not include project-root source. [Recovery](recovery.md) defines when snapshots are taken and how to select a retry boundary.
 
-Sources: [state store](../src/internal/state-store.ts), [artifacts](../src/internal/artifacts.ts), [run paths](../src/internal/run.ts), [snapshot store](../src/internal/run-store.ts).
+Sources: [state store](../packages/cli/src/internal/state-store.ts), [artifacts](../packages/cli/src/internal/artifacts.ts), [run paths](../packages/cli/src/internal/run.ts), [snapshot store](../packages/cli/src/internal/run-store.ts).

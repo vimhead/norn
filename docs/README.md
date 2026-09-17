@@ -15,9 +15,9 @@ Norn capabilities are ordinary TypeScript plugins: an agent can write one during
 | Reuse a workflow with a caller-selected continuation | [Composition](composition.md) | [Worktree development loop](../examples/worktree-development-loop/README.md) — larger, optional |
 | Repair a failed run without repeating earlier work | [Recovery and gates](recovery.md) | [Analysis-only repair](../examples/agent-then-analysis/README.md#repair-only-the-analysis-step) |
 
-[Public types](../src/api.ts) define the Norn SDK's authoring interface. CLI discovery exposes the currently loaded project, not a documentation-time workflow catalogue. See [installation](../README.md#installation) for runtime setup.
+[Public types](../packages/sdk/src/api.ts) define the Norn SDK's authoring interface. CLI discovery exposes the currently loaded project, not a documentation-time workflow catalogue. See [installation](../README.md#installation) for runtime setup.
 
 | Decision | GOOD | BAD |
 |---|---|---|
 | IF a task needs persisted workflow control, independently prompted Norn agents, or a callable capability, THEN use the relevant pages and author only the missing capability. ELSE solve it directly. | A retryable delivery step consuming saved assessments. | Wrapping a literal text replacement in a workflow solely because Norn is installed. |
-| IF the executable differs from the installation containing these docs, THEN locate matching docs or invoke this installation explicitly using [CLI setup](cli.md#select-the-runtime). ELSE use its local examples and types. | A source checkout paired with its own `bin/norn.mjs`. | Reading a new checkout while invoking an older `PATH` binary. |
+| IF the executable differs from the installation containing these docs, THEN locate matching docs or invoke this installation explicitly using [CLI setup](cli.md#select-the-runtime). ELSE use its local examples and types. | A source checkout paired with its own `packages/cli/bin/norn.mjs`. | Reading a new checkout while invoking an older `PATH` binary. |

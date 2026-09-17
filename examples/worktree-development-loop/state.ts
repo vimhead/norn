@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { artifactRefSchema, type NornWorkflowPluginStateTree } from "norn";
+import { artifactRefSchema, type NornWorkflowPluginStateTree } from "@vimhead.dev/norn";
 import { reviewDecisionSchema } from "./workflows/review/schema.ts";
 
 export const developmentLoopState = {

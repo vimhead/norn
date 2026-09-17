@@ -1,4 +1,4 @@
-import type { NornRun } from "norn";
+import type { NornRun } from "@vimhead.dev/norn";
 import { ensureCommandSucceeded } from "../../shared/commands.ts";
 
 const WORKSPACE_REPOSITORY_PATH = "repo";

@@ -41,13 +41,13 @@ Projects using Seer can additionally declare writable project-relative roots:
 ```
 
 This is a project-file field, not an OS sandbox. The current helper contract is in
-[Seer exports](../src/seer/index.ts) and [config resolution](../src/seer/config.ts).
+[Seer exports](../packages/sdk/src/seer/index.ts) and [config resolution](../packages/sdk/src/seer/config.ts).
 
 ## Import and reload
 
-Each registered module default-exports `definePlugin(manifest, implementation)`. Norn loads TypeScript through jiti without a local build, supplying runtime imports for `norn`, `norn/api`, `norn/schema`, `norn/seer`, `zod`, and `typebox`. Other dependencies need normal package resolution from the plugin's location.
+Each registered module default-exports `definePlugin(manifest, implementation)`. Norn loads TypeScript through jiti without a local build, supplying runtime imports for `@vimhead.dev/norn`, its `/files`, `/schema`, and `/seer` subpaths, `zod`, and `typebox`. Other dependencies need normal package resolution from the plugin's location.
 
-Runtime virtual imports do not configure TypeScript or an editor. An npm-installed matching Norn package provides the SDK types; the source checkout's examples are checked by its `tsconfig.json`. A successful runtime import alone is not a type check.
+Runtime virtual imports do not configure TypeScript or an editor. A matching `@vimhead.dev/norn` installation provides the SDK types; the source checkout's examples are checked by its `tsconfig.json`. A successful runtime import alone is not a type check.
 
 New CLI discovery/start/resume invocations load current source; an already executing workflow retains its loaded implementation. Module evaluation and implementation factories run even during discovery. Factory context state is in-memory registration state, **not** durable run state; see [persistence](persistence.md).
 
@@ -72,4 +72,4 @@ Discovery can exit successfully with an incomplete catalogue. Start, resume, and
 |---|---|---|
 | IF `isComplete` is false, THEN repair or explicitly remove the reported invalid registration and inspect again. ELSE select from the loaded contracts. | Fix the named config field or missing default export. | Treat a listed valid sibling as permission to launch an invalid project. |
 
-Sources: [loader](../src/plugin-loader.ts), [registry](../src/internal/workflow-registry.ts). Next: [write a workflow](workflows.md), [reuse across projects](composition.md).
+Sources: [loader](../packages/cli/src/plugin-loader.ts), [registry](../packages/cli/src/internal/workflow-registry.ts). Next: [write a workflow](workflows.md), [reuse across projects](composition.md).

@@ -8,17 +8,17 @@ import { fileURLToPath } from "node:url";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { test, type TestContext } from "vitest";
 import { z } from "zod";
-import { NornMemoryWorkflowState } from "../src/internal/state-store.ts";
-import { NornFileCoordinator, createRunFileCoordinator } from "../src/files.ts";
-import { NornRunResources } from "../src/resources.ts";
-import { initializeRunResources } from "../src/internal/run-resources.ts";
-import { NornRunLogger } from "../src/internal/run-log.ts";
-import { NornRunStore } from "../src/internal/run-store.ts";
-import { NornRunStateStore } from "../src/internal/run-state.ts";
-import { StateAdapter } from "../src/state-adapter.ts";
-import { NornArtifacts } from "../src/internal/artifacts.ts";
-import { NornEngine } from "../src/internal/engine.ts";
-import { definePlugin, definePluginManifest, type NornWorkflowState } from "../src/api.ts";
+import { NornMemoryWorkflowState } from "../packages/cli/src/internal/state-store.ts";
+import { NornFileCoordinator, createRunFileCoordinator } from "@vimhead.dev/norn/files";
+import { NornRunResources } from "../packages/cli/src/resources.ts";
+import { initializeRunResources } from "../packages/cli/src/internal/run-resources.ts";
+import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
+import { NornRunStore } from "../packages/cli/src/internal/run-store.ts";
+import { NornRunStateStore } from "../packages/cli/src/internal/run-state.ts";
+import { StateAdapter } from "@vimhead.dev/norn";
+import { NornArtifacts } from "../packages/cli/src/internal/artifacts.ts";
+import { NornEngine } from "../packages/cli/src/internal/engine.ts";
+import { definePlugin, definePluginManifest, type NornWorkflowState, type NornResources } from "@vimhead.dev/norn";
 
 async function fixture(context: TestContext) {
 	const root = await mkdtemp(join(tmpdir(), "norn-resources-"));
@@ -266,7 +266,7 @@ test("native workflow contexts share one state resource and resume reopens its p
 			finish: { isEntrypoint: false, params: z.object({ decision: z.enum(["accept", "reject"]) }), gate: { enabled: true, fields: ["decision"] } },
 		},
 	});
-	let manager: NornRunResources | undefined;
+	let manager: NornResources | undefined;
 	let initialState: NornWorkflowState | undefined;
 	const plugin = definePlugin(manifest, { workflows: {
 		start: { async execute(run) {

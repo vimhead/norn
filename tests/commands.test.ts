@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { test, vi, type TestContext } from "vitest";
-import { createRunFileCoordinator } from "../src/files.ts";
-import { NornCommandRunner } from "../src/internal/commands.ts";
-import { NornRunLogs } from "../src/internal/logs.ts";
-import { NornRunLogger } from "../src/internal/run-log.ts";
-import { isNodeError } from "../src/internal/errors.ts";
+import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
+import { NornCommandRunner } from "../packages/cli/src/internal/commands.ts";
+import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
+import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
+import { isNodeError } from "@vimhead.dev/norn-core/errors";
 
 async function createFixture(context: TestContext, signal?: AbortSignal) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-command-test-"));

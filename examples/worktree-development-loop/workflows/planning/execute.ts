@@ -1,4 +1,4 @@
-import type { NornRunNext, NornRun } from "norn";
+import type { NornRunNext, NornRun } from "@vimhead.dev/norn";
 import { worktreeDevelopmentLoopManifest } from "../../manifest.ts";
 import { planningAgentResponseSchema, type PlanningParams } from "./schema.ts";
 

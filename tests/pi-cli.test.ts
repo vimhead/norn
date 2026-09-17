@@ -7,15 +7,15 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { test, vi, type TestContext } from "vitest";
 import { z } from "zod";
-import { NornAgentRunner } from "../src/internal/agents.ts";
-import { NornAgentResponseCollector } from "../src/internal/agent-response-tool.ts";
-import { NornRunLogs } from "../src/internal/logs.ts";
-import { NornRunLogger } from "../src/internal/run-log.ts";
-import { createRunFileCoordinator } from "../src/files.ts";
+import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
+import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-response-tool.ts";
+import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
+import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
+import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
 
 const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const cli = join(packageRoot, "bin/norn.mjs");
+const cli = join(packageRoot, "packages/cli/bin/norn.mjs");
 
 async function createFixture(context: TestContext, directoryMode: "default" | "override" = "default") {
 	const root = await mkdtemp(join(tmpdir(), "norn-pi-cli-"));

@@ -1,4 +1,4 @@
-import { artifactRefSchema, definePlugin, definePluginManifest } from "norn";
+import { artifactRefSchema, definePlugin, definePluginManifest } from "@vimhead.dev/norn";
 import { z } from "zod";
 
 const draftSchema = z.object({

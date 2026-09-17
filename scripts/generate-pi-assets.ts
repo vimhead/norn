@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { createJiti } from "jiti";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import type { PiAssetFile } from "../src/internal/pi-assets.ts";
+import type { PiAssetFile } from "../packages/cli/src/internal/pi-assets.ts";
 
 const ASSET_LOCATIONS = [
 	["package.json", "package.json"],
@@ -49,5 +49,5 @@ export async function generatePiAssets(input: { readonly packageRoot: string; re
 
 if (process.argv[1] && await realpath(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-	await generatePiAssets({ packageRoot, outputPath: join(packageRoot, "src/bun/pi-assets.generated.ts") });
+	await generatePiAssets({ packageRoot, outputPath: join(packageRoot, "packages/cli/src/bun/pi-assets.generated.ts") });
 }

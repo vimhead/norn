@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { NornRunResources } from "../../src/index.ts";
+import { NornRunResources } from "../../packages/cli/src/resources.ts";
 import { WorkQueue, workQueueDefinition } from "../../examples/coordinating-multiple-agents/work-queue.ts";
 
 const [root, mode, owner, leaseDuration] = process.argv.slice(2);

@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { test } from "vitest";
-import type { NornRunInfo } from "../src/api.ts";
+import type { NornRunInfo } from "@vimhead.dev/norn";
 import { readProcessStdout } from "./helpers/process.ts";
 import { collectDocumentationBundle, generateDocumentationAssets } from "../scripts/generate-documentation-assets.ts";
 import { generatePiAssets } from "../scripts/generate-pi-assets.ts";
@@ -22,19 +22,19 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const detachedRoot = join(root, "standalone copy");
 	await mkdir(buildRoot);
 	await mkdir(detachedRoot);
-	for (const path of ["src", "docs", "setup", "examples", "README.md", "package.json", "tests/workflow-ref.test.ts"]) {
+	for (const path of ["packages/cli/src", "packages/cli/package.json", "packages/sdk/src", "packages/core/src", "docs", "setup", "examples", "README.md", "package.json", "tests/workflow-ref.test.ts"]) {
 		await mkdir(dirname(join(buildRoot, path)), { recursive: true });
 		await cp(join(packageRoot, path), join(buildRoot, path), { recursive: true, filter: source => !source.endsWith("documentation-assets.generated.ts") });
 	}
 	await symlink(join(packageRoot, "node_modules"), join(buildRoot, "node_modules"), process.platform === "win32" ? "junction" : "dir");
 	const version = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")).version;
 	const commit = "b".repeat(40);
-	await writeFile(join(buildRoot, "src/generated-build-info.ts"), `export const NORN_GENERATED_BUILD_INFO = ${JSON.stringify({ kind: "github-release-binary", version, commit, repository: "vimhead/norn", releaseTag: "tip", assetName: "norn-test", checksumAssetName: "norn-test.sha256" })} as const;\n`);
-	await generatePiAssets({ packageRoot: buildRoot, outputPath: join(buildRoot, "src/bun/pi-assets.generated.ts") });
-	await generateDocumentationAssets({ packageRoot: buildRoot, outputPath: join(buildRoot, "src/bun/documentation-assets.generated.ts") });
+	await writeFile(join(buildRoot, "packages/cli/src/generated-build-info.ts"), `export const NORN_GENERATED_BUILD_INFO = ${JSON.stringify({ kind: "github-release-binary", version, commit, repository: "vimhead/norn", releaseTag: "tip", assetName: "norn-test", checksumAssetName: "norn-test.sha256" })} as const;\n`);
+	await generatePiAssets({ packageRoot: buildRoot, outputPath: join(buildRoot, "packages/cli/src/bun/pi-assets.generated.ts") });
+	await generateDocumentationAssets({ packageRoot: buildRoot, outputPath: join(buildRoot, "packages/cli/src/bun/documentation-assets.generated.ts"), assetRoot: join(buildRoot, "packages/cli/assets") });
 	const expectedBundle = await collectDocumentationBundle({ packageRoot: buildRoot });
 	const binary = join(detachedRoot, process.platform === "win32" ? "norn.exe" : "norn");
-	await execute(bun, ["build", "--compile", join(buildRoot, "src/bun/cli.ts"), "--outfile", binary], { cwd: buildRoot, timeout: 120_000, maxBuffer: 1024 * 1024 });
+	await execute(bun, ["build", "--compile", join(buildRoot, "packages/cli/src/bun/cli.ts"), "--outfile", binary], { cwd: buildRoot, timeout: 120_000, maxBuffer: 1024 * 1024 });
 	await rm(buildRoot, { recursive: true, force: true });
 	const cacheRoot = join(root, "cache");
 	const home = join(root, "home");

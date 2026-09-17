@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { test, type TestContext } from "vitest";
-import { NornRunStateStore, getRunInfo } from "../src/internal/run-state.ts";
-import { writeRunResumeRequest, readRunResumeRequest, clearRunResumeRequest, readOptionalRunResumeRequest, type NornRunResumeRequest } from "../src/internal/launch-request.ts";
-import { NornRunLease } from "../src/internal/run-lease.ts";
-const cliPath = fileURLToPath(new URL("../bin/norn.mjs", import.meta.url));
+import { NornRunStateStore, getRunInfo } from "../packages/cli/src/internal/run-state.ts";
+import { writeRunResumeRequest, readRunResumeRequest, clearRunResumeRequest, readOptionalRunResumeRequest, type NornRunResumeRequest } from "../packages/cli/src/internal/launch-request.ts";
+import { NornRunLease } from "../packages/cli/src/internal/run-lease.ts";
+const cliPath = fileURLToPath(new URL("../packages/cli/bin/norn.mjs", import.meta.url));
 
 async function createFixture(context: TestContext, status: "interrupted" | "pendingResume") {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-request-test-"));

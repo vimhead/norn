@@ -1,4 +1,4 @@
-import { definePlugin } from "norn";
+import { definePlugin } from "@vimhead.dev/norn";
 import { worktreeDevelopmentLoopManifest } from "./manifest.ts";
 import { executeDevelopmentLoopWorkflow } from "./workflows/development-loop/index.ts";
 import { executeImplementationWorkflow } from "./workflows/implementation/index.ts";

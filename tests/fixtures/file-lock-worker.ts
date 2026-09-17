@@ -2,9 +2,9 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
-import { createRunFileCoordinator } from "../../src/files.ts";
-import { initializeRunResources } from "../../src/internal/run-resources.ts";
-import { writeJsonAtomically } from "../../src/internal/json-file.ts";
+import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
+import { initializeRunResources } from "../../packages/cli/src/internal/run-resources.ts";
+import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
 
 const [root, mode, worker] = process.argv.slice(2);
 const files = createRunFileCoordinator(root);

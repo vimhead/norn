@@ -53,4 +53,4 @@ Its params schema must include those top-level fields. An optional implementatio
 
 Resume stdin has the form `{"params":{"decision":"accept","notes":"Evidence checked"}}`. With declared `fields`, the patch merges into saved object params and rejects non-gate keys; without `fields`, resume supplies replacement params. The merged/replacement value is schema-validated. A gate is a persisted control boundary, not an automatic human approval mechanism or an authorization system.
 
-Sources: [scheduler and resume](../src/internal/engine.ts), [saved state and param merging](../src/internal/run-state.ts), [snapshot restoration](../src/internal/run-store.ts), [CLI lifecycle](../src/cli.ts).
+Sources: [scheduler and resume](../packages/cli/src/internal/engine.ts), [saved state and param merging](../packages/cli/src/internal/run-state.ts), [snapshot restoration](../packages/cli/src/internal/run-store.ts), [CLI lifecycle](../packages/cli/src/cli.ts).

@@ -1,4 +1,4 @@
-import type { NornRunNext, NornRun } from "norn";
+import type { NornRunNext, NornRun } from "@vimhead.dev/norn";
 import { worktreeDevelopmentLoopManifest } from "../../manifest.ts";
 import { ensureCommandSucceeded } from "../../shared/commands.ts";
 import { reviewAgentResponseSchema, type ReviewParams } from "./schema.ts";

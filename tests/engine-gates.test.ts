@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 import { z } from "zod";
 
-import { definePlugin, definePluginManifest } from "../src/api.ts";
-import { NornEngine } from "../src/internal/engine.ts";
-import { writeRunResumeRequest, readOptionalRunResumeRequest, type NornRunResumeRequest } from "../src/internal/launch-request.ts";
+import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
+import { NornEngine } from "../packages/cli/src/internal/engine.ts";
+import { writeRunResumeRequest, readOptionalRunResumeRequest, type NornRunResumeRequest } from "../packages/cli/src/internal/launch-request.ts";
 
 async function createFixture(context: TestContext, gateMode: "pause" | "auto" | undefined, isEntrypoint: boolean) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-gate-test-"));

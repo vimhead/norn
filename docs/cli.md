@@ -10,17 +10,22 @@ norn version
 norn help
 ```
 
-For a source checkout, after installing its dependencies, a shell function keeps all examples bound to that checkout rather than another `PATH` installation:
+For a source checkout, run `pnpm install --frozen-lockfile` and `pnpm build` first. A shell function keeps all examples bound to that checkout rather than another `PATH` installation:
 
 ```bash
 NORN_ROOT=/absolute/path/to/norn
-norn() { node "$NORN_ROOT/bin/norn.mjs" "$@"; }
+norn() { node "$NORN_ROOT/packages/cli/bin/norn.mjs" "$@"; }
 norn version
 ```
 
 Use Node satisfying the package's engine requirement (currently `>=22.19.0`). `NORN_ROOT` here is an example shell variable, not a runtime configuration option. Use `norn docs inspect` to locate this installation's documentation and examples;
 [local documentation assets](#local-documentation-assets) covers binary extraction.
-Source builds may not carry release revision metadata.
+Source builds may not carry release revision metadata. Rebuild after changing source or documentation.
+
+Registry installations update through the package manager in their existing scope:
+`npm install -g @vimhead.dev/norn-cli@tip` for a global npm installation, or the
+corresponding local install command. `norn upgrade` does not guess that scope.
+Standalone binaries retain their checksum-verified `norn upgrade` command.
 
 Copied examples already contain a project file, so they skip initialization. npm
 omits `.gitignore` from the package; add `.norn/runs/` to the copy's `.gitignore`
@@ -36,8 +41,9 @@ This explicit command works outside a Norn project and does not use the network.
 Its `documentation` result contains `storage`, `version`, `commit`, `assetDigest`,
 and absolute `paths` (`root`, `readme`, `index`, `docs`, `examples`).
 
-npm/source installations resolve files directly from their installation, not the
-current directory or another executable on PATH. Compiled binaries embed the docs,
+npm/source installations resolve their built `assets/` tree directly from the CLI
+package, not the current directory or another executable on PATH. A version mismatch
+fails rather than advertising another build's documentation. Compiled binaries embed the docs,
 examples, and source references, preserving relative links. The first
 inspection publishes a complete extracted tree into a build/content-specific
 cache; later calls verify and reuse it without rewriting files. Different asset
@@ -64,7 +70,7 @@ installation.
 | IF an example will be edited or run, THEN copy it into the task workspace first. ELSE read the cached asset in place. | Copy `paths.examples/minimal-workflow` before starting a run. | Modify the verified cache or put `.norn/` state inside it. |
 | IF inspection reports a modified/incomplete cache, THEN preserve any wanted edits elsewhere, remove only the named cache entry, and retry. ELSE reuse the returned paths. | Remove the reported `v1-...` directory after preserving work. | Delete every build's cache or accept modified docs as matching the binary. |
 
-The same resolver is available from [`norn/documentation`](../src/documentation.ts),
+The same resolver is available from [`@vimhead.dev/norn-cli/documentation`](../packages/cli/src/documentation.ts),
 with explicit source, build metadata, and cache-root inputs.
 
 ## Documentation introduction
@@ -86,7 +92,7 @@ compiled invocations contain the binary path. Spaces and quotes remain part of
 each argument, without relying on another `norn` installation on PATH.
 
 `renderNornDocumentationIntro({ documentation, invocation })`, also exported from
-[`norn/documentation`](../src/documentation.ts), renders the same text from explicit
+[`@vimhead.dev/norn-cli/documentation`](../packages/cli/src/documentation.ts), renders the same text from explicit
 inputs without filesystem or process access. Generating the introduction does not
 inject it into prompts or alter Norn agent sessions.
 
@@ -153,10 +159,10 @@ compatibility with a host's plugin format or UI extension APIs. The caller does
 not need Pi installed: [Norn agents](agents.md) use Norn's bundled Pi runtime.
 
 The JavaScript client invokes the runtime; the [Norn SDK](workflows.md) defines
-workflows. For example, start and inspect a run through `norn/client`:
+workflows. For example, start and inspect a run through `@vimhead.dev/norn-cli/client`:
 
 ```ts
-import { createNornClient } from "norn/client";
+import { createNornClient } from "@vimhead.dev/norn-cli/client";
 
 const client = createNornClient({ spawnCwd: "/absolute/path/to/project" });
 const started = await client.runs.start({
@@ -174,4 +180,4 @@ The client defaults to its own package's `bin/norn.mjs`. Its optional `executabl
 
 `workflows.list()` and `inspect()` use fresh CLI discovery. `workflows.entries()` and `client.state` use a cached in-process project load; that state is registration memory, not a chosen run's persisted state. A new client is needed to refresh that in-process catalogue after source edits.
 
-Sources: [CLI declarations and handlers](../src/cli.ts), [client API](../src/client.ts).
+Sources: [CLI declarations and handlers](../packages/cli/src/cli.ts), [client API](../packages/cli/src/client.ts).

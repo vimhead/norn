@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { z } from "zod";
 
-import { definePluginManifest, type NornRun } from "../src/api.ts";
-import { NornWorkflowRegistry } from "../src/internal/workflow-registry.ts";
+import { definePluginManifest, type NornRun } from "@vimhead.dev/norn";
+import { NornWorkflowRegistry } from "../packages/cli/src/internal/workflow-registry.ts";
 
 function createWorkflow({ instructions, isEntrypoint = true, gate }: { instructions?: unknown; isEntrypoint?: boolean; gate?: { enabled: true } }) {
 	const workflow = definePluginManifest({ id: "metadata", workflows: {

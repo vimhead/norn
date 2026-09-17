@@ -5,9 +5,9 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, type TestContext } from "vitest";
 import { collectDocumentationBundle, generateDocumentationAssets } from "../scripts/generate-documentation-assets.ts";
-import { resolveNornDocumentation, resolveDocumentationCacheRoot } from "../src/documentation.ts";
-import { validateDocumentationBundle, hashDocumentationBundle } from "../src/internal/documentation-bundle.ts";
-import type { NornBuildInfo } from "../src/build-info.ts";
+import { resolveNornDocumentation, resolveDocumentationCacheRoot } from "../packages/cli/src/documentation.ts";
+import { validateDocumentationBundle, hashDocumentationBundle } from "../packages/cli/src/internal/documentation-bundle.ts";
+import type { NornBuildInfo } from "../packages/cli/src/build-info.ts";
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const build: NornBuildInfo = { kind: "github-release-binary", version: "0.1.0", commit: "a".repeat(40), repository: "vimhead/norn", releaseTag: "tip", assetName: "norn-test", checksumAssetName: "norn-test.sha256" };
 const bundle = { version: "0.1.0", files: [
@@ -23,8 +23,10 @@ async function createFixture(context: TestContext) {
 }
 
 test("local documentation resolves from the installation, without creating a cache", async context => {
-	const { input } = await createFixture(context);
-	const result = await resolveNornDocumentation({ ...input, source: { kind: "local", root: packageRoot } });
+	const fixture = await createFixture(context);
+	const version = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")).version;
+	const input = { ...fixture.input, build: { ...build, version }, source: { kind: "local" as const, root: packageRoot } };
+	const result = await resolveNornDocumentation(input);
 	assert.equal(result.storage, "installation");
 	assert.equal(result.paths.root, packageRoot.replace(/[\\/]$/, ""));
 	assert.equal(result.paths.index, join(packageRoot, "docs/README.md"));
@@ -32,8 +34,9 @@ test("local documentation resolves from the installation, without creating a cac
 	await assert.rejects(access(input.cacheRoot), { code: "ENOENT" });
 	assert.deepEqual(Object.keys(result).sort(), ["assetDigest", "commit", "paths", "storage", "version"]);
 	assert.equal(result.commit, build.commit);
-	const unknown = await resolveNornDocumentation({ ...input, source: { kind: "local", root: packageRoot }, build: { ...build, commit: null } });
+	const unknown = await resolveNornDocumentation({ ...input, build: { ...input.build, commit: null } });
 	assert.equal(unknown.commit, null);
+	await assert.rejects(resolveNornDocumentation({ ...input, build: { ...input.build, version: "mismatched" } }), /Local documentation version does not match/);
 });
 
 test("embedded content is exact, cache reuse performs no rewrites, and links stay relative", async context => {
@@ -136,7 +139,7 @@ test("cache roots respect explicit override and native defaults", () => {
 test("asset generation is deterministic, excludes itself, and includes every local Markdown link target", async context => {
 	const { root } = await createFixture(context);
 	const assets = await collectDocumentationBundle({ packageRoot });
-	assert.ok(assets.files.some(file => file.path === "src/api.ts"));
+	assert.ok(assets.files.some(file => file.path === "packages/sdk/src/api.ts"));
 	assert.ok(assets.files.some(file => file.path === "examples/minimal-workflow/.gitignore"));
 	assert.ok(!assets.files.some(file => file.path.endsWith("documentation-assets.generated.ts") || file.path.includes("/.norn/")));
 	const paths = new Set(assets.files.map(file => file.path));
@@ -149,16 +152,16 @@ test("asset generation is deterministic, excludes itself, and includes every loc
 		}
 	}
 	const outputPath = join(root, "generated.ts");
-	const first = await generateDocumentationAssets({ packageRoot, outputPath });
+	const first = await generateDocumentationAssets({ packageRoot, outputPath, assetRoot: join(root, "assets") });
 	const content = await readFile(outputPath, "utf8");
-	const second = await generateDocumentationAssets({ packageRoot, outputPath });
+	const second = await generateDocumentationAssets({ packageRoot, outputPath, assetRoot: join(root, "assets") });
 	assert.deepEqual(first, second);
 	assert.equal(await readFile(outputPath, "utf8"), content);
 });
 
 test("asset collection excludes runtime/dependency files and refuses symlinked assets", async context => {
 	const { root } = await createFixture(context);
-	for (const file of [...bundle.files, { path: "package.json", content: '{"version":"0.1.0"}' }, { path: "src/api.ts", content: "export {};" }, { path: "adapters/pi.ts", content: "export {};" }, { path: "tests/workflow-ref.test.ts", content: "" }, { path: "setup/providers.md", content: "# Provider setup\n" },
+	for (const file of [...bundle.files, { path: "packages/cli/package.json", content: '{"version":"0.1.0"}' }, { path: "packages/sdk/src/api.ts", content: "export {};" }, { path: "packages/cli/src/cli.ts", content: "export {};" }, { path: "packages/core/src/agent-protocol.ts", content: "export {};" }, { path: "adapters/pi.ts", content: "export {};" }, { path: "tests/workflow-ref.test.ts", content: "" }, { path: "setup/providers.md", content: "# Provider setup\n" },
 		{ path: "examples/.norn/runs/private.json", content: "private run" },
 		{ path: "examples/node_modules/dependency/index.ts", content: "dependency" },
 		{ path: "examples/demo/auth.json", content: "credential" },
@@ -169,7 +172,7 @@ test("asset collection excludes runtime/dependency files and refuses symlinked a
 		await writeFile(join(root, file.path), file.content);
 	}
 	const collected = await collectDocumentationBundle({ packageRoot: root });
-	assert.equal(collected.files.length, bundle.files.length + 3);
+	assert.equal(collected.files.length, bundle.files.length + 5);
 	assert.ok(!collected.files.some(file => file.path.startsWith("adapters/")));
 	assert.ok(!collected.files.some(file => /private run|dependency|credential|environment|key/.test(file.content)));
 	if (process.platform !== "win32") {

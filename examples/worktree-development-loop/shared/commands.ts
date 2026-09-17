@@ -1,4 +1,4 @@
-import type { NornCommandRunResult } from "norn";
+import type { NornCommandRunResult } from "@vimhead.dev/norn";
 
 export async function ensureCommandSucceeded(result: NornCommandRunResult): Promise<void> {
 	if (result.exitCode === 0) return;

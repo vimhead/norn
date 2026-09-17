@@ -6,12 +6,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, type TestContext } from "vitest";
 import { promisify } from "node:util";
-import { findNornProject, loadNornProject } from "../src/plugin-loader.ts";
-import { NornProjectLoadError } from "../src/internal/errors.ts";
-import type { NornRunInfo, NornWorkflowCatalogInfo } from "../src/api.ts";
+import { findNornProject, loadNornProject } from "../packages/cli/src/plugin-loader.ts";
+import { NornProjectLoadError } from "../packages/cli/src/internal/errors.ts";
+import type { NornRunInfo, NornWorkflowCatalogInfo } from "@vimhead.dev/norn";
 import { z } from "zod";
 import { readProcessStdout } from "./helpers/process.ts";
-const cliPath = fileURLToPath(new URL("../bin/norn.mjs", import.meta.url));
+const cliPath = fileURLToPath(new URL("../packages/cli/bin/norn.mjs", import.meta.url));
 const executeFile = promisify(execFile);
 
 async function createProjectFixture(context: TestContext) {
@@ -29,7 +29,7 @@ async function writePluginFixture({ projectRoot, relativePath, pluginId, revisio
 	const path = join(projectRoot, relativePath);
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, `
-import { definePlugin, definePluginManifest } from "norn";
+import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
 import { z } from "zod";
 const manifest = definePluginManifest({
 	id: ${JSON.stringify(pluginId)},

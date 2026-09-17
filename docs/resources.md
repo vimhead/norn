@@ -29,7 +29,7 @@ resourceAdapters: [StateAdapter({
 })]
 ```
 
-`StateAdapter` is exported from `norn` and accepts the public workflow-state interface, without a storage path. `read-write` is also supported. This adapter adds `norn_state_list`, `norn_state_get`, and `norn_state_set`, including when `tools: []` is requested. Discovery lists only selected fields and their schemas/permissions. Each operation checks its grant; setting validates against the declared field schema. Unset reads return `isSet:false`.
+`StateAdapter` is exported from `@vimhead.dev/norn` and accepts the public workflow-state interface, without a storage path. `read-write` is also supported. This adapter adds `norn_state_list`, `norn_state_get`, and `norn_state_set`, including when `tools: []` is requested. Discovery lists only selected fields and their schemas/permissions. Each operation checks its grant; setting validates against the declared field schema. Unset reads return `isSet:false`.
 
 List/get output is serialized JSON in bounded text pages. Requests specify UTF-16 `offset` and `limit` (1–10000); responses include `text`, `nextOffset` and a content `revision`. Pages are not a pinned snapshot. Set operations persist complete field values; get followed by set is not a transaction.
 
@@ -45,7 +45,7 @@ The attachment never exposes internal scheduler/checkpoint control state. It is 
 
 ## Shared storage coordination
 
-`run.resources.files` supplies `readText`, `writeText`, and `withExclusiveLock(path, async lockedPath => ...)`. Standalone callers can construct `NornFileCoordinator({lockRoot, waitTimeoutMs})` from `norn`. Coordinating callers must use the same lock namespace. Target parents must exist before a raw `withExclusiveLock` call; `writeText` creates them. Existing symbolic links resolve to their canonical target; dangling links fail.
+`run.resources.files` supplies `readText`, `writeText`, and `withExclusiveLock(path, async lockedPath => ...)`. Standalone callers can construct `NornFileCoordinator({lockRoot, waitTimeoutMs})` from `@vimhead.dev/norn`. Coordinating callers must use the same lock namespace. Target parents must exist before a raw `withExclusiveLock` call; `writeText` creates them. Existing symbolic links resolve to their canonical target; dangling links fail.
 
 The lock spans the complete callback, including read/validate/modify/persist. Atomic replacement remains underneath managed writes. A live owner is never expired by a TTL; confirmed dead local owners can be reclaimed. Invalid or foreign-host ownership fails closed, and contention has a bounded wait. PID reuse can delay reclamation rather than permit two owners. This is a local-filesystem, same-host protocol, not a distributed lock.
 
@@ -58,4 +58,4 @@ Workflow state, event manifests, scheduler-state writes, replaceable artifacts a
 | IF a callback holds a lock, THEN finish its short storage operation before prompting a model or taking another lock on the same file. ELSE release it first. | Persist a value and return. | Wait for a model turn while holding a file lock. |
 | IF restoring a checkpoint, THEN restore resource data but not lock ownership. ELSE follow the owning external resource's recovery contract. | Built-in locks live under the run's `locks/`, outside `current/`. | Restore an old owner's lock directory as live ownership. |
 
-Sources: [resource manager](../src/resources.ts), [adapter contracts](../src/agent-resource-adapter.ts), [StateAdapter](../src/state-adapter.ts), [file coordinator](../src/files.ts).
+Sources: [resource contracts](../packages/sdk/src/resources.ts), [resource manager](../packages/cli/src/resources.ts), [adapter contracts](../packages/sdk/src/agent-resource-adapter.ts), [StateAdapter](../packages/sdk/src/state-adapter.ts), [file coordinator](../packages/sdk/src/files.ts).

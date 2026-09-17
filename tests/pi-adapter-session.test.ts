@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createRunFileCoordinator } from "../src/files.ts";
+import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
 import { execFileSync } from "node:child_process";
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,13 +11,14 @@ import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-s
 import { AgentSession, createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
 
-import { NornAgentRunner } from "../src/internal/agents.ts";
-import { initializeRunResources } from "../src/internal/run-resources.ts";
-import { StateAdapter, type NornAgentResourceAdapter } from "../src/index.ts";
-import { NornRunLogs } from "../src/internal/logs.ts";
-import { NornRunLogger } from "../src/internal/run-log.ts";
-import type { NornWorkflowCatalogInfo, NornWorkflowInspection } from "../src/api.ts";
-import { AGENT_RESPONSE_TOOL_NAME, NornAgentResponseCollector } from "../src/internal/agent-response-tool.ts";
+import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
+import { initializeRunResources } from "../packages/cli/src/internal/run-resources.ts";
+import { StateAdapter, type NornAgentResourceAdapter } from "@vimhead.dev/norn";
+import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
+import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
+import type { NornWorkflowCatalogInfo, NornWorkflowInspection } from "@vimhead.dev/norn";
+import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
+import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-response-tool.ts";
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const model: Model<"anthropic-messages"> = { id: "offline", name: "Offline test", provider: "offline-test", api: "anthropic-messages", baseUrl: "https://unused.invalid", reasoning: false, input: ["text"], contextWindow: 128000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 
@@ -92,11 +93,15 @@ test("Pi loads runtime-selected context before the first prompt and refreshes it
 	const fixture = await createFixture(context);
 	const runtimeRoot = join(fixture.root, "other installation");
 	await mkdir(runtimeRoot);
-	for (const path of ["src", "bin", "docs", "setup", "examples", "adapters", "README.md", "package.json"]) await cp(join(packageRoot, path), join(runtimeRoot, path), { recursive: true });
+	for (const path of ["dist", "bin", "assets", "package.json"]) await cp(join(packageRoot, "packages/cli", path), join(runtimeRoot, path), { recursive: true });
 	await symlink(join(packageRoot, "node_modules"), join(runtimeRoot, "node_modules"));
-	const manifest = JSON.parse(await readFile(join(runtimeRoot, "package.json"), "utf8"));
+	const documentationManifest = join(runtimeRoot, "assets/package.json");
+	const manifest = JSON.parse(await readFile(documentationManifest, "utf8"));
 	manifest.version = "9.9.9";
-	await writeFile(join(runtimeRoot, "package.json"), JSON.stringify(manifest));
+	await writeFile(documentationManifest, JSON.stringify(manifest));
+	const runtimeManifestPath = join(runtimeRoot, "package.json");
+	const runtimeManifest = JSON.parse(await readFile(runtimeManifestPath, "utf8"));
+	await writeFile(runtimeManifestPath, JSON.stringify({ ...runtimeManifest, version: manifest.version }));
 	const shadow = join(fixture.root, "shadow");
 	await mkdir(shadow);
 	await writeExecutable(join(shadow, "norn"), 'process.stdout.write(JSON.stringify({intro:"PATH runtime introduction"}));');
@@ -106,7 +111,7 @@ test("Pi loads runtime-selected context before the first prompt and refreshes it
 
 	const directIntro = JSON.parse(execFileSync(join(runtimeRoot, "bin/norn.mjs"), ["docs", "intro"], { cwd: fixture.cwd, encoding: "utf8" }));
 	assert.ok(directIntro.intro.includes('Version: "9.9.9"'));
-	const settingsManager = SettingsManager.inMemory({ packages: [packageRoot], compaction: { enabled: false }, retry: { enabled: false } });
+	const settingsManager = SettingsManager.inMemory({ packages: [join(packageRoot, "packages/pi-norn")], compaction: { enabled: false }, retry: { enabled: false } });
 	let useCustomPrompt = true;
 	const loader = new DefaultResourceLoader({
 		cwd: fixture.cwd, agentDir: fixture.agentDir, settingsManager,
@@ -116,7 +121,7 @@ test("Pi loads runtime-selected context before the first prompt and refreshes it
 	});
 	await loader.reload();
 	assert.deepEqual(loader.getExtensions().errors, []);
-	assert.ok(loader.getExtensions().extensions.some(extension => extension.path.endsWith("adapters/pi.ts")));
+	assert.ok(loader.getExtensions().extensions.some(extension => extension.path.endsWith("pi-norn/dist/index.js")));
 	const { session } = await createAgentSession({ cwd: fixture.cwd, agentDir: fixture.agentDir, resourceLoader: loader, settingsManager, sessionManager: SessionManager.inMemory(fixture.cwd), model, tools: ["read"] });
 	context.onTestFinished(() => session.dispose());
 	loader.getExtensions().runtime.flagValues.set("norn-executable", join(runtimeRoot, "bin/norn.mjs"));
@@ -124,14 +129,15 @@ test("Pi loads runtime-selected context before the first prompt and refreshes it
 	captureModelRequests(session, captured);
 	await session.bindExtensions({ uiContext: session.extensionRunner.getUIContext() });
 	manifest.version = "9.9.10";
-	await writeFile(join(runtimeRoot, "package.json"), JSON.stringify(manifest));
+	await writeFile(documentationManifest, JSON.stringify(manifest));
+	await writeFile(runtimeManifestPath, JSON.stringify({ ...runtimeManifest, version: manifest.version }));
 	await session.prompt("First ordinary task");
 	const first = lastRequest(captured).systemPrompt;
 	assert.ok(first.startsWith("CUSTOM SYSTEM PROMPT"));
 	assert.ok(first.includes("PROJECT CONTEXT"));
 	assert.ok(first.includes("OTHER EXTENSION"));
 	assert.ok(first.includes('Version: "9.9.9"'), first);
-	assert.ok(first.includes("other installation/docs/README.md"));
+	assert.ok(first.includes("other installation/assets/docs/README.md"));
 	assert.ok(!first.includes("PATH runtime introduction"));
 	assert.equal(first.split("<norn-docs-intro>").length - 1, 1);
 	assert.ok(first.includes(directIntro.intro));
@@ -189,7 +195,7 @@ test("Pi loads runtime-selected context before the first prompt and refreshes it
 
 test("a real native Norn worker excludes the adapter, including after reload with its response tool inactive", { skip: process.platform === "win32", timeout: 30_000 }, async context => {
 	const fixture = await createFixture(context);
-	await writeFile(join(fixture.agentDir, "settings.json"), JSON.stringify({ packages: [packageRoot], compaction: { enabled: false }, retry: { enabled: false } }));
+	await writeFile(join(fixture.agentDir, "settings.json"), JSON.stringify({ packages: [join(packageRoot, "packages/pi-norn")], compaction: { enabled: false }, retry: { enabled: false } }));
 	const calledPath = join(fixture.root, "cli-called");
 	const executable = join(fixture.root, "norn");
 	await writeExecutable(executable, `require("node:fs").writeFileSync(${JSON.stringify(calledPath)}, "called"); process.stdout.write(JSON.stringify({intro:"UNWANTED AUTHORING CONTEXT"}));`);
@@ -222,7 +228,7 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 	assert.deepEqual(await worker.prompt({ prompt: "Assess only this supplied source.", response: z.object({ ok: z.boolean() }), maxAttempts: 1 }), { ok: true });
 	assert.equal(sessions.length, 1);
 	const session = sessions[0];
-	assert.ok(session.resourceLoader.getExtensions().extensions.some(extension => extension.path.endsWith("adapters/pi.ts")));
+	assert.ok(session.resourceLoader.getExtensions().extensions.some(extension => extension.path.endsWith("pi-norn/dist/index.js")));
 	assert.ok(session.getAllTools().some(tool => tool.name === AGENT_RESPONSE_TOOL_NAME));
 	session.setActiveToolsByName([]);
 	await session.bindExtensions({ uiContext: session.extensionRunner.getUIContext() });

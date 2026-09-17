@@ -8,8 +8,9 @@ import { createInterface } from "node:readline";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { test, type TestContext } from "vitest";
-import { NornRunResources, type NornAgentResourceBinding } from "../src/index.ts";
-import { NornRunStore } from "../src/internal/run-store.ts";
+import { NornRunResources } from "../packages/cli/src/resources.ts";
+import type { NornAgentResourceBinding } from "@vimhead.dev/norn";
+import { NornRunStore } from "../packages/cli/src/internal/run-store.ts";
 import { QueueAdapter } from "../examples/coordinating-multiple-agents/queue-adapter.ts";
 import { WorkQueue, workQueueDefinition } from "../examples/coordinating-multiple-agents/work-queue.ts";
 

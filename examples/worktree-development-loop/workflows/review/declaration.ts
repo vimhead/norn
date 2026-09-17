@@ -1,4 +1,4 @@
-import type { NornWorkflowDefinition } from "norn";
+import type { NornWorkflowDefinition } from "@vimhead.dev/norn";
 import { reviewParamsSchema } from "./schema.ts";
 
 export const reviewWorkflow = {

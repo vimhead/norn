@@ -15,7 +15,7 @@ The caller and target share run state and artifacts, not local variables or agen
 A reusable capability can accept a continuation whose schema describes the values it contributes. The caller owns the remaining params:
 
 ```ts
-import { artifactRefSchema, workflowRefSchema } from "norn";
+import { artifactRefSchema, workflowRefSchema } from "@vimhead.dev/norn";
 import { z } from "zod";
 
 const paramsSchema = z.object({
@@ -73,4 +73,4 @@ Reuse source by explicitly registering it, directly or through [included config]
 
 An external shell, Python program, or agent harness can call the [CLI](cli.md) from the target project directory. The JavaScript client offers the same lifecycle without inventing another orchestration layer. Separate CLI starts create separate runs; connecting their artifact content is a caller responsibility, unlike same-run continuation refs.
 
-Sources: [reference schemas and controls](../src/api.ts), [scheduler](../src/internal/engine.ts), [reference contract tests](../tests/workflow-ref.test.ts).
+Sources: [reference schemas and controls](../packages/sdk/src/api.ts), [scheduler](../packages/cli/src/internal/engine.ts), [reference contract tests](../tests/workflow-ref.test.ts).

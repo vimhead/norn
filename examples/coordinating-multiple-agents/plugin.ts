@@ -1,4 +1,4 @@
-import { definePlugin, definePluginManifest, type NornAgentSession, type NornRun } from "norn";
+import { definePlugin, definePluginManifest, type NornAgentSession, type NornRun } from "@vimhead.dev/norn";
 import { z } from "zod";
 import { QueueAdapter } from "./queue-adapter.ts";
 import { noteSchema, workQueueDefinition, type WorkQueue } from "./work-queue.ts";

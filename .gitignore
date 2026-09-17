@@ -1,5 +1,6 @@
 node_modules/
 *.tgz
 dist/
-src/bun/documentation-assets.generated.ts
-src/bun/pi-assets.generated.ts
+packages/cli/src/bun/documentation-assets.generated.ts
+packages/cli/src/bun/pi-assets.generated.ts
+packages/cli/assets/

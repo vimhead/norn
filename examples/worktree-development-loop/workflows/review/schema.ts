@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { artifactRefSchema } from "norn";
+import { artifactRefSchema } from "@vimhead.dev/norn";
 
 export const reviewDecisionSchema = z.enum(["accept", "revise", "blocked"]);
 

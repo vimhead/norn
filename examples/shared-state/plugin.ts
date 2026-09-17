@@ -1,4 +1,4 @@
-import { definePlugin, definePluginManifest, StateAdapter } from "norn";
+import { definePlugin, definePluginManifest, StateAdapter } from "@vimhead.dev/norn";
 import { z } from "zod";
 
 export const manifest = definePluginManifest({

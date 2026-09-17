@@ -1,4 +1,4 @@
-import type { NornWorkflowExecutionResult, NornRun } from "norn";
+import type { NornWorkflowExecutionResult, NornRun } from "@vimhead.dev/norn";
 import { worktreeDevelopmentLoopManifest } from "../../manifest.ts";
 import type { StoredReview } from "../review/schema.ts";
 import type { ReviewRouterParams } from "./schema.ts";

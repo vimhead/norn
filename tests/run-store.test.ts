@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { join, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterAll, test, vi, type TestContext } from "vitest";
-import { NornRunStore } from "../src/internal/run-store.ts";
+import { NornRunStore } from "../packages/cli/src/internal/run-store.ts";
 import { z } from "zod";
 
 type FileSystemFault = { operation: "writeFile" | "rename"; matches: (...args: unknown[]) => boolean; triggered: boolean };

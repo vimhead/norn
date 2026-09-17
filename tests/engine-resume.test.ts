@@ -6,10 +6,10 @@ import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 import { z } from "zod";
 
-import { definePlugin, definePluginManifest } from "../src/api.ts";
-import { NornEngine } from "../src/internal/engine.ts";
-import { getRunInfo } from "../src/internal/run-state.ts";
-import { getRunLeaseOwner } from "../src/internal/run-lease.ts";
+import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
+import { NornEngine } from "../packages/cli/src/internal/engine.ts";
+import { getRunInfo } from "../packages/cli/src/internal/run-state.ts";
+import { getRunLeaseOwner } from "../packages/cli/src/internal/run-lease.ts";
 
 async function createInterruptedRun(context: TestContext) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-resume-test-"));

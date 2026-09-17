@@ -8,12 +8,12 @@ import { AgentSession } from "@earendil-works/pi-coding-agent";
 import { test, vi, type TestContext } from "vitest";
 import { manifest } from "../examples/coordinating-multiple-agents/plugin.ts";
 import { workQueueDefinition } from "../examples/coordinating-multiple-agents/work-queue.ts";
-import { NornAgentRunner } from "../src/internal/agents.ts";
-import { AGENT_RESPONSE_TOOL_NAME } from "../src/internal/agent-response-tool.ts";
-import { NornEngine } from "../src/internal/engine.ts";
-import { getRunInfo } from "../src/internal/run-state.ts";
-import { NornRunResources } from "../src/resources.ts";
-import { loadNornProject } from "../src/plugin-loader.ts";
+import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
+import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
+import { NornEngine } from "../packages/cli/src/internal/engine.ts";
+import { getRunInfo } from "../packages/cli/src/internal/run-state.ts";
+import { NornRunResources } from "../packages/cli/src/resources.ts";
+import { loadNornProject } from "../packages/cli/src/plugin-loader.ts";
 
 const model: Model<"anthropic-messages"> = { id: "offline", name: "Offline queue agent", provider: "offline-test", api: "anthropic-messages", baseUrl: "https://unused.invalid", reasoning: false, input: ["text"], contextWindow: 128000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 const notes = Array.from({ length: 4 }, (_, index) => ({ id: `note-${index}`, text: `The team recorded source note ${index} for the release review.` }));

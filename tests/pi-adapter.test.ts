@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, vi, type TestContext } from "vitest";
 import { DefaultResourceLoader, ExtensionRunner, ModelRegistry, ModelRuntime, SessionManager, SettingsManager, type ExecResult, type ExtensionAPI, type ExtensionUIContext, type ToolInfo } from "@earendil-works/pi-coding-agent";
-import adapter from "../adapters/pi.ts";
-import { AGENT_RESPONSE_TOOL_NAME } from "../src/internal/agent-response-tool.ts";
+import adapter from "../packages/pi-norn/src/index.ts";
+import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
 
 type AdapterFixture = {
 	cwd: string;

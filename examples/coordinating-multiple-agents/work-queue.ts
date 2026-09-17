@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import type { NornFileCoordinator, NornResourceDefinition } from "norn";
+import type { NornFileCoordinator, NornResourceDefinition } from "@vimhead.dev/norn";
 import { z } from "zod";
 
 export const noteSchema = z.strictObject({ id: z.string().min(1).max(128), text: z.string().min(5).max(1000) });

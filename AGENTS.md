@@ -26,13 +26,22 @@ Documentation must match the executable actually invoked. Source/npm installatio
 
 ## Adapters are host-specific delivery
 
-`adapters/` connects Norn to host mechanisms. An adapter selects the installed Norn executable, asks it for the introduction, and delivers the result to the intended agent context. It does not assume that its own package or checkout is the runtime the user selected.
+`packages/pi-norn` and `adapters/` connect Norn to host mechanisms. An adapter selects the installed Norn executable, asks it for the introduction, and delivers the result to the intended agent context. It does not assume that its own package or checkout is the runtime the user selected.
 
 Almost everything Norn-specific is delegated to installed Norn: introduction content, asset resolution, version identity, command contracts, workflow discovery, execution, and recovery. An adapter only needs the host-specific mechanics required for what it exposes. The current Pi adapter delivers context; this is not a requirement to add execution tools to every adapter.
 
 Prompt delivery preserves the host's existing instructions and custom prompts without accumulating duplicate introductions. Session eligibility belongs at this boundary: making Norn available to an outer authoring agent does not authorize injecting authoring context into restricted delegates. Failures should surface as failures, not trigger a fallback to another installation's knowledge.
 
 Adapters are installable integrations, not documentation assets. Their delivery must account for users who do not have the development checkout. This boundary lets multiple hosts share the same Norn behavior instead of maintaining separate implementations.
+
+## Package boundaries
+
+Three packages are published: the SDK, CLI/runtime, and Pi adapter. `packages/core` is a private, source-only workspace with no separate build or publication. Consumer builds bundle the core code they use.
+
+| Decision | GOOD | BAD |
+|---|---|---|
+| IF package separation would duplicate a constant, contract, or implementation, THEN extract the shared code into core. ELSE retain its current owner. | CLI and Pi adapter import one response-tool marker from core. | Copy the marker into the adapter to avoid a CLI dependency. |
+| IF consuming private core code, THEN include it in the consumer's distributable build. ELSE keep normal dependencies explicit. | Packed CLI and adapter work without the core workspace. | Publish imports requiring an unpublished core package. |
 
 ## How we develop
 

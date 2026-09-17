@@ -5,20 +5,20 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type TestContext } from "vitest";
-import { discoverNornProject, inspectNornWorkflow, loadNornProject } from "../src/plugin-loader.ts";
-import { createNornClient, NornProjectLoadError } from "../src/client.ts";
-import { readOptionalRunResumeRequest } from "../src/internal/launch-request.ts";
-import { getRunLeaseOwner } from "../src/internal/run-lease.ts";
-import type { NornProjectInspection, NornProjectLoadStatus, NornRunInfo, NornWorkflowCatalogInfo, NornWorkflowInspection } from "../src/api.ts";
+import { discoverNornProject, inspectNornWorkflow, loadNornProject } from "../packages/cli/src/plugin-loader.ts";
+import { createNornClient, NornProjectLoadError } from "../packages/cli/src/client.ts";
+import { readOptionalRunResumeRequest } from "../packages/cli/src/internal/launch-request.ts";
+import { getRunLeaseOwner } from "../packages/cli/src/internal/run-lease.ts";
+import type { NornProjectInspection, NornProjectLoadStatus, NornRunInfo, NornWorkflowCatalogInfo, NornWorkflowInspection } from "@vimhead.dev/norn";
 
-const cliPath = fileURLToPath(new URL("../bin/norn.mjs", import.meta.url));
+const cliPath = fileURLToPath(new URL("../packages/cli/bin/norn.mjs", import.meta.url));
 type DiscoveryOutput = NornProjectLoadStatus & Partial<NornProjectInspection & NornWorkflowCatalogInfo & NornWorkflowInspection>;
 type RunOutput = { run: NornRunInfo };
 type ProjectErrorOutput = { error: Pick<NornProjectLoadError, "code" | "message" | "isComplete" | "diagnostics"> };
 type CliResult<Output> = { exitCode: string | number; result: Output; stderr: string };
 
 function createPluginSource({ id, workflows = '{ step: { instructions: "Use to complete the fixture step.", isEntrypoint: true, params: z.object({}) } }', implementation = '{ workflows: { step: { execute: run => run.complete() } } }', configSchema = "undefined" }: { id: string; workflows?: string; implementation?: string; configSchema?: string }) {
-	return `import { definePlugin, definePluginManifest } from "norn";
+	return `import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
 import { z } from "zod";
 const manifest = definePluginManifest({ id: ${JSON.stringify(id)}, config: ${configSchema}, workflows: ${workflows} });
 export default definePlugin(manifest, ${implementation});`;
@@ -246,7 +246,7 @@ test("an empty project is complete and an unknown workflow is an error only afte
 });
 
 test("CLI and client inspection advertise contribution schemas without losing forwarded context during execution", { timeout: 20000 }, async context => {
-	const source = 'import { artifactRefSchema, workflowRefSchema } from "norn";\n' + createPluginSource({
+	const source = 'import { artifactRefSchema, workflowRefSchema } from "@vimhead.dev/norn";\n' + createPluginSource({
 		id: "handoff",
 		workflows: `{
 			caller: { instructions: "Use to collect records for the supplied task.", isEntrypoint: true, params: z.object({ taskId: z.string(), context: z.record(z.string(), z.unknown()) }) },
@@ -292,7 +292,7 @@ test("CLI and client inspection advertise contribution schemas without losing fo
 
 test("unrepresentable contributions fail inspection as schema diagnostics rather than plugin import errors", async context => {
 	const cwd = await createFixture(context, { files: {
-		"custom.ts": 'import { workflowRefSchema } from "norn";\n' + createPluginSource({
+		"custom.ts": 'import { workflowRefSchema } from "@vimhead.dev/norn";\n' + createPluginSource({
 			id: "custom", workflows: '{ step: { instructions: "Use to inspect custom continuation parameters.", isEntrypoint: true, params: z.object({ next: workflowRefSchema({ params: z.custom(() => true) }) }) } }',
 		}),
 		"good.ts": createPluginSource({ id: "good" }),
