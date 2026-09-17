@@ -1,0 +1,10 @@
+{
+  "params": {
+    "notes": [
+      { "id": "launch", "text": "The team moved the launch to Friday because the accessibility review needs another day." },
+      { "id": "support", "text": "Support received three reports about confusing invoice labels. Maya will propose clearer wording tomorrow." },
+      { "id": "research", "text": "Five interview participants found the new search filters useful, but two could not find the reset button." },
+      { "id": "operations", "text": "The staging backup completed successfully. The restore drill is scheduled for next Tuesday." }
+    ]
+  }
+}
