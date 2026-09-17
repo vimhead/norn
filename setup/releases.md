@@ -57,7 +57,8 @@ After a successful `Test` run on `main`, `Release Tip` stamps all three packages
 with `0.1.0-tip.<GitHub-run-id>.<attempt>` and the tested commit. It validates and
 packs npm artifacts, builds standalone binaries, then publishes only if the
 selected commit is still `main`. Manual dispatch performs the same checks.
-Only after all npm packages are verified does it update the GitHub `tip` release.
+After all required `npm publish` commands succeed, it updates the GitHub `tip`
+release without waiting for npm registry propagation.
 
 npm versions are immutable. A workflow rerun gets a new attempt/version, so a
 partial prior publication is retained rather than overwritten. Repeating the

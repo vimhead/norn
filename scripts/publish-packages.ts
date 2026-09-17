@@ -28,11 +28,7 @@ for (const [index, pkg] of release.packages.entries()) {
 for (const pkg of pending) {
 	await publishTarball(join(tarballRoot, pkg.filename));
 }
-for (const pkg of release.packages) {
-	const tip = await readRegistryPackage({ name: pkg.name, selector: "tip" });
-	if (!verifyExistingPublication({ expected: pkg, integrity: tip?.dist.integrity ?? null, tipVersion: tip?.version ?? null })) throw new Error(`Publication not visible: ${pkg.name}`);
-}
-console.log(`All npm tip packages verified at ${release.packages[0].version}`);
+console.log(`npm tip publication completed for ${release.packages[0].version}`);
 
 async function readRegistryPackage(input: { readonly name: string; readonly selector: string }): Promise<{ version: string; dist: { integrity: string } } | null> {
 	const response = await fetch(`${NPM_REGISTRY}/${encodeURIComponent(input.name)}/${encodeURIComponent(input.selector)}`, { signal: AbortSignal.timeout(30_000), headers: { "cache-control": "no-cache" } });

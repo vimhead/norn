@@ -74,7 +74,7 @@ jobs:
       - name: Reject superseded builds before publication
         run: test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$TIP_COMMIT"
 
-      - name: Publish and verify npm tip packages using OIDC
+      - name: Publish npm tip packages using OIDC
         run: pnpm release:publish --trusted
 
       - name: Point the GitHub tip tag at the released commit
@@ -88,7 +88,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          printf 'Automated prerelease `%s` for `%s`.\n\nMatching npm packages are available under the `tip` tag.\n' "$NORN_RELEASE_VERSION" "$TIP_COMMIT" > dist/release-notes.md
+          printf 'Automated prerelease `%s` for `%s`.\n\nMatching npm packages are published under the `tip` tag.\n' "$NORN_RELEASE_VERSION" "$TIP_COMMIT" > dist/release-notes.md
           if gh release view "$TIP_TAG" >/dev/null 2>&1; then
             gh release edit "$TIP_TAG" --title "Norn Tip" --notes-file dist/release-notes.md --prerelease --latest=false
             gh release upload "$TIP_TAG" dist/release/* --clobber
