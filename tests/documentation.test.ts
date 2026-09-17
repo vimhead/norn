@@ -159,9 +159,9 @@ test("asset generation is deterministic, excludes itself, and includes every loc
 	assert.equal(await readFile(outputPath, "utf8"), content);
 });
 
-test("asset collection excludes runtime/dependency files and refuses symlinked assets", async context => {
+test("asset collection excludes host integrations and runtime/dependency files and refuses symlinked assets", async context => {
 	const { root } = await createFixture(context);
-	for (const file of [...bundle.files, { path: "packages/cli/package.json", content: '{"version":"0.1.0"}' }, { path: "packages/sdk/src/api.ts", content: "export {};" }, { path: "packages/cli/src/cli.ts", content: "export {};" }, { path: "packages/core/src/agent-protocol.ts", content: "export {};" }, { path: "adapters/pi.ts", content: "export {};" }, { path: "tests/workflow-ref.test.ts", content: "" }, { path: "setup/providers.md", content: "# Provider setup\n" },
+	for (const file of [...bundle.files, { path: "packages/cli/package.json", content: '{"version":"0.1.0"}' }, { path: "packages/sdk/src/api.ts", content: "export {};" }, { path: "packages/cli/src/cli.ts", content: "export {};" }, { path: "packages/core/src/agent-protocol.ts", content: "export {};" }, { path: "packages/pi-norn/src/index.ts", content: "export {};" }, { path: ".cursor-plugin/plugin.json", content: '{"name":"norn"}' }, { path: "tests/workflow-ref.test.ts", content: "" }, { path: "setup/providers.md", content: "# Provider setup\n" },
 		{ path: "examples/.norn/runs/private.json", content: "private run" },
 		{ path: "examples/node_modules/dependency/index.ts", content: "dependency" },
 		{ path: "examples/demo/auth.json", content: "credential" },
@@ -173,7 +173,7 @@ test("asset collection excludes runtime/dependency files and refuses symlinked a
 	}
 	const collected = await collectDocumentationBundle({ packageRoot: root });
 	assert.equal(collected.files.length, bundle.files.length + 5);
-	assert.ok(!collected.files.some(file => file.path.startsWith("adapters/")));
+	assert.ok(!collected.files.some(file => file.path.startsWith("packages/pi-norn/") || file.path.startsWith(".cursor-plugin/")));
 	assert.ok(!collected.files.some(file => /private run|dependency|credential|environment|key/.test(file.content)));
 	if (process.platform !== "win32") {
 		await symlink(join(root, "README.md"), join(root, "docs/symlink.md"));

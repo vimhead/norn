@@ -26,7 +26,7 @@ Documentation must match the executable actually invoked. Source/npm installatio
 
 ## Adapters are host-specific delivery
 
-`packages/pi-norn` and `adapters/` connect Norn to host mechanisms. An adapter selects the installed Norn executable, asks it for the introduction, and delivers the result to the intended agent context. It does not assume that its own package or checkout is the runtime the user selected.
+`packages/pi-norn` and `.cursor-plugin/` connect Norn to host mechanisms. An adapter selects the installed Norn executable, asks it for the introduction, and delivers the result to the intended agent context. It does not assume that its own package or checkout is the runtime the user selected.
 
 Almost everything Norn-specific is delegated to installed Norn: introduction content, asset resolution, version identity, command contracts, workflow discovery, execution, and recovery. An adapter only needs the host-specific mechanics required for what it exposes. The current Pi adapter delivers context; this is not a requirement to add execution tools to every adapter.
 

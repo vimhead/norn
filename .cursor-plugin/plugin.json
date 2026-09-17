@@ -7,5 +7,6 @@
   },
   "homepage": "https://github.com/vimhead/norn",
   "repository": "https://github.com/vimhead/norn",
-  "license": "MIT"
+  "license": "MIT",
+  "hooks": "./.cursor-plugin/hooks/hooks.json"
 }

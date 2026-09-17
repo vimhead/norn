@@ -3,7 +3,7 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "node ./hooks/norn-session-start.mjs",
+        "command": "node ./.cursor-plugin/hooks/norn-session-start.mjs",
         "timeout": 10
       }
     ]

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { exec, execFile } from "node:child_process";
+import { chmod, cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
@@ -8,8 +8,9 @@ import { fileURLToPath } from "node:url";
 import { test, type TestContext } from "vitest";
 
 const runExecutable = promisify(execFile);
+const runCommand = promisify(exec);
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const hookScript = join(packageRoot, "adapters/cursor/hooks/norn-session-start.mjs");
+const hookScript = join(packageRoot, ".cursor-plugin/hooks/norn-session-start.mjs");
 
 type HookResult = {
 	stdout: string;
@@ -82,12 +83,31 @@ for (const [label, source] of failures) {
 	});
 }
 
-test("Cursor plugin manifests register the sessionStart hook", async () => {
-	const marketplace = JSON.parse(await readFile(join(packageRoot, ".cursor-plugin/marketplace.json"), "utf8"));
-	const manifest = JSON.parse(await readFile(join(packageRoot, "adapters/cursor/.cursor-plugin/plugin.json"), "utf8"));
-	const hooks = JSON.parse(await readFile(join(packageRoot, "adapters/cursor/hooks/hooks.json"), "utf8"));
-	assert.deepEqual(marketplace.plugins, [{ name: "norn", source: "adapters/cursor", description: "Adds runtime-selected Norn documentation context to Cursor agent sessions." }]);
+test("Cursor marketplace resolves a runnable sessionStart hook from a relocated root plugin", async context => {
+	const fixture = await createFixture(context);
+	const installationRoot = join(fixture.root, "installed plugin");
+	await cp(join(packageRoot, ".cursor-plugin"), join(installationRoot, ".cursor-plugin"), { recursive: true });
+	const marketplace = JSON.parse(await readFile(join(installationRoot, ".cursor-plugin/marketplace.json"), "utf8"));
+	assert.deepEqual(marketplace.plugins, [{ name: "norn", source: ".", description: "Adds runtime-selected Norn documentation context to Cursor agent sessions." }]);
+	const pluginRoot = join(installationRoot, marketplace.plugins[0].source);
+	const manifest = JSON.parse(await readFile(join(pluginRoot, ".cursor-plugin/plugin.json"), "utf8"));
 	assert.equal(manifest.name, "norn");
+	assert.equal(manifest.hooks, "./.cursor-plugin/hooks/hooks.json");
+	const hooks = JSON.parse(await readFile(join(pluginRoot, manifest.hooks), "utf8"));
 	assert.equal(hooks.version, 1);
-	assert.deepEqual(hooks.hooks.sessionStart, [{ command: "node ./hooks/norn-session-start.mjs", timeout: 10 }]);
+	assert.deepEqual(hooks.hooks.sessionStart, [{ command: "node ./.cursor-plugin/hooks/norn-session-start.mjs", timeout: 10 }]);
+	const executable = join(fixture.root, "norn");
+	const calledFrom = join(fixture.root, "called-from");
+	await writeExecutable(executable, `
+require("node:assert/strict").deepEqual(process.argv.slice(2), ["docs", "intro"]);
+require("node:fs").writeFileSync(${JSON.stringify(calledFrom)}, process.cwd());
+process.stdout.write(JSON.stringify({ intro: "Installed Norn introduction" }));
+`);
+	const result = await runCommand(hooks.hooks.sessionStart[0].command, {
+		cwd: pluginRoot,
+		env: { ...process.env, NORN_EXECUTABLE: executable, CURSOR_PROJECT_DIR: fixture.cwd },
+	});
+	assert.equal(result.stderr, "");
+	assert.deepEqual(JSON.parse(result.stdout), { additional_context: "<norn-docs-intro>\nInstalled Norn introduction\n</norn-docs-intro>" });
+	assert.equal(await realpath(await readFile(calledFrom, "utf8")), await realpath(fixture.cwd));
 });

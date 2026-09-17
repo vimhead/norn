@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "norn",
-      "source": "adapters/cursor",
+      "source": ".",
       "description": "Adds runtime-selected Norn documentation context to Cursor agent sessions."
     }
   ]
