@@ -25,6 +25,9 @@ test("intro is compact, deterministic, and points to the index instead of copyin
 	assert.equal(renderNornDocumentationIntro(input), intro);
 	assert.ok(Buffer.byteLength(intro) < 2400);
 	assert.ok(intro.split("\n").length <= 24);
+	assert.match(intro, /harness-agnostic workflow runtime/);
+	assert.match(intro, /agent-driven and code-driven TypeScript workflows with the Norn SDK/);
+	assert.match(intro, /Norn agents are powered by the bundled, open-source and extensible Pi coding agent/);
 	assert.match(intro, /authored, exercised, repaired, and reused during a task/);
 	assert.match(intro, /Norn is optional/);
 	assert.match(intro, /build commit: unknown/);

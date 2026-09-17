@@ -20,7 +20,7 @@ import { NORN_BUILD_INFO, type NornBuildInfo, type NornGithubReleaseBinaryBuildI
 
 const RUNS_ROOT = join(".norn", "runs");
 const RUN_WAIT_INTERVAL_MS = 1000;
-const CLI_DESCRIPTION = "Norn runs typed, resumable workflows for coding agents. Use this JSON-native CLI to discover workflows, start or resume runs, inspect evidence, and manage the installed binary.";
+const CLI_DESCRIPTION = "Norn is a harness-agnostic runtime for agent-driven and code-driven workflows, built primarily for agents. Build workflows with the Norn SDK; use this JSON-native CLI to discover workflows, start or resume runs, inspect evidence, and manage the installed runtime.";
 
 const COMMANDS: readonly CliCommand[] = [
 	{

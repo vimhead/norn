@@ -39,7 +39,7 @@ Rollback restores only [snapshotted files](persistence.md). It does not undo pro
 | IF retry can repeat an external effect, THEN reconcile its evidence or use an idempotent effect contract before resuming. ELSE re-execute the saved step. | Look up the existing delivery receipt by operation ID. | Assume an interrupted HTTP call did nothing. |
 | IF the defect is in analysis only, THEN choose the draft-to-analysis transition. ELSE choose a boundary before the invalid producer and regenerate its output. | Preserve a valid draft while repairing the analyzer. | Repeatedly analyze a draft whose evidence is itself invalid. |
 
-The [worker example's repair exercise](../examples/worker-then-analysis/README.md#repair-only-the-analysis-step) demonstrates preserving a live worker result through analysis failure and source repair.
+The [agent example's repair exercise](../examples/agent-then-analysis/README.md#repair-only-the-analysis-step) demonstrates preserving a live Norn agent result through analysis failure and source repair.
 
 ## Declared gates
 

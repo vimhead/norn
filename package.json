@@ -1,7 +1,7 @@
 {
   "name": "norn",
   "version": "0.1.0",
-  "description": "Reusable harness-agnostic workflows powered by Pi agents.",
+  "description": "Harness-agnostic runtime for agent-driven and code-driven workflows, built primarily for agents.",
   "type": "module",
   "license": "MIT",
   "keywords": [

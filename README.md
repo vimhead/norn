@@ -1,24 +1,30 @@
-# norn
+# Norn
 
-Reusable, harness-agnostic workflows powered by Pi agents.
+Norn is a harness-agnostic workflow framework and runtime built primarily for
+agents. Use the Norn SDK to write reusable agent-driven and code-driven TypeScript
+workflows, then discover, run, inspect, and recover them through the CLI.
 
-Norn lets a project package agent workflows once and run them from any harness
-that can call its CLI or client. Agents can also author, exercise, repair, and
-retain a missing capability while completing an ordinary task.
+Norn is intended as a portable replacement for harness-specific subagents and
+workflow extensions. Use it from Claude Code, Pi, Codex, or any other harness
+that can invoke its CLI.
+
+Norn agents are powered by the bundled, open-source and extensible
+[Pi coding agent](https://pi.dev). Your outer harness does not need to be Pi,
+and code-only workflows do not require a model.
 
 - [Documentation index](docs/README.md) — focused references by capability
-- [Create → run → change a workflow](examples/minimal-workflow/README.md) — no model required
-- [Worker → saved artifact → analysis](examples/worker-then-analysis/README.md) — native workers and a recoverable transition
-- [Public authoring types](src/api.ts)
+- [Create → run → change a workflow](examples/minimal-workflow/README.md) — code-driven, no model required
+- [Norn agent → saved artifact → analysis](examples/agent-then-analysis/README.md) — agent-driven, with a recoverable transition
+- [Norn SDK types](src/api.ts)
 
 ## Installation
 
-Install the CLI, then install the adapter for your agent harness. CLI-only usage
-does not require an adapter.
+Install the runtime, authenticate for workflows that use Norn agents, and
+optionally connect your harness with an adapter. Direct CLI use needs no adapter.
 
-### 1. Install the CLI
+### 1. Install the runtime
 
-Install the CLI from the rolling `tip` release:
+Install Norn from the rolling `tip` release:
 
 ```bash
 curl -fsSL https://github.com/vimhead/norn/releases/download/tip/install.sh | sh
@@ -47,10 +53,29 @@ and keeping examples/docs matched to the executable. Upgrade discovery:
 norn upgrade --dry-run
 ```
 
-### 2. Install an adapter
+### 2. Authenticate Norn agents
 
-Adapters connect your agent harness to the CLI installed in step 1; installing
-the CLI alone does not register an adapter in your harness.
+Open the bundled Pi interface; no separate Pi installation is required:
+
+```bash
+norn pi
+```
+
+Inside the interactive session:
+
+1. Run `/login`, choose a provider, and complete its authentication flow.
+2. Run `/model`, highlight a model, and press **Ctrl+S** to save the startup default.
+3. Run `/quit`.
+
+Model-free workflows need no provider authentication. For other credential
+methods, custom providers, and Norn's configuration directory, see
+[providers and authentication](setup/providers.md).
+
+### 3. Optionally connect your harness
+
+The shipped Pi and Cursor adapters deliver Norn documentation context to your
+harness. Installing Norn alone does not register an adapter. Claude Code, Codex,
+and other harnesses can [invoke the CLI directly](docs/cli.md#javascript-client-and-other-harnesses).
 
 #### Pi
 
@@ -85,23 +110,17 @@ NORN_EXECUTABLE=/absolute/path/to/norn cursor .
 Need an adapter for another harness? [Open an issue](https://github.com/vimhead/norn/issues/new)
 with the harness name.
 
-### 3. Configure worker providers
-
-Use [providers and authentication](setup/providers.md) to authenticate and install
-third-party providers through `norn pi`, without a separate Pi installation.
-This setup is needed for native agent workers, not model-free workflows.
-
 ## Setting up a Norn project
 
 [Projects and loading](docs/projects.md) covers initialization, registration,
 reusable configuration, dependencies, source reload, and discovery diagnostics.
 
-## Writing workflows
+## Build workflows with the Norn SDK
 
 [Workflow authoring](docs/workflows.md) covers declarations, implementations,
 commands, and run outcomes. Focused companion references:
 
-- [Agents](docs/agents.md)
+- [Norn agents](docs/agents.md)
 - [State, artifacts, and workspaces](docs/persistence.md)
 - [Composition and reuse](docs/composition.md)
 - [Recovery and gates](docs/recovery.md)
@@ -109,7 +128,7 @@ commands, and run outcomes. Focused companion references:
 The larger [worktree development loop](examples/worktree-development-loop/README.md)
 is an optional composition example, not a required workflow architecture.
 
-## Using the CLI
+## Run workflows with Norn
 
 [CLI and client](docs/cli.md) covers live contract discovery, JSON invocation,
 launch/wait semantics, results, and use from other harnesses.

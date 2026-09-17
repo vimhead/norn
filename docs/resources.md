@@ -13,7 +13,7 @@ The manager persists identity before calling the initializer and marks successfu
 | IF implementing an initializer, THEN make create retries preserve existing data and open validate existing storage. ELSE do not register the definition. | Validate a file left by an interrupted create before reusing it. | Truncate the file each time `ensure` calls the initializer. |
 | IF a resource format changes incompatibly, THEN change its declared configuration and provide an explicit migration. ELSE reopen the same format. | A mismatching `format` fails. | Reinterpret old bytes under an unchanged format declaration. |
 
-Resources are run-scoped and persisted under `current/resources/`; built-in workflow values retain their existing `current/state.json` location. All workflow contexts in one executor share the manager. A resumed executor reopens handles, not closures. Resource data participates in normal [checkpoint recovery](recovery.md). Cross-run storage, queues, ledgers, and scheduler/worker activation are not supplied by this API.
+Resources are run-scoped and persisted under `current/resources/`; built-in workflow values retain their existing `current/state.json` location. All workflow contexts in one executor share the manager. A resumed executor reopens handles, not closures. Resource data participates in normal [checkpoint recovery](recovery.md). Cross-run storage, queues, ledgers, and scheduler/agent activation are not supplied by this API.
 
 ## Explicit agent attachment
 
@@ -37,9 +37,9 @@ Custom adapters implement `NornAgentResourceAdapter`: a unique name and `bind({r
 
 | Decision | GOOD | BAD |
 |---|---|---|
-| IF a worker needs state access, THEN explicitly select its fields and permissions. ELSE omit the attachment. | A reviewer reads a pinned candidate field. | Automatically expose all manifest fields to every session. |
+| IF a Norn agent needs state access, THEN explicitly select its fields and permissions. ELSE omit the attachment. | A reviewer reads a pinned candidate field. | Automatically expose all manifest fields to every session. |
 | IF combining pages, THEN compare their revisions and restart the read when they differ. ELSE use a single returned page as a fragment only. | Re-read a value changed between pages. | Concatenate pages from different revisions. |
-| IF disposing a binding, THEN release session-local handles only. ELSE retain the resource for later sessions. | Close a subscription. | Delete workflow state when its worker exits. |
+| IF disposing a binding, THEN release session-local handles only. ELSE retain the resource for later sessions. | Close a subscription. | Delete workflow state when its agent exits. |
 
 The attachment never exposes internal scheduler/checkpoint control state. It is a cooperative tool boundary, not a sandbox against unrestricted filesystem tools or trusted extensions. [Agent loading](agents.md#prompts-tools-and-resource-loading) owns those limitations.
 

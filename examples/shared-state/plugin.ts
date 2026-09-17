@@ -7,7 +7,7 @@ export const manifest = definePluginManifest({
 	workflows: {
 		copy: {
 			isEntrypoint: true,
-			instructions: "Exercise explicitly attached workflow-state tools: a worker reads source and writes a copy, then a separate workflow verifies exact equality from persisted state.",
+			instructions: "Exercise explicitly attached workflow-state tools: a Norn agent reads source and writes a copy, then a separate workflow verifies exact equality from persisted state.",
 			params: z.object({ source: z.string().min(1).max(500) }),
 		},
 		verify: { isEntrypoint: false, params: z.object({}) },

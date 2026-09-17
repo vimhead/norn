@@ -8,7 +8,7 @@ return run.next(manifest.workflows.analyze, { draftArtifact });
 
 `run.next` constructs a control result. Returning it lets the scheduler persist the transition and execute the target in the **same run**, with that target's isolation mode. It does not suspend the caller and later return a value. Awaiting `run.next` cannot turn it into a subroutine.
 
-The caller and target share run state and artifacts, not local variables or worker conversations. All targets must be registered in the loaded project. Params are validated at the target; a returned `complete` completes the entire run.
+The caller and target share run state and artifacts, not local variables or agent conversations. All targets must be registered in the loaded project. Params are validated at the target; a returned `complete` completes the entire run.
 
 ## Caller-selected continuation
 

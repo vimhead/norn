@@ -13,7 +13,7 @@ export const manifest = definePluginManifest({
 	workflows: {
 		start: {
 			isEntrypoint: true,
-			instructions: "Summarize 2–12 supplied notes using two concurrent native agents and a shared leased work queue. Checkpoint completed rounds, verify every persisted result and exact source quotation, and return a summaries.json artifact. Requires configured worker authentication; modifies only this run's resources, logs and artifacts.",
+			instructions: "Summarize 2–12 supplied notes using two concurrent Norn agents and a shared leased work queue. Checkpoint completed rounds, verify every persisted result and exact source quotation, and return a summaries.json artifact. Requires configured Norn agent authentication; modifies only this run's resources, logs and artifacts.",
 			params: inputSchema,
 		},
 		work: { isEntrypoint: false, params: inputSchema.extend({ round: z.number().int().min(0).max(12) }) },
@@ -41,7 +41,7 @@ export default definePlugin(manifest, {
 				await run.artifacts.write(`rounds/${params.round}.json`, JSON.stringify(reports, null, 2));
 				const after = await queue.inspect();
 				if (reports.some(report => report.status === "blocked") || after.leased > 0 || after.acknowledged <= before.acknowledged) {
-					return run.fail({ summary: "The worker round did not finish its claims; inspect the saved reports and queue before recovery." });
+					return run.fail({ summary: "The agent round did not finish its claims; inspect the saved reports and queue before recovery." });
 				}
 				return after.acknowledged === params.notes.length
 					? run.next(manifest.workflows.verify, { notes: params.notes })
@@ -97,6 +97,6 @@ async function processRound(input: { readonly run: NornRun; readonly queue: Work
 			if (outcome.status === "rejected") errors.push(outcome.reason);
 		}
 	}
-	if (errors.length) throw new AggregateError(errors, "Queue workers failed; inspect their retained agent logs");
+	if (errors.length) throw new AggregateError(errors, "Queue agents failed; inspect their retained agent logs");
 	return reports;
 }

@@ -1,18 +1,18 @@
-# Coordinating multiple agents
+# Coordinating multiple Norn agents
 
 This example implements its own queue and agent adapter using Norn's existing [resource contracts](../../docs/resources.md). Neither the queue nor `QueueAdapter` is a built-in Norn API.
 
 - [`work-queue.ts`](work-queue.ts): note/result schemas, file-backed `WorkQueue`, and a plain `NornResourceDefinition` named `workQueueDefinition`.
 - [`queue-adapter.ts`](queue-adapter.ts): `QueueAdapter({queue})` implements `NornAgentResourceAdapter`, exposing claim, acknowledgment and status tools for one queue.
-- [`plugin.ts`](plugin.ts): seed notes, explicitly start two native workers per round, close both sessions before a checkpoint, and verify persisted results.
+- [`plugin.ts`](plugin.ts): seed notes, explicitly start two Norn agents per round, close both sessions before a checkpoint, and verify persisted results.
 
 ```ts
 import { QueueAdapter } from "./queue-adapter.ts";
 import { workQueueDefinition } from "./work-queue.ts";
 
 const queue = await run.resources.ensure(workQueueDefinition);
-const worker = await run.agents.createSession({
-  label: "worker-1",
+const agentSession = await run.agents.createSession({
+  label: "summary-1",
   tools: [],
   resourceAdapters: [QueueAdapter({ queue })],
 });
@@ -22,7 +22,7 @@ The complete plugin owns prompting and disposal. Resource initialization and age
 
 ## Run
 
-[Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this entire directory into a writable task directory, and enter it. Native workers require [configured providers/authentication](../../setup/providers.md). The supplied four-note input normally uses two rounds: four worker prompts, up to two concurrently. Model/thinking settings come from the configured runtime and are not overridden.
+[Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this entire directory into a writable task directory, and enter it. Norn agents require [configured providers/authentication](../../setup/providers.md). The supplied four-note input normally uses two rounds: four agent prompts, up to two concurrently. Model/thinking settings come from the configured runtime and are not overridden.
 
 ```bash
 norn workflows inspect coordinatingAgents.start
@@ -31,13 +31,13 @@ norn runs wait <returned-run-id>
 norn runs inspect <returned-run-id>
 ```
 
-Success reports `status: completed`, `data.processed: 4`, and a `summaries` artifact at `current/artifacts/summaries.json`. It contains each input ID, original source, summary, exact source quotation and delivery count. Round reports are in `current/artifacts/rounds/`; [native session evidence](../../docs/agents.md#response-contract-and-evidence) is retained separately.
+Success reports `status: completed`, `data.processed: 4`, and a `summaries` artifact at `current/artifacts/summaries.json`. It contains each input ID, original source, summary, exact source quotation and delivery count. Round reports are in `current/artifacts/rounds/`; [agent session evidence](../../docs/agents.md#response-contract-and-evidence) is retained separately.
 
-Verification checks persisted results for coverage, schemas, unchanged sources and quotation membership—not summary quality or completeness. Worker success reports alone cannot complete the run.
+Verification checks persisted results for coverage, schemas, unchanged sources and quotation membership—not summary quality or completeness. Agent success reports alone cannot complete the run.
 
 ## Queue boundaries
 
-The local format retains at most 12 notes and their results in `current/resources/summaries/queue.json`. Note/result schemas bound every tool payload; there is no general schema registry, configurable permissions framework or multi-queue adapter. Workflow code enqueues notes and inspects results. Workers receive only `queue_claim`, `queue_acknowledge` and counts-only `queue_status`, not enqueue or filesystem tools. Normal [agent resource loading](../../docs/agents.md#prompts-tools-and-resource-loading) still applies; this is not an OS sandbox.
+The local format retains at most 12 notes and their results in `current/resources/summaries/queue.json`. Note/result schemas bound every tool payload; there is no general schema registry, configurable permissions framework or multi-queue adapter. Workflow code enqueues notes and inspects results. Norn agents receive only `queue_claim`, `queue_acknowledge` and counts-only `queue_status`, not enqueue or filesystem tools. Normal [agent resource loading](../../docs/agents.md#prompts-tools-and-resource-loading) still applies; this is not an OS sandbox.
 
 A claim lasts five minutes, measured by the local wall clock. Repeating a live owner's claim returns the same note/token; another binding has a distinct owner even when labels match. Expiry makes abandoned work available with a new token. Stale, expired and wrong-owner acknowledgments fail. Disposal does not acknowledge or release work. This bounded example has no renewal, subscriptions or automatic retry scheduler.
 

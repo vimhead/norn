@@ -1,14 +1,14 @@
-# Worker → saved artifact → analysis
+# Norn agent → saved artifact → analysis
 
 ```text
 sourceSummary.draft
-  native worker → draft.json + saved ref
+  Norn drafting agent → draft.json + saved ref
   return next (checkpoint)
 sourceSummary.analyze
-  read saved draft → verify quotations → fresh native analyst → analysis.json
+  read saved draft → verify quotations → fresh Norn analysis agent → analysis.json
 ```
 
-The first worker summarizes supplied source text. The analysis workflow reads
+The drafting agent summarizes supplied source text. The analysis workflow reads
 only the saved source/draft contract and uses a different conversation to assess
 support and omissions. It does not receive the author's conversation. This is a
 small application, not a prescribed development pipeline.
@@ -16,11 +16,12 @@ small application, not a prescribed development pipeline.
 ## Setup and run
 
 [Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this
-directory to a writable task directory, and `cd` into the copy. Configure Pi
-credentials and an available default model beforehand; this example makes live
-model calls and the detached executor cannot prompt for login.
+directory to a writable task directory, and `cd` into the copy. Configure
+[Norn agent authentication and a default model](../../setup/providers.md)
+beforehand; this example makes live model calls and the detached executor cannot
+prompt for login.
 
-Both workers request `tools: []` and use custom role prompts; Norn retains its
+Both Norn agents request `tools: []` and use custom role prompts; Norn retains its
 structured-response tool. Normal Pi resource discovery still applies. This is
 not a security-isolated/source-only harness; [agent resource boundaries](../../docs/agents.md#prompts-tools-and-resource-loading)
 explain how inherited context and extensions can affect effective prompts/tools.
@@ -48,7 +49,7 @@ Expected successful structure (wording and verdict are model-dependent):
 - `current/artifacts/draft.json`: `{ source, draft: { summary, quotations, uncertainties } }`.
 - `current/artifacts/analysis.json`: `{ verdict, reason, issues }`.
 - A `sourceSummary.draft -> sourceSummary.analyze` transition checkpoint.
-- Native `draft` and `analysis` agent records and separate Pi sessions.
+- Norn agent records labeled `draft` and `analysis`, with separate Pi sessions.
 
 Paths are under `.norn/runs/$RUN/`. Read the actual artifacts and compare them
 against [input.json](input.json); a run ID or valid schema is not evidence of a
@@ -65,7 +66,7 @@ external service outage.
 1. In `plugin.ts`, at the beginning of `analyze.execute`, temporarily add
    `throw new Error("Analysis repair exercise");`.
 2. Start a new run with `input.json` and wait. It should fail in
-   `sourceSummary.analyze` after the draft worker has saved its result.
+   `sourceSummary.analyze` after the drafting agent has saved its result.
 3. Read `current/artifacts/draft.json` and retain its bytes for comparison.
    List checkpoints and select the actual ID whose message is
    `transition: sourceSummary.draft -> sourceSummary.analyze`.
@@ -81,7 +82,7 @@ external service outage.
    ```
 
 5. Verify completion and byte-identical `draft.json`. Logs/metrics should show
-   no second draft worker: recovery executes analysis from the saved transition,
+   no second drafting agent: recovery executes analysis from the saved transition,
    rather than rerunning independently managed orchestration.
 
 The live draft can itself contain invalid quotations; that is not an

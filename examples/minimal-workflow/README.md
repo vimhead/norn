@@ -1,8 +1,8 @@
 # Create → run → change a workflow
 
-This example needs no model, credentials, dependencies in the example directory,
-or compilation step. It writes a greeting artifact and exposes its text in the
-run outcome.
+This code-driven example needs no model, credentials, dependencies in the example
+directory, or compilation step. It writes a greeting artifact and exposes its text
+in the run outcome.
 
 ## Create and register
 

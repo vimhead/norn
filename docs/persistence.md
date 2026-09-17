@@ -10,7 +10,7 @@
 | Outcome metadata | Caller-facing summary, artifact/log refs and small data, exposed by run inspection. |
 | Workflow params | Explicit input to the current/next step, persisted for recovery. |
 
-Workflow state is the automatically initialized built-in [run resource](resources.md). State declarations live in the manifest. The [worker example](../examples/worker-then-analysis/plugin.ts) saves the draft ref in run state and also passes it explicitly to analysis. The state value is a retained run record; the params are the consumer's input contract.
+Workflow state is the automatically initialized built-in [run resource](resources.md). State declarations live in the manifest. The [agent example](../examples/agent-then-analysis/plugin.ts) saves the draft ref in run state and also passes it explicitly to analysis. The state value is a retained run record; the params are the consumer's input contract.
 
 Artifact refs are paths, not content hashes, and a write to the same path replaces its content. State writes are serialized and atomic; an artifact write plus a state update is not a single transaction. An artifact read returns text, so a JSON consumer still needs parsing and schema validation.
 

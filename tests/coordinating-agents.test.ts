@@ -15,7 +15,7 @@ import { getRunInfo } from "../src/internal/run-state.ts";
 import { NornRunResources } from "../src/resources.ts";
 import { loadNornProject } from "../src/plugin-loader.ts";
 
-const model: Model<"anthropic-messages"> = { id: "offline", name: "Offline queue worker", provider: "offline-test", api: "anthropic-messages", baseUrl: "https://unused.invalid", reasoning: false, input: ["text"], contextWindow: 128000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
+const model: Model<"anthropic-messages"> = { id: "offline", name: "Offline queue agent", provider: "offline-test", api: "anthropic-messages", baseUrl: "https://unused.invalid", reasoning: false, input: ["text"], contextWindow: 128000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 const notes = Array.from({ length: 4 }, (_, index) => ({ id: `note-${index}`, text: `The team recorded source note ${index} for the release review.` }));
 
 async function createWorkflowFixture(context: TestContext, input: { failureLabel: string | undefined; shouldInventQuote: boolean; isReportOnly?: boolean }) {
@@ -106,7 +106,7 @@ async function createWorkflowFixture(context: TestContext, input: { failureLabel
 }
 
 for (const noteCount of [3, 4]) {
-	test(`the copied example coordinates native sessions and verifies ${noteCount} persisted results`, { timeout: 30000 }, async context => {
+	test(`the copied example coordinates Norn agent sessions and verifies ${noteCount} persisted results`, { timeout: 30000 }, async context => {
 		const setup = await createWorkflowFixture(context, { failureLabel: undefined, shouldInventQuote: false });
 		const selectedNotes = notes.slice(0, noteCount);
 		const result = await setup.engine.runWorkflow(manifest.workflows.start, { notes: selectedNotes }, undefined);
@@ -124,7 +124,7 @@ for (const noteCount of [3, 4]) {
 	});
 }
 
-test("worker success reports without persisted results cannot complete the example", async context => {
+test("agent success reports without persisted results cannot complete the example", async context => {
 	const setup = await createWorkflowFixture(context, { failureLabel: undefined, shouldInventQuote: false, isReportOnly: true });
 	const result = await setup.engine.runWorkflow(manifest.workflows.start, { notes }, undefined);
 	assert.equal(result.status, "failed");
@@ -142,9 +142,9 @@ test("acknowledgment is not semantic approval: the example rejects invented quot
 	await assert.rejects(readFile(join(runRoot, "current/artifacts/summaries.json")), { code: "ENOENT" });
 });
 
-test("native rollback and fresh workers retain checkpointed results and retry only the interrupted round", { timeout: 30000 }, async context => {
+test("native rollback and fresh Norn agents retain checkpointed results and retry only the interrupted round", { timeout: 30000 }, async context => {
 	const setup = await createWorkflowFixture(context, { failureLabel: "round-1-worker-2", shouldInventQuote: false });
-	await assert.rejects(setup.engine.runWorkflow(manifest.workflows.start, { notes }, { id: "recover-queue" }), /Queue workers failed/);
+	await assert.rejects(setup.engine.runWorkflow(manifest.workflows.start, { notes }, { id: "recover-queue" }), /Queue agents failed/);
 	const runRoot = join(setup.root, ".norn/runs/recover-queue");
 	assert.equal((await getRunInfo(runRoot)).status, "failed");
 	await cp(join(runRoot, "current"), join(setup.root, "preserved-failed-attempt"), { recursive: true });

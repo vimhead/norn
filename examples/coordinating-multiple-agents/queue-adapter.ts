@@ -18,7 +18,7 @@ export function QueueAdapter(input: { readonly queue: WorkQueue }): NornAgentRes
 			return {
 				tools: [
 					{
-						name: "queue_status", label: "Note queue status", description: "Read counts of available, leased and acknowledged notes, without exposing other workers' notes or tokens.",
+						name: "queue_status", label: "Note queue status", description: "Read counts of available, leased and acknowledged notes, without exposing other agents' notes or tokens.",
 						parameters: Type.Object({}),
 						async execute() {
 							const { items: _items, ...status } = await input.queue.inspect();

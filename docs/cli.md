@@ -88,7 +88,7 @@ each argument, without relying on another `norn` installation on PATH.
 `renderNornDocumentationIntro({ documentation, invocation })`, also exported from
 [`norn/documentation`](../src/documentation.ts), renders the same text from explicit
 inputs without filesystem or process access. Generating the introduction does not
-inject it into prompts or alter Pi/native-worker sessions.
+inject it into prompts or alter Norn agent sessions.
 
 ## Discover live contracts
 
@@ -146,6 +146,14 @@ norn runs delete <run>
 `stop` signals SIGTERM; `kill` signals SIGKILL. Delete removes an inactive run and its evidence. Neither stopping nor deleting undoes external effects. Resume and rollback are documented in [recovery](recovery.md).
 
 ## JavaScript client and other harnesses
+
+Claude Code, Pi, Codex, and other CLI-capable harnesses can invoke Norn without an
+adapter. Workflows provide portable task delegation and workflow logic, not
+compatibility with a host's plugin format or UI extension APIs. The caller does
+not need Pi installed: [Norn agents](agents.md) use Norn's bundled Pi runtime.
+
+The JavaScript client invokes the runtime; the [Norn SDK](workflows.md) defines
+workflows. For example, start and inspect a run through `norn/client`:
 
 ```ts
 import { createNornClient } from "norn/client";
