@@ -12,8 +12,8 @@ import { AgentSession, createAgentSession, DefaultResourceLoader, SessionManager
 import { z } from "zod";
 
 import { NornAgentRunner } from "../src/internal/agents.ts";
-import { NornRunResources, type NornResourceFamily } from "../src/resources.ts";
-import { State } from "../src/state.ts";
+import { initializeRunResources } from "../src/internal/run-resources.ts";
+import { StateAdapter, type NornAgentResourceAdapter } from "../src/index.ts";
 import { NornRunLogs } from "../src/internal/logs.ts";
 import { NornRunLogger } from "../src/internal/run-log.ts";
 import type { NornWorkflowCatalogInfo, NornWorkflowInspection } from "../src/api.ts";
@@ -242,10 +242,10 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 
 test("native resource tools are explicit, persist across sessions, and clean up on disposal and startup failure", { timeout: 30000 }, async context => {
 	const fixture = await createFixture(context);
-	const resources = await NornRunResources.initialize(fixture.root);
+	const { resources, state } = await initializeRunResources(fixture.root);
 	const field = { id: "count", schema: z.number().int() };
 	const hidden = { id: "private", schema: z.string() };
-	await resources.state.set(hidden, "not attached");
+	await state.set(hidden, "not attached");
 	const captured: CapturedRequest[] = [];
 	const nativeSessions: AgentSession[] = [];
 	const calls = [
@@ -272,13 +272,13 @@ test("native resource tools are explicit, persist across sessions, and clean up 
 		responseCollector: new NornAgentResponseCollector(),
 	});
 	let disposals = 0;
-	const lifecycle: NornResourceFamily = { name: "test.lifecycle", async bind() { return { tools: [], async dispose() { disposals++; } }; } };
-	const attachment = State({ state: resources.state, fields: [{ field, access: "read-write" }] });
-	const worker = await runner.createSession({ label: "writer", tools: [], resources: [attachment, lifecycle] });
+	const lifecycle: NornAgentResourceAdapter = { name: "test.lifecycle", async bind() { return { tools: [], async dispose() { disposals++; } }; } };
+	const attachment = StateAdapter({ state, fields: [{ field, access: "read-write" }] });
+	const worker = await runner.createSession({ label: "writer", tools: [], resourceAdapters: [attachment, lifecycle] });
 	context.onTestFinished(() => worker.dispose());
 	assert.deepEqual(await worker.prompt({ prompt: "Exercise attached state", response: z.object({ ok: z.boolean() }), maxAttempts: 1 }), { ok: true });
 	assert.deepEqual(new Set(captured[0].tools), new Set([AGENT_RESPONSE_TOOL_NAME, "norn_state_list", "norn_state_get", "norn_state_set"]));
-	assert.equal(await resources.state.get(field), 7);
+	assert.equal(await state.get(field), 7);
 	const results = nativeSessions[0].messages.filter(message => message.role === "toolResult");
 	assert.equal(results.filter(message => message.isError).length, 2);
 	await worker.dispose();
@@ -286,18 +286,18 @@ test("native resource tools are explicit, persist across sessions, and clean up 
 	assert.equal(disposals, 1);
 	await runner.prompt({ label: "unattached", tools: [], prompt: "Return the result", response: z.object({ ok: z.boolean() }), maxAttempts: 1 });
 	assert.deepEqual(lastRequest(captured).tools, [AGENT_RESPONSE_TOOL_NAME]);
-	assert.equal(await (await NornRunResources.initialize(fixture.root)).state.get(field), 7);
-	await runner.prompt({ label: "attached-one-shot", tools: [], resources: [attachment, lifecycle], prompt: "Return the result", response: z.object({ ok: z.boolean() }), maxAttempts: 1 });
+	assert.equal(await (await initializeRunResources(fixture.root)).state.get(field), 7);
+	await runner.prompt({ label: "attached-one-shot", tools: [], resourceAdapters: [attachment, lifecycle], prompt: "Return the result", response: z.object({ ok: z.boolean() }), maxAttempts: 1 });
 	assert.ok(lastRequest(captured).tools.includes("norn_state_get"));
 	assert.equal(disposals, 2);
-	await assert.rejects(runner.createSession({ label: "broken-start", resources: [lifecycle], beforeSessionStart() { throw new Error("startup failure"); } }), /startup failure/);
+	await assert.rejects(runner.createSession({ label: "broken-start", resourceAdapters: [lifecycle], beforeSessionStart() { throw new Error("startup failure"); } }), /startup failure/);
 	assert.equal(disposals, 3);
-	await assert.rejects(runner.createSession({ label: "duplicate", resources: [lifecycle, lifecycle] }), /Duplicate resource family/);
+	await assert.rejects(runner.createSession({ label: "duplicate", resourceAdapters: [lifecycle, lifecycle] }), /Duplicate resource adapter/);
 	assert.equal(disposals, 4);
-	const collision: NornResourceFamily = { name: "test.collision", async bind() {
+	const collision: NornAgentResourceAdapter = { name: "test.collision", async bind() {
 		const binding = await attachment.bind({ runId: "test", label: "collision" });
 		return { tools: [{ ...binding.tools[0], name: "read" }], async dispose() { disposals++; } };
 	} };
-	await assert.rejects(runner.createSession({ label: "collision", resources: [lifecycle, collision] }), /tool name collision/);
+	await assert.rejects(runner.createSession({ label: "collision", resourceAdapters: [lifecycle, collision] }), /tool name collision/);
 	assert.equal(disposals, 6);
 });

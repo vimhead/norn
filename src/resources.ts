@@ -1,12 +1,10 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { z } from "zod";
 import { createRunFileCoordinator, type NornFileCoordinator } from "./files.ts";
 import { isNodeError } from "./internal/errors.ts";
 import { writeJsonAtomically } from "./internal/json-file.ts";
-import { NornJsonWorkflowState } from "./internal/state-store.ts";
 
 export type NornResourceContext = {
 	readonly mode: "create" | "open";
@@ -21,40 +19,20 @@ export type NornResourceDefinition<T> = {
 	initialize(context: NornResourceContext): Promise<T>;
 };
 
-export type NornResourceBinding = {
-	readonly tools: readonly ToolDefinition[];
-	dispose(): Promise<void>;
-};
-
-export type NornResourceFamily = {
-	readonly name: string;
-	bind(context: { readonly runId: string; readonly label: string }): Promise<NornResourceBinding>;
-};
-
 const definitionSchema = z.strictObject({ name: z.string(), kind: z.string().min(1), configuration: z.json() });
 const recordSchema = definitionSchema.extend({ isInitialized: z.boolean() });
 
 export class NornRunResources {
 	readonly files: NornFileCoordinator;
-	readonly state: NornJsonWorkflowState;
 	private readonly entries = new Map<string, { readonly definition: z.output<typeof definitionSchema>; readonly value: Promise<unknown> }>();
 
 	private constructor(private readonly runRoot: string) {
 		this.files = createRunFileCoordinator(runRoot);
-		this.state = new NornJsonWorkflowState(join(runRoot, "current", "state.json"), this.files);
 	}
 
 	static async initialize(runRoot: string): Promise<NornRunResources> {
 		const resources = new NornRunResources(resolve(runRoot));
-		await resources.ensure({
-			name: "workflow-state",
-			kind: "norn.state",
-			configuration: { format: 1, path: "state.json" },
-			initialize: async ({ mode }) => {
-				await resources.state.initialize(mode);
-				return resources.state;
-			},
-		});
+		await mkdir(join(resources.runRoot, "current", "resources"), { recursive: true });
 		return resources;
 	}
 

@@ -22,6 +22,7 @@ type DefaultNornRunInput = {
 	readonly agentDir?: string;
 	readonly responseCollector: NornAgentResponseCollector;
 	readonly resources: NornRunResources;
+	readonly state: NornRun["state"];
 	readonly logger: NornRunLogger;
 	readonly artifacts: NornArtifacts;
 	readonly logs: NornRunLogs;
@@ -45,7 +46,7 @@ export class NornRunContext implements NornProjectRun {
 		this.projectRoot = input.projectRoot;
 		this.cwd = input.cwd;
 		this.resources = input.resources;
-		this.state = input.resources.state;
+		this.state = input.state;
 		this.artifacts = input.artifacts;
 		this.logs = {
 			read: (log) => this.input.logs.read(log),

@@ -3,18 +3,22 @@ import { spawn } from "node:child_process";
 import { chmod, stat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { test, type TestContext } from "vitest";
 import { z } from "zod";
+import { NornMemoryWorkflowState } from "../src/internal/state-store.ts";
 import { NornFileCoordinator, createRunFileCoordinator } from "../src/files.ts";
 import { NornRunResources } from "../src/resources.ts";
+import { initializeRunResources } from "../src/internal/run-resources.ts";
 import { NornRunLogger } from "../src/internal/run-log.ts";
 import { NornRunStore } from "../src/internal/run-store.ts";
 import { NornRunStateStore } from "../src/internal/run-state.ts";
-import { State } from "../src/state.ts";
+import { StateAdapter } from "../src/state-adapter.ts";
 import { NornArtifacts } from "../src/internal/artifacts.ts";
 import { NornEngine } from "../src/internal/engine.ts";
-import { definePlugin, definePluginManifest } from "../src/api.ts";
+import { definePlugin, definePluginManifest, type NornWorkflowState } from "../src/api.ts";
 
 async function fixture(context: TestContext) {
 	const root = await mkdtemp(join(tmpdir(), "norn-resources-"));
@@ -52,10 +56,10 @@ test("independent processes serialize whole mutations and recover a dead owner w
 test("independent state processes preserve every field and initialization never seeds declared defaults", { timeout: 15000 }, async context => {
 	const { root } = await fixture(context);
 	await Promise.all(Array.from({ length: 4 }, (_, index) => worker(root, "state", `${index}`).completed));
-	const resources = await NornRunResources.initialize(root);
-	assert.equal(Object.keys(JSON.parse(await readFile(resources.state.stateFile, "utf8"))).length, 48);
-	assert.equal(await resources.state.getOptional({ id: "missing", schema: z.string().default("not invented") }), undefined);
-	await assert.rejects(resources.state.get({ id: "missing", schema: z.string() }), /Missing workflow state/);
+	const { state } = await initializeRunResources(root);
+	assert.equal(Object.keys(JSON.parse(await readFile(state.stateFile, "utf8"))).length, 48);
+	assert.equal(await state.getOptional({ id: "missing", schema: z.string().default("not invented") }), undefined);
+	await assert.rejects(state.get({ id: "missing", schema: z.string() }), /Missing workflow state/);
 });
 
 test("locks coordinate canonical aliases, release after exceptions, and do not block unrelated files", async context => {
@@ -85,17 +89,65 @@ test("malformed ownership fails closed", async context => {
 
 test("state rejects invalid documents and failed writes do not poison subsequent operations", async context => {
 	const { root } = await fixture(context);
-	const resources = await NornRunResources.initialize(root);
+	const { state } = await initializeRunResources(root);
 	const field = { id: "count", schema: z.number().int() };
-	await assert.rejects(resources.state.set(field, 1.5));
-	await resources.state.set(field, 2);
-	assert.equal(await resources.state.get(field), 2);
-	await writeFile(resources.state.stateFile, "[]");
-	await assert.rejects(resources.state.set(field, 3), /Invalid workflow state document/);
-	assert.equal(await readFile(resources.state.stateFile, "utf8"), "[]");
-	await writeFile(resources.state.stateFile, "{}");
-	await resources.state.set({ id: "__proto__", schema: z.string() }, "ordinary field");
-	assert.equal(await resources.state.get({ id: "__proto__", schema: z.string() }), "ordinary field");
+	await assert.rejects(state.set(field, 1.5));
+	await state.set(field, 2);
+	assert.equal(await state.get(field), 2);
+	await writeFile(state.stateFile, "[]");
+	await assert.rejects(state.set(field, 3), /Invalid workflow state document/);
+	assert.equal(await readFile(state.stateFile, "utf8"), "[]");
+	await writeFile(state.stateFile, "{}");
+	await state.set({ id: "__proto__", schema: z.string() }, "ordinary field");
+	assert.equal(await state.get({ id: "__proto__", schema: z.string() }), "ordinary field");
+});
+
+test("workflow and adapter writes share Pi file-mutation coordination", async context => {
+	const { root } = await fixture(context);
+	const { state } = await initializeRunResources(root);
+	const field = { id: "count", schema: z.number() };
+	await state.set(field, 0);
+	const binding = await StateAdapter({ state, fields: [{ field, access: "write" }] }).bind({ runId: "test", label: "writer" });
+	const writeTool = binding.tools.find(tool => tool.name === "norn_state_set")!;
+	let markEntered!: () => void;
+	let releaseQueue!: () => void;
+	const entered = new Promise<void>(resolve => { markEntered = resolve; });
+	const released = new Promise<void>(resolve => { releaseQueue = resolve; });
+	const held = withFileMutationQueue(state.stateFile, async () => {
+		markEntered();
+		await released;
+	});
+	await entered;
+	const workflowWrite = state.set(field, 1);
+	const adapterWrite = writeTool.execute("write", { key: field.id, value: 2 }, undefined, undefined, {} as never);
+	try {
+		await delay(25);
+		assert.equal(await state.get(field), 0);
+	} finally {
+		releaseQueue();
+		await Promise.all([held, workflowWrite, adapterWrite]);
+		await binding.dispose();
+	}
+	assert.equal(await state.get(field), 2);
+});
+
+test("StateAdapter delegates to the state interface without filesystem metadata", async () => {
+	const state = new NornMemoryWorkflowState();
+	const field = { id: "message", schema: z.string() };
+	const binding = await StateAdapter({ state, fields: [{ field, access: "read-write" }] }).bind({ runId: "test", label: "memory" });
+	try {
+		const set = binding.tools.find(tool => tool.name === "norn_state_set")!;
+		const get = binding.tools.find(tool => tool.name === "norn_state_get")!;
+		await set.execute("write", { key: field.id, value: "saved" }, undefined, undefined, {} as never);
+		const result = await get.execute("read", { key: field.id, offset: 0, limit: 10000 }, undefined, undefined, {} as never);
+		assert.deepEqual(JSON.parse((result.details as { text: string }).text), { isSet: true, value: "saved" });
+		const controller = new AbortController();
+		controller.abort();
+		await assert.rejects(set.execute("cancelled", { key: field.id, value: "cancelled" }, controller.signal, undefined, {} as never));
+		assert.equal(await state.get(field), "saved");
+	} finally {
+		await binding.dispose();
+	}
 });
 
 test("resource identity survives reopening, rejects conflicts and permits a failed initializer to retry", async context => {
@@ -128,25 +180,25 @@ test("independent logger handles append without losing events", async context =>
 test("checkpoint rollback restores resource data but never restores transient lock ownership", async context => {
 	const { root } = await fixture(context);
 	const store = await NornRunStore.initialize(root);
-	const resources = await NornRunResources.initialize(root);
+	const { resources, state } = await initializeRunResources(root);
 	const field = { id: "phase", schema: z.string() };
-	await resources.state.set(field, "before");
-	const checkpoint = await resources.files.withExclusiveLock(resources.state.stateFile, async () => store.snapshotCurrent("saved"));
-	await resources.state.set(field, "after");
+	await state.set(field, "before");
+	const checkpoint = await resources.files.withExclusiveLock(state.stateFile, async () => store.snapshotCurrent("saved"));
+	await state.set(field, "after");
 	await store.restoreSnapshot(checkpoint.id, undefined);
-	const reopened = await NornRunResources.initialize(root);
+	const reopened = await initializeRunResources(root);
 	assert.equal(await reopened.state.get(field), "before");
 	assert.deepEqual(await readdir(join(root, "locks")), []);
 });
 
-test("State tools discover only selected fields, enforce permissions and schemas, and paginate large values", async context => {
+test("StateAdapter accepts public state, scopes tools, validates schemas and paginates large values", async context => {
 	const { root } = await fixture(context);
-	const resources = await NornRunResources.initialize(root);
+	const state: NornWorkflowState = (await initializeRunResources(root)).state;
 	const visible = { id: "visible", schema: z.string() };
 	const hidden = { id: "hidden", schema: z.string() };
-	await resources.state.set(hidden, "secret context");
-	await resources.state.set(visible, "a".repeat(20000));
-	const binding = await State({ state: resources.state, fields: [{ field: visible, access: "read" }] }).bind({ runId: "test", label: "reader" });
+	await state.set(hidden, "secret context");
+	await state.set(visible, "a".repeat(20000));
+	const binding = await StateAdapter({ state, fields: [{ field: visible, access: "read" }] }).bind({ runId: "test", label: "reader" });
 	const execute = async (name: string, params: object) => binding.tools.find(tool => tool.name === name)!.execute("call", params, undefined, undefined, {} as never);
 	const listed = await execute("norn_state_list", { offset: 0, limit: 10000 });
 	assert.ok(JSON.stringify(listed.content).includes("visible"));
@@ -158,18 +210,18 @@ test("State tools discover only selected fields, enforce permissions and schemas
 	assert.equal(details.nextOffset, 10000);
 	assert.ok(Buffer.byteLength(JSON.stringify(first.content)) < 50000);
 	await binding.dispose();
-	const writer = await State({ state: resources.state, fields: [{ field: visible, access: "write" }] }).bind({ runId: "test", label: "writer" });
+	const writer = await StateAdapter({ state, fields: [{ field: visible, access: "write" }] }).bind({ runId: "test", label: "writer" });
 	await assert.rejects(writer.tools.find(tool => tool.name === "norn_state_set")!.execute("call", { key: "visible", value: 3 }, undefined, undefined, {} as never));
-	assert.equal((await resources.state.get(visible)).length, 20000);
+	assert.equal((await state.get(visible)).length, 20000);
 });
 
 test("reopening initialized state never substitutes empty data for a missing file", async context => {
 	const { root } = await fixture(context);
-	const resources = await NornRunResources.initialize(root);
-	await rm(resources.state.stateFile);
-	await assert.rejects(resources.state.getOptional({ id: "missing", schema: z.string() }), { code: "ENOENT" });
-	await assert.rejects(NornRunResources.initialize(root), { code: "ENOENT" });
-	await assert.rejects(readFile(resources.state.stateFile), { code: "ENOENT" });
+	const { state } = await initializeRunResources(root);
+	await rm(state.stateFile);
+	await assert.rejects(state.getOptional({ id: "missing", schema: z.string() }), { code: "ENOENT" });
+	await assert.rejects(initializeRunResources(root), { code: "ENOENT" });
+	await assert.rejects(readFile(state.stateFile), { code: "ENOENT" });
 });
 
 test("lock cleanup preserves both an operation error and lost ownership evidence", async context => {
@@ -215,9 +267,15 @@ test("native workflow contexts share one state resource and resume reopens its p
 		},
 	});
 	let manager: NornRunResources | undefined;
+	let initialState: NornWorkflowState | undefined;
 	const plugin = definePlugin(manifest, { workflows: {
 		start: { async execute(run) {
-			assert.strictEqual(run.state, run.resources.state);
+			initialState = run.state;
+			const managedState = await run.resources.ensure<NornWorkflowState>({
+				name: "workflow-state", kind: "norn.state", configuration: { format: 1, path: "state.json" },
+				async initialize() { throw new Error("Built-in state must already be initialized"); },
+			});
+			assert.strictEqual(managedState, run.state);
 			assert.equal(await run.state.getOptional(manifest.states.value), undefined);
 			manager = run.resources;
 			await run.state.set(manifest.states.value, 7);
@@ -225,11 +283,12 @@ test("native workflow contexts share one state resource and resume reopens its p
 		} },
 		continue: { execute(run) {
 			assert.strictEqual(run.resources, manager);
+			assert.strictEqual(run.state, initialState);
 			return run.next(manifest.workflows.finish, { decision: "reject" });
 		} },
 		finish: { gate: { describe: () => "Accept the persisted value." }, async execute(run) {
 			assert.notStrictEqual(run.resources, manager);
-			assert.strictEqual(run.state, run.resources.state);
+			assert.notStrictEqual(run.state, initialState);
 			return run.complete({ data: { value: await run.state.get(manifest.states.value) } });
 		} },
 	} });

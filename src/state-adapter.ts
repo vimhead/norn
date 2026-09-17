@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { defineTool, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { z } from "zod";
 import type { NornWorkflowState, NornWorkflowStateDefinition } from "./api.ts";
-import type { NornResourceFamily } from "./resources.ts";
+import type { NornAgentResourceAdapter } from "./agent-resource-adapter.ts";
 
 export type NornStateFieldAccess = {
 	readonly field: NornWorkflowStateDefinition;
@@ -15,7 +15,7 @@ const pageParameters = {
 	limit: Type.Integer({ minimum: 1, maximum: 10000 }),
 };
 
-export function State(input: { readonly state: NornWorkflowState & { readonly stateFile: string }; readonly fields: readonly NornStateFieldAccess[] }): NornResourceFamily {
+export function StateAdapter(input: { readonly state: NornWorkflowState; readonly fields: readonly NornStateFieldAccess[] }): NornAgentResourceAdapter {
 	const fields = new Map(input.fields.map((grant) => [grant.field.id, grant]));
 	if (fields.size !== input.fields.length || fields.size === 0) throw new Error("State attachment requires unique, explicitly selected fields");
 	const selectField = (key: string, access: "read" | "write") => {
@@ -55,10 +55,7 @@ export function State(input: { readonly state: NornWorkflowState & { readonly st
 						async execute(_id, params, signal) {
 							signal?.throwIfAborted();
 							const field = selectField(params.key, "write");
-							await withFileMutationQueue(input.state.stateFile, async () => {
-								signal?.throwIfAborted();
-								await input.state.set(field, params.value);
-							});
+							await input.state.set(field, params.value);
 							return { content: [{ type: "text", text: "Workflow state saved." }], details: {} };
 						},
 					}),

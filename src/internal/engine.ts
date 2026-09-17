@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { NornRunResources } from "../resources.ts";
+import { initializeRunResources } from "./run-resources.ts";
 import { createRunFileCoordinator } from "../files.ts";
 import {
 	type NornAnyWorkflowDeclaration,
@@ -362,7 +362,7 @@ export class NornEngine {
 		await mkdir(input.workspace, { recursive: true });
 		await mkdir(artifactsRoot, { recursive: true });
 		await mkdir(logsRoot, { recursive: true });
-		const resources = await NornRunResources.initialize(dirname(input.currentRoot));
+		const { resources, state } = await initializeRunResources(dirname(input.currentRoot));
 		return new NornRunContext({
 			id: input.id,
 			runRoot: input.currentRoot,
@@ -374,6 +374,7 @@ export class NornEngine {
 			agentDir: this.input.agentDir,
 			responseCollector: this.responseCollector,
 			resources,
+			state,
 			logger: input.logger,
 			artifacts: new NornArtifacts(artifactsRoot, resources.files),
 			logs: new NornRunLogs(logsRoot, resources.files),

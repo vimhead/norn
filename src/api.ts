@@ -497,7 +497,7 @@ export type NornAgentBeforeSessionStartContext = {
 };
 
 export type NornAgentCreateSessionInput = {
-	readonly resources?: readonly import("./resources.ts").NornResourceFamily[];
+	readonly resourceAdapters?: readonly import("./agent-resource-adapter.ts").NornAgentResourceAdapter[];
 	readonly label: string;
 	readonly cwd?: string;
 	readonly tools?: string[];

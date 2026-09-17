@@ -48,7 +48,7 @@ type CreatedNornAgentSessionInput = NornAgentRunnerInput & {
 	readonly label: string;
 	readonly cwd: string;
 	readonly session: AgentSession;
-	readonly resources: NornSessionResourceBindings;
+	readonly resourceBindings: NornSessionResourceBindings;
 	readonly events: NornAgentSessionEvents;
 };
 
@@ -81,19 +81,19 @@ export class NornAgentRunner {
 			...loader.getExtensions().errors.map(error => `Failed to load extension ${error.path}: ${error.error}`),
 		];
 		if (errors.length > 0) throw new Error(errors.join("\n"));
-		const resources = new NornSessionResourceBindings();
+		const resourceBindings = new NornSessionResourceBindings();
 		let session: AgentSession | undefined;
 		try {
-			await resources.bind({
-				families: agentInput.resources ?? [], runId: this.input.id, label: agentInput.label,
+			await resourceBindings.bind({
+				adapters: agentInput.resourceAdapters ?? [], runId: this.input.id, label: agentInput.label,
 				reservedTools: ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell", AGENT_RESPONSE_TOOL_NAME,
 					...loader.getExtensions().extensions.flatMap((extension) => [...extension.tools.keys()])],
 			});
 			({ session } = await createAgentSessionFromServices({
 				services,
 				sessionManager: SessionManager.create(cwd, sessionDir),
-				tools: [...withAgentResponseTool(agentInput.tools), ...resources.tools.map((tool) => tool.name)],
-				customTools: [this.responseToolFactory.create(), ...resources.tools],
+				tools: [...withAgentResponseTool(agentInput.tools), ...resourceBindings.tools.map((tool) => tool.name)],
+				customTools: [this.responseToolFactory.create(), ...resourceBindings.tools],
 				model: agentInput.model ?? this.input.model,
 				thinkingLevel: agentInput.thinkingLevel ?? this.input.thinkingLevel,
 			}));
@@ -101,12 +101,12 @@ export class NornAgentRunner {
 			await session.bindExtensions({});
 			await this.input.logger.record({ type: "agent.spawned", label: agentInput.label, cwd });
 			return new CreatedNornAgentSession({
-				...this.input, label: agentInput.label, cwd, session, resources, events: eventBus,
+				...this.input, label: agentInput.label, cwd, session, resourceBindings, events: eventBus,
 			});
 		} catch (error) {
 			const errors = [error];
 			try { session?.dispose(); } catch (cleanupError) { errors.push(cleanupError); }
-			try { await resources.dispose(); } catch (cleanupError) { errors.push(cleanupError); }
+			try { await resourceBindings.dispose(); } catch (cleanupError) { errors.push(cleanupError); }
 			if (errors.length > 1) throw new AggregateError(errors, "Agent creation and resource cleanup failed");
 			throw error;
 		}
@@ -228,7 +228,7 @@ class CreatedNornAgentSession implements NornAgentSession {
 		const errors: unknown[] = [];
 		try { await this.input.session.abort(); } catch (error) { errors.push(error); }
 		try { this.input.session.dispose(); } catch (error) { errors.push(error); }
-		try { await this.input.resources.dispose(); } catch (error) { errors.push(error); }
+		try { await this.input.resourceBindings.dispose(); } catch (error) { errors.push(error); }
 		if (errors.length) throw new AggregateError(errors, "Agent disposal failed");
 		await this.input.logger.record({ type: "agent.disposed", label: this.label });
 	}

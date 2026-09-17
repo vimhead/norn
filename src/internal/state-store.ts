@@ -24,10 +24,18 @@ export class NornMemoryWorkflowState implements NornWorkflowState {
 }
 
 export class NornJsonWorkflowState implements NornWorkflowState {
-	constructor(readonly stateFile: string, private readonly files: NornFileCoordinator) {}
+	readonly stateFile: string;
+
+	constructor(private readonly input: {
+		readonly stateFile: string;
+		readonly files: NornFileCoordinator;
+		readonly coordinateMutation: <T>(path: string, operation: () => Promise<T>) => Promise<T>;
+	}) {
+		this.stateFile = input.stateFile;
+	}
 
 	async initialize(mode: "create" | "open"): Promise<void> {
-		await this.files.withExclusiveLock(this.stateFile, async (path) => {
+		await this.input.files.withExclusiveLock(this.stateFile, async (path) => {
 			try {
 				await this.readStateFile(path);
 			} catch (error) {
@@ -44,18 +52,18 @@ export class NornJsonWorkflowState implements NornWorkflowState {
 	}
 
 	async getOptional<T>(state: NornWorkflowStateDefinition<T>): Promise<T | undefined> {
-		const data = await this.files.withExclusiveLock(this.stateFile, (path) => this.readStateFile(path));
+		const data = await this.input.files.withExclusiveLock(this.stateFile, (path) => this.readStateFile(path));
 		if (!Object.prototype.hasOwnProperty.call(data, state.id)) return undefined;
 		return state.schema.parse(data[state.id]);
 	}
 
 	async set<T>(state: NornWorkflowStateDefinition<T>, value: T): Promise<void> {
 		const parsedValue = state.schema.parse(value);
-		await this.files.withExclusiveLock(this.stateFile, async (path) => {
+		await this.input.coordinateMutation(this.stateFile, () => this.input.files.withExclusiveLock(this.stateFile, async (path) => {
 			const data = await this.readStateFile(path);
 			Object.defineProperty(data, state.id, { value: parsedValue, enumerable: true, configurable: true, writable: true });
 			await writeJsonAtomically(path, data);
-		});
+		}));
 	}
 
 	private async readStateFile(path: string): Promise<Record<string, unknown>> {

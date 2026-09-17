@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { createRunFileCoordinator } from "../../src/files.ts";
-import { NornRunResources } from "../../src/resources.ts";
+import { initializeRunResources } from "../../src/internal/run-resources.ts";
 import { writeJsonAtomically } from "../../src/internal/json-file.ts";
 
 const [root, mode, worker] = process.argv.slice(2);
@@ -23,9 +23,9 @@ if (mode === "hold") {
 		});
 	}
 } else if (mode === "state") {
-	const resources = await NornRunResources.initialize(root);
+	const { state } = await initializeRunResources(root);
 	for (let index = 0; index < 12; index++) {
-		await resources.state.set({ id: `${worker}-${index}`, schema: z.number() }, index);
+		await state.set({ id: `${worker}-${index}`, schema: z.number() }, index);
 	}
 } else {
 	throw new Error(`Unknown lock worker mode: ${mode}`);

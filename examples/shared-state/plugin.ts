@@ -1,4 +1,4 @@
-import { definePlugin, definePluginManifest, State } from "norn";
+import { definePlugin, definePluginManifest, StateAdapter } from "norn";
 import { z } from "zod";
 
 export const manifest = definePluginManifest({
@@ -22,7 +22,7 @@ export default definePlugin(manifest, {
 				await run.agents.prompt({
 					label: "copy",
 					tools: [],
-					resources: [State({ state: run.resources.state, fields: [
+					resourceAdapters: [StateAdapter({ state: run.state, fields: [
 						{ field: manifest.states.source, access: "read" },
 						{ field: manifest.states.copiedText, access: "write" },
 					] })],

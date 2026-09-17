@@ -1,17 +1,17 @@
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { NornResourceBinding, NornResourceFamily } from "../resources.ts";
+import type { NornAgentResourceBinding, NornAgentResourceAdapter } from "../agent-resource-adapter.ts";
 
 export class NornSessionResourceBindings {
 	readonly tools: ToolDefinition[] = [];
-	private readonly bindings: NornResourceBinding[] = [];
+	private readonly bindings: NornAgentResourceBinding[] = [];
 
-	async bind(input: { readonly families: readonly NornResourceFamily[]; readonly runId: string; readonly label: string; readonly reservedTools: readonly string[] }): Promise<void> {
-		const families = new Set<string>();
+	async bind(input: { readonly adapters: readonly NornAgentResourceAdapter[]; readonly runId: string; readonly label: string; readonly reservedTools: readonly string[] }): Promise<void> {
+		const adapterNames = new Set<string>();
 		const tools = new Set(input.reservedTools);
-		for (const family of input.families) {
-			if (families.has(family.name)) throw new Error(`Duplicate resource family: ${family.name}`);
-			families.add(family.name);
-			const binding = await family.bind({ runId: input.runId, label: input.label });
+		for (const adapter of input.adapters) {
+			if (adapterNames.has(adapter.name)) throw new Error(`Duplicate resource adapter: ${adapter.name}`);
+			adapterNames.add(adapter.name);
+			const binding = await adapter.bind({ runId: input.runId, label: input.label });
 			this.bindings.push(binding);
 			for (const tool of binding.tools) {
 				if (tools.has(tool.name)) throw new Error(`Resource tool name collision: ${tool.name}`);
