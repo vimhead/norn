@@ -12,6 +12,13 @@ Norn should have the same property across harnesses: a compact introduction lead
 
 ## Documentation ownership and structure
 
+Documentation is user- and agent-facing. It teaches how to use Norn, not how Norn is implemented. Public APIs, inputs, outputs, and observable behavior belong in usage examples and references; internal call sequences, implementation mechanisms, and development rationale do not.
+
+| Decision | GOOD | BAD |
+|---|---|---|
+| IF documentation explains a capability, THEN show what the caller declares, supplies, invokes, and receives. ELSE remove text that only describes internal machinery. | Show `workflowRefSchema`, a caller's reference, and `params.next({ result })`. | Explain which validation functions Norn calls internally or how its response collector processes values. |
+| IF a feature or implementation change alters how a consumer uses Norn or what behavior they can rely on, THEN update the owning reference or example. ELSE leave user- and agent-facing docs unchanged. | Document a new callable workflow API or a changed input requirement. | Add a docs section for a new internal helper, validation refactor, or serialization mechanism with no consumer-facing effect. |
+
 Knowledge belongs to Norn and ships with the runtime that implements it:
 
 - `README.md` is installation and navigation, not a second manual.
