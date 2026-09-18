@@ -3,7 +3,7 @@
   "plugins": ["./plugin.ts"],
   "config": {
     "worktreeDevelopmentLoop": {
-      "repositoryRoot": "."
+      "repositoryRoot": "/absolute/path/to/source-repository"
     }
   }
 }
