@@ -1,21 +1,64 @@
 # Norn
 
-Norn is a harness-agnostic workflow framework and runtime built primarily for
-agents. Use the Norn SDK to write reusable agent-driven and code-driven TypeScript
-workflows, then discover, run, inspect, and recover them through the CLI.
+Norn is a portable runtime for reusable agent-driven and code-driven TypeScript
+workflows. Author them with the SDK, then discover, run, inspect, and recover them
+through the CLI from any harness. Agents run on the bundled
+[Pi coding agent](https://pi.dev); code-only workflows need no model.
 
-Norn is intended as a portable replacement for harness-specific subagents and
-workflow extensions. Use it from Claude Code, Pi, Codex, or any other harness
-that can invoke its CLI.
+## Getting started
 
-Norn agents are powered by the bundled, open-source and extensible
-[Pi coding agent](https://pi.dev). Your outer harness does not need to be Pi,
-and code-only workflows do not require a model.
+1. [Install Norn](#installation), including agent authentication.
 
-- [Documentation index](docs/README.md) — focused references by capability
-- [Create → run → change a workflow](examples/minimal-workflow/README.md) — code-driven, no model required
-- [Norn agent → saved artifact → analysis](examples/agent-then-analysis/README.md) — agent-driven, with a recoverable transition
-- [Norn SDK types](packages/sdk/src/api.ts)
+2. **Combine an agent with code.** The agent writes a summary; code saves it as an artifact.
+
+   ```ts
+   import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
+   import { Type } from "typebox";
+
+   const manifest = definePluginManifest({
+     id: "summary",
+     workflows: {
+       write: {
+         isEntrypoint: true,
+         instructions: "Summarize supplied text and save the result.",
+         params: Type.Object({ text: Type.String() }),
+       },
+     },
+   });
+
+   export default definePlugin(manifest, {
+     workflows: {
+       write: {
+         async execute(run, { text }) {
+           const summary = await run.agents.prompt({
+             label: "summarize",
+             tools: [],
+             prompt: `Summarize this text in one sentence:\n${text}`,
+             response: Type.Object({ text: Type.String() }),
+           });
+           const artifact = await run.artifacts.write("summary.txt", summary.text);
+           return run.complete({ artifacts: { summary: artifact } });
+         },
+       },
+     },
+   });
+   ```
+
+   [Full example and project configuration](examples/getting-started/README.md)
+
+3. **Run it** from the example directory:
+
+   ```sh
+   printf '%s\n' '{"params":{"text":"Norn workflows combine agents and code. They run from any harness through the CLI."}}' \
+     | norn runs start summary.write
+
+   norn runs wait <run-id>
+   ```
+
+   Replace `<run-id>` with the ID returned by `start`.
+
+See the [documentation index](docs/README.md) for focused references and the
+[SDK types](packages/sdk/src/api.ts) for API details.
 
 ## Installation
 
