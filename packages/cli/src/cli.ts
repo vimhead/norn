@@ -110,25 +110,13 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "project.inspect",
 		path: ["project", "inspect"],
-		description: "Use when discovering the active Norn project, plugins, workflow sources, and Seer mode.",
+		description: "Use when discovering the active Norn project, plugins, and workflow sources.",
 		usage: "norn project inspect",
 		output: "JSON object with project metadata under project, isComplete, and plugin diagnostics. Incomplete discovery does not permit execution.",
 		examples: ["norn project inspect"],
 		execute: async (args) => {
 			assertNoExtraArgs("project inspect", args);
 			await inspectProject();
-		},
-	},
-	{
-		id: "seer.inspect",
-		path: ["seer", "inspect"],
-		description: "Use when checking the current project's resolved Seer mode before agent execution.",
-		usage: "norn seer inspect",
-		output: "JSON object with resolved Seer mode under seerMode.",
-		examples: ["norn seer inspect"],
-		execute: async (args) => {
-			assertNoExtraArgs("seer inspect", args);
-			await inspectSeerMode();
 		},
 	},
 	{
@@ -386,7 +374,6 @@ const HELP_COMMAND_ORDER = [
 	"runs.delete",
 	"project.init",
 	"project.inspect",
-	"seer.inspect",
 	"pi",
 	"upgrade",
 	"version",
@@ -414,7 +401,6 @@ const HUMAN_COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
 	"runs.delete": "Delete an inactive run.",
 	"project.init": "Create a Norn project in the current directory.",
 	"project.inspect": "Inspect the Norn project.",
-	"seer.inspect": "Inspect resolved Seer mode.",
 	pi: "Run bundled Pi for authentication, providers, and model setup.",
 	upgrade: "Upgrade the installed Norn CLI.",
 	version: "Print version/build info.",
@@ -780,11 +766,6 @@ async function listCurrentProjectRuns(): Promise<NornRunInfo[]> {
 async function inspectProject(): Promise<void> {
 	const { project, isComplete, diagnostics } = await discoverNornProject(process.cwd());
 	writeJson({ project, isComplete, diagnostics });
-}
-
-async function inspectSeerMode(): Promise<void> {
-	const project = await findNornProject(process.cwd());
-	writeJson({ seerMode: project.seerMode ?? null });
 }
 
 async function startRun(workflowId: string, args: readonly string[]): Promise<void> {

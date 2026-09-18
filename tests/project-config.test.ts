@@ -53,13 +53,12 @@ async function executeCli<Output>({ cwd, args, input }: { cwd: string; args: rea
 	return JSON.parse(stdout);
 }
 
-test("a project file loads its own plugins, config and Seer policy from a nested cwd", async context => {
+test("a project file loads its own plugins and config from a nested cwd", async context => {
 	const projectRoot = await createProjectFixture(context);
 	const projectPath = join(projectRoot, "norn.project.json");
 	await writePluginFixture({ projectRoot, relativePath: "workflows/plugin.ts", pluginId: "local" });
 	await writeJsonFixture({ path: projectPath, value: {
 		version: 1, plugins: ["./workflows/plugin.ts"], config: { local: { greeting: "project" } },
-		seerMode: { writableRoots: ["./generated"] },
 	} });
 	const cwd = join(projectRoot, "nested/deeper");
 	await mkdir(cwd, { recursive: true });
@@ -72,7 +71,6 @@ test("a project file loads its own plugins, config and Seer policy from a nested
 	assert.deepEqual(project.pluginInfos[0].config, { greeting: "project" });
 	assert.deepEqual(project.configFiles.map(file => file.path), [projectPath]);
 	assert.deepEqual(Object.keys(project.configFiles[0].config).sort(), ["config", "includes", "plugins"]);
-	assert.deepEqual(project.seerMode, { configPath: projectPath, projectRoot, writableRoots: [join(projectRoot, "generated")] });
 	await assert.rejects(stat(join(projectRoot, "norn.json")), { code: "ENOENT" });
 });
 
@@ -109,7 +107,6 @@ test("local plugins compose with globbed and nested reusable configs, each relat
 	assert.deepEqual(project.pluginInfos.find(plugin => plugin.id === "packageA")?.config, { greeting: "project" });
 	assert.deepEqual(project.pluginInfos.find(plugin => plugin.id === "shared")?.config, { greeting: "shared" });
 	assert.equal(project.configFiles.length, 4);
-	assert.equal(project.seerMode, undefined);
 });
 
 test("the nearest project remains the execution boundary", async context => {

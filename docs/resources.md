@@ -2,9 +2,9 @@
 
 ## Initialization is separate from attachment
 
-`run.resources` provides shared resource handles; `run.state` exposes workflow values with `get`, `getOptional` and `set`. Creating storage does not populate declared fields, including schemas with defaults. Factory registration state remains in-memory and separate.
+`run.resources` provides shared resource handles, including [workflow state](persistence.md#choose-what-survives).
 
-`run.resources.ensure(definition)` returns a shared handle within that manager. A definition contains `name`, `kind`, JSON `configuration`, and `initialize({directory, files, mode})`. Names are single alphanumeric/underscore/hyphen identifiers starting with an alphanumeric character. Identity/configuration conflicts fail; `configuration` owns format/version compatibility.
+`run.resources.ensure(definition)` returns a shared handle for that resource across workflow contexts in the current executor. A definition contains `name`, `kind`, JSON `configuration`, and `initialize({directory, files, mode})`. Names are single alphanumeric/underscore/hyphen identifiers starting with an alphanumeric character. Identity/configuration conflicts fail; `configuration` owns format/version compatibility.
 
 `mode: "create"` also covers retry of an interrupted initialization; `mode: "open"` means an earlier initialization succeeded. Initializers own their data schema and must reject missing/incompatible data when reopening. Failed initialization remains visible and retryable, not a successful empty resource. Definitions have no filesystem effects until ensured.
 
@@ -13,7 +13,7 @@
 | IF implementing an initializer, THEN make create retries preserve existing data and open validate existing storage. ELSE do not register the definition. | Validate a file left by an interrupted create before reusing it. | Truncate the file each time `ensure` calls the initializer. |
 | IF a resource format changes incompatibly, THEN change its declared configuration and provide an explicit migration. ELSE reopen the same format. | A mismatching `format` fails. | Reinterpret old bytes under an unchanged format declaration. |
 
-Resources are run-scoped and persisted under `current/resources/`; built-in workflow values retain their existing `current/state.json` location. All workflow contexts in one executor share the manager. A resumed executor reopens handles, not closures. Resource data participates in normal [checkpoint recovery](recovery.md). Cross-run storage, queues, ledgers, and scheduler/agent activation are not supplied by this API.
+[Persistence](persistence.md) covers resource lifetimes, storage locations, and recovery. Cross-run storage, queues, ledgers, and scheduler/agent activation are not supplied by this API.
 
 ## Explicit agent attachment
 

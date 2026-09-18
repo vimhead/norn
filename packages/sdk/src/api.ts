@@ -4,7 +4,6 @@ import type { TLocalizedValidationError } from "typebox/error";
 import { createWorkflowTransition } from "@vimhead.dev/norn-core/workflow-transition";
 import { Value } from "typebox/value";
 import { isPlainObject, jsonValueSchema } from "./schema.ts";
-import type { NornResolvedSeerModeConfig } from "./seer/config.ts";
 
 const WORKFLOW_DECLARATION_KIND = "norn.workflow";
 
@@ -680,7 +679,6 @@ export type NornProjectInfo = {
 	readonly configRoot: string;
 	readonly configFiles: readonly string[];
 	readonly plugins: readonly NornProjectPluginInfo[];
-	readonly seerMode: NornResolvedSeerModeConfig | null;
 };
 
 function assertLocalDeclarationId(id: string, kind: "plugin" | "workflow" | "state"): void {

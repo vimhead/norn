@@ -27,8 +27,9 @@ It is independent of the outer Pi harness's global configuration:
 - `models.json` — custom endpoints, models, and authentication configuration
 
 `NORN_AGENT_DIR` selects another directory. Set it consistently for both
-`norn pi` and workflow execution. A programmatic runtime caller supplying `agentDir`
-must point the setup command at that same directory. Norn does not use an inherited
+`norn pi` and workflow execution. A programmatic runtime caller's explicit
+`agentDir` takes precedence over `NORN_AGENT_DIR`; the setup command still needs
+to target that same directory. Norn does not use an inherited
 `PI_CODING_AGENT_DIR` to select its global configuration. Existing Pi packages and
 credentials are not imported or linked: install providers and authenticate through
 `norn pi`, even when Pi is the outer harness.

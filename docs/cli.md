@@ -178,6 +178,6 @@ console.log(finished.outcome?.metadata);
 
 The client defaults to its own package's `bin/norn.mjs`. Its optional `executablePath` is a script launched through `process.execPath`, not an arbitrary standalone binary or shell command. Other languages can invoke the CLI directly with cwd, JSON stdin, and parsed stdout.
 
-`workflows.list()` and `inspect()` use fresh CLI discovery. `workflows.entries()` and `client.state` use a cached in-process project load; that state is registration memory, not a chosen run's persisted state. A new client is needed to refresh that in-process catalogue after source edits.
+`workflows.list()` and `inspect()` use fresh CLI discovery. `workflows.entries()` and `client.state` use a cached in-process project load; [persistence](persistence.md#choose-what-survives) defines the `client.state` lifetime. A new client is needed to refresh that in-process catalogue after source edits.
 
 Sources: [CLI declarations and handlers](../packages/cli/src/cli.ts), [client API](../packages/cli/src/client.ts).

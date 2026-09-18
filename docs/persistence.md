@@ -4,13 +4,15 @@
 
 | Value | Lifetime and access |
 |---|---|
-| Local variables / plugin factory memory | Current executor only; not a resume contract. Factory context state is in-memory registration state. |
+| Local variables / plugin factory memory | Current invocation or executor only; not a resume contract. |
+| Factory context `state` / `client.state` | In-memory registration state for the loaded project, not a selected run's persisted state. |
 | `run.state` | Per-run, schema-validated JSON shared across steps. `get` requires a value; `getOptional` permits absence; `set` persists it. |
+| `run.resources` data | Per-run data included in checkpoint recovery. Resume reopens handles; closures do not survive. |
 | `run.artifacts` | Text files addressed by `{ path }` relative to this run's artifacts directory. Write content, pass the ref, read and validate at the consumer. |
 | Outcome metadata | Caller-facing summary, artifact/log refs and small data, exposed by run inspection. |
 | Workflow params | Explicit input to the current/next step, persisted for recovery. |
 
-Workflow state is the automatically initialized built-in [run resource](resources.md). State declarations live in the manifest. The [agent example](../examples/agent-then-analysis/plugin.ts) saves the draft ref in run state and also passes it explicitly to analysis. The state value is a retained run record; the params are the consumer's input contract.
+Workflow state is a built-in [run resource](resources.md), available without an explicit `ensure` call. State declarations live in the manifest; declaring a field, including a schema default, does not set its value. The [agent example](../examples/agent-then-analysis/plugin.ts) saves the draft ref in run state and also passes it explicitly to analysis. The state value is a retained run record; the params are the consumer's input contract.
 
 Artifact refs are paths, not content hashes, and a write to the same path replaces its content. State writes are serialized and atomic; an artifact write plus a state update is not a single transaction. An artifact read returns text, so a JSON consumer still needs parsing and schema validation.
 

@@ -15,7 +15,6 @@ import type {
 import { loadNornProject } from "./plugin-loader.ts";
 import { NornProjectLoadError } from "./internal/errors.ts";
 import type { NornRegisteredWorkflow } from "./internal/workflow-registry.ts";
-import type { NornResolvedSeerModeConfig } from "@vimhead.dev/norn/seer";
 
 export { NornProjectLoadError } from "./internal/errors.ts";
 
@@ -34,9 +33,6 @@ export type NornClient = {
 		entries(): Promise<readonly NornRegisteredWorkflow[]>;
 	};
 	readonly state: NornWorkflowStateReader;
-	readonly seer: {
-		inspect(): Promise<NornResolvedSeerModeConfig | null>;
-	};
 	readonly runs: {
 		start(input: { readonly workflowId: string; readonly params: unknown; readonly configOverride?: unknown }): Promise<NornRunInfo>;
 		resume(input: { readonly run: string; readonly params?: unknown }): Promise<NornRunInfo>;
@@ -66,9 +62,6 @@ export function createNornClient(input: NornClientInput = {}): NornClient {
 			entries: async () => (await catalog.load()).workflows,
 		},
 		state: catalog.state,
-		seer: {
-			inspect: async () => (await processRunner.readJson<{ seerMode: NornResolvedSeerModeConfig | null }>(["seer", "inspect"])).seerMode,
-		},
 		runs: {
 			start: async (startInput) => (await processRunner.readJson<{ run: NornRunInfo }>(["runs", "start", startInput.workflowId], JSON.stringify(runStartInput(startInput)))).run,
 			resume: async (resumeInput) => (await processRunner.readJson<{ run: NornRunInfo }>(["runs", "resume", resumeInput.run], runResumeStdin(resumeInput))).run,

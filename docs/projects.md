@@ -32,24 +32,15 @@ Reusable config files, conventionally `norn.json`, can declare `plugins`, `inclu
 }
 ```
 
-Plugin and include paths resolve relative to the file declaring them. `*` matches one directory segment. There is no automatic plugin tree scan, nor automatic inclusion of a sibling `norn.json`. Project config overrides included values; conflicting reusable values and duplicate plugin IDs are rejected. `version` and `seerMode` belong only in the project file.
-
-Projects using Seer can additionally declare writable project-relative roots:
-
-```json
-"seerMode": { "writableRoots": ["./workflow-sources"] }
-```
-
-This is a project-file field, not an OS sandbox. The current helper contract is in
-[Seer exports](../packages/sdk/src/seer/index.ts) and [config resolution](../packages/sdk/src/seer/config.ts).
+Plugin and include paths resolve relative to the file declaring them. `*` matches one directory segment. There is no automatic plugin tree scan, nor automatic inclusion of a sibling `norn.json`. Project config overrides included values; conflicting reusable values and duplicate plugin IDs are rejected. `version` belongs only in the project file.
 
 ## Import and reload
 
-Each registered module default-exports `definePlugin(manifest, implementation)`. Norn loads TypeScript through jiti without a local build, supplying runtime imports for `@vimhead.dev/norn`, its `/files`, `/schema`, and `/seer` subpaths, `typebox`, `typebox/value`, `typebox/compile`, and `typebox/schema`. Other dependencies need normal package resolution from the plugin's location.
+Each registered module default-exports `definePlugin(manifest, implementation)`. Norn loads TypeScript through jiti without a local build, supplying runtime imports for `@vimhead.dev/norn`, its `/files` and `/schema` subpaths, `typebox`, `typebox/value`, `typebox/compile`, and `typebox/schema`. Other dependencies need normal package resolution from the plugin's location.
 
 Runtime virtual imports do not configure TypeScript or an editor. A matching `@vimhead.dev/norn` installation provides the SDK types; the source checkout's examples are checked by its `tsconfig.json`. A successful runtime import alone is not a type check.
 
-New CLI discovery/start/resume invocations load current source; an already executing workflow retains its loaded implementation. Module evaluation and implementation factories run even during discovery. Factory context state is in-memory registration state, **not** durable run state; see [persistence](persistence.md).
+New CLI discovery/start/resume invocations load current source; an already executing workflow retains its loaded implementation. Module evaluation and implementation factories run even during discovery. [Persistence](persistence.md#choose-what-survives) defines the lifetime of factory context state.
 
 | Decision | GOOD | BAD |
 |---|---|---|

@@ -4,8 +4,6 @@ import { isNodeError } from "@vimhead.dev/norn-core/errors";
 import * as nornFilesModule from "@vimhead.dev/norn/files";
 import * as nornSchemaModule from "@vimhead.dev/norn/schema";
 import { inspectSchema } from "@vimhead.dev/norn/schema";
-import * as nornSeerModule from "@vimhead.dev/norn/seer";
-import { resolveSeerModeConfig, type NornResolvedSeerModeConfig } from "@vimhead.dev/norn/seer";
 import { createJiti } from "jiti/static";
 import { access, readdir, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -22,9 +20,6 @@ import { decodePluginConfiguration, NornWorkflowRegistry, type NornRegisteredWor
 
 export const NORN_PROJECT_FILE_NAME = "norn.project.json";
 
-const seerModeConfigSchema = Type.Object({
-	writableRoots: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
-});
 const nornConfigSchema = Type.Object({
 	plugins: Type.Array(Type.String({ minLength: 1 }), { default: [] }),
 	includes: Type.Array(Type.String({ minLength: 1 }), { default: [] }),
@@ -33,10 +28,9 @@ const nornConfigSchema = Type.Object({
 const nornProjectConfigSchema = Type.Object({
 	...nornConfigSchema.properties,
 	version: Type.Literal(1, { default: 1 }),
-	seerMode: Type.Optional(seerModeConfigSchema),
 });
 
-type NornConfig = StaticDecode<typeof nornConfigSchema> & { readonly seerMode?: never };
+type NornConfig = StaticDecode<typeof nornConfigSchema>;
 type NornProjectConfig = StaticDecode<typeof nornProjectConfigSchema>;
 
 type NornConfigFile = {
@@ -54,7 +48,6 @@ export type NornProject = {
 	readonly config: NornProjectConfig;
 	readonly configFiles: readonly NornConfigFile[];
 	readonly projectConfig: Record<string, unknown>;
-	readonly seerMode?: NornResolvedSeerModeConfig;
 };
 
 export type NornLoadedProject = NornProject & {
@@ -105,7 +98,6 @@ function buildProjectInfo(project: NornLoadedProject): NornProjectInfo {
 		cwd: project.cwd, projectPath: project.projectPath, projectRoot: project.projectRoot,
 		configPath: project.configPath, configRoot: project.configRoot,
 		configFiles: project.configFiles.map(file => file.path), plugins: project.pluginInfos,
-		seerMode: project.seerMode ?? null,
 	};
 }
 
@@ -122,7 +114,6 @@ export async function findNornProject(cwd: string): Promise<NornProject> {
 		config: projectRootConfig.config,
 		configFiles,
 		projectConfig: mergeProjectConfig(configFiles),
-		seerMode: resolveSeerModeConfig({ configPath: projectRootConfig.path, configRoot: projectRootConfig.root, seerMode: projectRootConfig.config.seerMode }),
 	};
 }
 
@@ -329,7 +320,6 @@ function nornWorkflowVirtualModules(): Record<string, unknown> {
 		"@vimhead.dev/norn": nornModule,
 		"@vimhead.dev/norn/files": nornFilesModule,
 		"@vimhead.dev/norn/schema": nornSchemaModule,
-		"@vimhead.dev/norn/seer": nornSeerModule,
 		typebox: typeboxModule,
 		"typebox/value": typeboxValueModule,
 		"typebox/compile": typeboxCompileModule,

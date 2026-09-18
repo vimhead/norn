@@ -12,8 +12,7 @@
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
     "./files": { "types": "./dist/files.d.ts", "import": "./dist/files.js" },
-    "./schema": { "types": "./dist/schema.d.ts", "import": "./dist/schema.js" },
-    "./seer": { "types": "./dist/seer/index.d.ts", "import": "./dist/seer/index.js" }
+    "./schema": { "types": "./dist/schema.d.ts", "import": "./dist/schema.js" }
   },
   "scripts": { "build": "node ../../scripts/build-package.ts" },
   "devDependencies": { "@vimhead.dev/norn-core": "workspace:*" },
