@@ -104,11 +104,6 @@ NORN_EXECUTABLE=/absolute/path/to/norn cursor .
 Need an adapter for another harness? [Open an issue](https://github.com/vimhead/norn/issues/new)
 with the harness name.
 
-## Setting up a Norn project
-
-[Projects and loading](docs/projects.md) covers initialization, registration,
-reusable configuration, dependencies, source reload, and discovery diagnostics.
-
 ## Build workflows with the Norn SDK
 
 Install SDK types and helpers for TypeScript/editor support:
@@ -120,22 +115,6 @@ npm install -D @vimhead.dev/norn@tip
 Use the SDK version reported by `norn version` for an exact runtime match. Runtime
 execution also supplies [virtual SDK imports](docs/projects.md#import-and-reload),
 so standalone examples need no local SDK installation.
-
-[Workflow authoring](docs/workflows.md) covers declarations, implementations,
-commands, and run outcomes. Focused companion references:
-
-- [Norn agents](docs/agents.md)
-- [State, artifacts, and workspaces](docs/persistence.md)
-- [Composition and reuse](docs/composition.md)
-- [Recovery and gates](docs/recovery.md)
-
-The larger [worktree development loop](examples/worktree-development-loop/README.md)
-is an optional composition example, not a required workflow architecture.
-
-## Run workflows with Norn
-
-[CLI and client](docs/cli.md) covers live contract discovery, JSON invocation,
-launch/wait semantics, results, and use from other harnesses.
 
 ## Development
 

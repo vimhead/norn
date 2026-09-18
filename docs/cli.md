@@ -45,7 +45,7 @@ npm/source installations resolve their built `assets/` tree directly from the CL
 package, not the current directory or another executable on PATH. A version mismatch
 fails rather than advertising another build's documentation. Compiled binaries embed the docs,
 examples, and source references, preserving relative links. The first
-inspection publishes a complete extracted tree into a build/content-specific
+inspection makes a complete copy available in a build/content-specific
 cache; later calls verify and reuse it without rewriting files. Different asset
 contents or build commits use separate entries. `version` and help do not extract
 anything. No prompt augmentation or agent-context delivery is performed.
@@ -57,9 +57,9 @@ Cache roots:
 - Windows: `%LOCALAPPDATA%/norn/docs/`, or `~/AppData/Local/norn/docs/`
 - Explicit override: `NORN_DOCS_CACHE_DIR`
 
-Extraction uses staging directories and atomic publication. Existing cache entries
-are checked for exact file bytes, missing/extra files, and symlinks. Corrupt entries
-are not silently overwritten; the error names the entry to remove before retrying.
+Existing cache entries must match the bundled files exactly, with no missing or
+extra files or symlinks. Corrupt entries are not silently overwritten; the error
+names the entry to remove before retrying.
 This is accidental-corruption detection, not a sandbox against another process
 with access to the same user's cache. Old build entries are not automatically
 removed. The extracted tree is a documentation snapshot, not a separate runtime
@@ -82,7 +82,7 @@ norn docs intro
 Returns `{ "intro": "..." }`: a compact authoring introduction with runtime
 version/commit, invocation, and pointers to the documentation index and examples.
 Topic routing remains in the index; the command does not copy manuals or enumerate
-workflows. It uses the same asset resolver/cache as `docs inspect`
+workflows. It returns locations for the same installed documentation as `docs inspect`
 and works without a valid project.
 
 The invocation is a JSON argument array, not a shell command string. Its first

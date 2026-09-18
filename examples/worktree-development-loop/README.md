@@ -1,6 +1,10 @@
 # Workspace development loop example
 
-A minimal Norn workflow plugin for one Git repository.
+A larger, optional Norn workflow example for one Git repository. Separate planning,
+implementation, and review steps let callers inspect saved evidence and recover at
+phase boundaries; a gate pauses for a review decision. Neither these roles nor the
+directory layout are required by Norn. The [minimal workflow](../minimal-workflow/README.md)
+is a single-step starting point.
 
 It registers an entrypoint workflow named **Workspace development loop**. The
 workflow:
@@ -13,46 +17,16 @@ workflow:
 6. completes on `accept`, fails cleanly on `blocked`, and fails cleanly when the
    max iteration count is reached.
 
-The example is structured like a real workflow package:
+## Source layout
 
-```text
-manifest.ts
-plugin.ts
-state.ts
-workflows/
-  development-loop/
-    schema.ts
-    declaration.ts
-    execute.ts
-  planning/
-    schema.ts
-    declaration.ts
-    execute.ts
-  implementation/
-    schema.ts
-    declaration.ts
-    execute.ts
-  review/
-    schema.ts
-    declaration.ts
-    execute.ts
-  review-router/
-    schema.ts
-    declaration.ts
-    execute.ts
-```
-
-Best practices shown:
-
-- local workflow declarations are plain objects;
-- manifest keys derive fully qualified workflow ids;
-- state leaves are TypeBox schemas and derive ids from the state tree;
-- `plugin.ts` binds implementations and dynamic gate descriptions;
-- workflows route by returning callable declaration results;
-- runs finish explicitly with `run.complete(...)` or
-  `run.fail(...)`;
-- final details are persisted as small outcome metadata pointing to artifacts;
-- the workspace may contain a nested `.git/` because Norn snapshots with CAS.
+| File or directory | Role in this example |
+|---|---|
+| [manifest.ts](manifest.ts) | Registers the workflows, configuration schema, and state declarations. |
+| [plugin.ts](plugin.ts) | Binds implementations and the review gate's description. |
+| [state.ts](state.ts) | Declares values and artifact refs shared between steps. |
+| [workflows/development-loop/](workflows/development-loop/) | Defines entrypoint inputs and repository setup. |
+| [workflows/planning/](workflows/planning/), [workflows/implementation/](workflows/implementation/), [workflows/review/](workflows/review/) | Define each agent step's inputs and execution. |
+| [workflows/review-router/](workflows/review-router/) | Defines editable gate fields and routes the chosen decision. |
 
 ## Setup
 

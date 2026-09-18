@@ -2,11 +2,11 @@
 
 ## Initialization is separate from attachment
 
-Every run initializes or reopens `run.resources` before workflow execution and automatically ensures workflow state through that manager. The state handle is exposed as `run.state`, with `get`, `getOptional` and `set`. Creating storage does not populate declared fields, including schemas with defaults. Factory registration state remains in-memory and separate.
+`run.resources` provides shared resource handles; `run.state` exposes workflow values with `get`, `getOptional` and `set`. Creating storage does not populate declared fields, including schemas with defaults. Factory registration state remains in-memory and separate.
 
 `run.resources.ensure(definition)` returns a shared handle within that manager. A definition contains `name`, `kind`, JSON `configuration`, and `initialize({directory, files, mode})`. Names are single alphanumeric/underscore/hyphen identifiers starting with an alphanumeric character. Identity/configuration conflicts fail; `configuration` owns format/version compatibility.
 
-The manager persists identity before calling the initializer and marks successful initialization afterward. `mode: "create"` also covers retry of an interrupted initialization; `mode: "open"` means an earlier initialization succeeded. Initializers own their data schema and must reject missing/incompatible data when reopening. Failed initialization remains visible and retryable, not a successful empty resource. Definitions have no filesystem effects until ensured.
+`mode: "create"` also covers retry of an interrupted initialization; `mode: "open"` means an earlier initialization succeeded. Initializers own their data schema and must reject missing/incompatible data when reopening. Failed initialization remains visible and retryable, not a successful empty resource. Definitions have no filesystem effects until ensured.
 
 | Decision | GOOD | BAD |
 |---|---|---|
@@ -33,7 +33,7 @@ resourceAdapters: [StateAdapter({
 
 List/get output is serialized JSON in bounded text pages. Requests specify UTF-16 `offset` and `limit` (1–10000); responses include `text`, `nextOffset` and a content `revision`. Pages are not a pinned snapshot. Set operations persist complete field values; get followed by set is not a transaction.
 
-Custom adapters implement `NornAgentResourceAdapter`: a unique name and `bind({runId, label})` returning a `NornAgentResourceBinding` with tools and async `dispose()`. An adapter can expose one or several resource handles; initializing storage does not construct or attach tools. Session creation and one-shot prompting accept adapters through `resourceAdapters`, not through the resource manager or state handle directly. The runner knows only the adapter contract, not individual resource kinds. Attached tools are activated with the normal response tool. Duplicate adapter names and collisions with built-ins, the response tool, other adapters or already-loaded extension tools fail. Successful bindings are cleaned up in reverse order on session disposal or later creation failure. An initializer/binder that throws before returning its handle owns cleanup of its partial allocations.
+Custom adapters implement `NornAgentResourceAdapter`: a unique name and `bind({runId, label})` returning a `NornAgentResourceBinding` with tools and async `dispose()`. An adapter can expose one or several resource handles; initializing storage does not construct or attach tools. Session creation and one-shot prompting accept adapters through `resourceAdapters`, not through the resource manager or state handle directly. Attached tools are activated with the normal response tool. Duplicate adapter names and collisions with built-ins, the response tool, other adapters or already-loaded extension tools fail. Successful bindings are cleaned up in reverse order on session disposal or later creation failure. An initializer/binder that throws before returning its handle owns cleanup of its partial allocations.
 
 | Decision | GOOD | BAD |
 |---|---|---|
@@ -47,9 +47,9 @@ The attachment never exposes internal scheduler/checkpoint control state. It is 
 
 `run.resources.files` supplies `readText`, `writeText`, and `withExclusiveLock(path, async lockedPath => ...)`. Standalone callers can construct `NornFileCoordinator({lockRoot, waitTimeoutMs})` from `@vimhead.dev/norn`. Coordinating callers must use the same lock namespace. Target parents must exist before a raw `withExclusiveLock` call; `writeText` creates them. Existing symbolic links resolve to their canonical target; dangling links fail.
 
-The lock spans the complete callback, including read/validate/modify/persist. Atomic replacement remains underneath managed writes. A live owner is never expired by a TTL; confirmed dead local owners can be reclaimed. Invalid or foreign-host ownership fails closed, and contention has a bounded wait. PID reuse can delay reclamation rather than permit two owners. This is a local-filesystem, same-host protocol, not a distributed lock.
+The lock spans the complete callback, including read/validate/modify/persist. `writeText` replaces complete file contents atomically. A live owner is never expired by a TTL; confirmed dead local owners can be reclaimed. Invalid or foreign-host ownership fails closed, and contention has a bounded wait. PID reuse can delay reclamation rather than permit two owners. Locks support local filesystems on one host, not distributed storage.
 
-Workflow state, event manifests, scheduler-state writes, replaceable artifacts and whole-value logs use this coordination. Scheduler state remains executor-owned. Dedicated command-output streams retain their single-writer protocol; observability reads may see partial live streams. Immutable snapshot objects and run execution leases retain their own protocols. File locks do not make multi-file snapshots or external side effects transactional.
+Reads of live command-output logs may return partial streams. File locks do not make multi-file snapshots or external side effects transactional.
 
 | Decision | GOOD | BAD |
 |---|---|---|
