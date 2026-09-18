@@ -4,6 +4,17 @@ A Norn agent is a workflow-managed session powered by the bundled, open-source a
 
 The [Norn agent → saved artifact → analysis example](../examples/agent-then-analysis/README.md) is a complete two-session application. Agent outputs flow through a saved contract, not shared conversation history.
 
+## Authoring types
+
+Import Pi types used by Norn directly from the SDK:
+
+```ts
+import type { CreateAgentSessionOptions, EventBus, PromptOptions, ToolDefinition } from "@vimhead.dev/norn";
+```
+
+These are Pi's original types, not Norn-specific copies. Installing the SDK
+installs its Pi dependency automatically; no separate Pi installation is needed.
+
 ## One prompt or a retained session
 
 `run.agents.prompt({ label, prompt, response, ...sessionOptions })` creates a Pi session for one prompt and returns the value described by the response schema, including any codec transformations—not `{ response, raw }`. You do not need to dispose this one-prompt session. See [schema input/output types](schemas.md#codecs-and-inputoutput-types).
