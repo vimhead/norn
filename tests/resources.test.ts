@@ -278,12 +278,12 @@ test("native workflow contexts share one state resource and resume reopens its p
 			assert.equal(await run.state.getOptional(manifest.states.value), undefined);
 			manager = run.resources;
 			await run.state.set(manifest.states.value, 7);
-			return run.next(manifest.workflows.continue, {});
+			return manifest.workflows.continue({});
 		} },
 		continue: { execute(run) {
 			assert.strictEqual(run.resources, manager);
 			assert.strictEqual(run.state, initialState);
-			return run.next(manifest.workflows.finish, { decision: "reject" });
+			return manifest.workflows.finish({ decision: "reject" });
 		} },
 		finish: { gate: { describe: () => "Accept the persisted value." }, async execute(run) {
 			assert.notStrictEqual(run.resources, manager);

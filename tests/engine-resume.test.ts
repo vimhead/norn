@@ -32,7 +32,7 @@ async function createInterruptedRun(context: TestContext) {
 	const plugin = definePlugin(manifest, {
 		workflows: {
 			start: {
-				execute: (run) => run.next(manifest.workflows.decision, { decision: "reject", evidence: "original" }),
+				execute: () => manifest.workflows.decision({ decision: "reject", evidence: "original" }),
 			},
 			decision: {
 				gate: { describe: () => "Accept or reject the evidence." },

@@ -24,7 +24,7 @@ export async function executeReviewWorkflow(run: NornRun, params: ReviewParams):
 		response: reviewAgentResponseSchema,
 	});
 	const automatedReviewArtifact = await run.artifacts.write(`review/iteration-${params.iteration}-automated.json`, JSON.stringify(review, null, 2));
-	return run.next(worktreeDevelopmentLoopManifest.workflows.reviewRouter, {
+	return worktreeDevelopmentLoopManifest.workflows.reviewRouter({
 		iteration: params.iteration,
 		decision: review.decision,
 		summary: review.summary,

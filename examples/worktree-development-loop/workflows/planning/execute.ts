@@ -13,7 +13,7 @@ export async function executePlanningWorkflow(run: NornRun, params: PlanningPara
 	});
 	const planArtifact = await run.artifacts.write("planning/plan.md", planning.plan);
 	await run.state.set(worktreeDevelopmentLoopManifest.states.planning.planArtifact, planArtifact);
-	return run.next(worktreeDevelopmentLoopManifest.workflows.implementation, { task: params.task, iteration: 1 });
+	return worktreeDevelopmentLoopManifest.workflows.implementation({ task: params.task, iteration: 1 });
 }
 
 function buildPlanningPrompt(task: string): string {

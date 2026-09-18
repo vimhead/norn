@@ -26,7 +26,7 @@ export default definePlugin(manifest, {
 			async execute(run, params) {
 				const queue = await run.resources.ensure(workQueueDefinition);
 				for (const note of params.notes) await queue.enqueue({ ...note, signal: undefined });
-				return run.next(manifest.workflows.work, { ...params, round: 0 });
+				return manifest.workflows.work({ ...params, round: 0 });
 			},
 		},
 		work: {
@@ -34,7 +34,7 @@ export default definePlugin(manifest, {
 				const queue = await run.resources.ensure(workQueueDefinition);
 				const before = await queue.inspect();
 				if (before.items.length !== params.notes.length) return run.fail({ summary: "Queue inventory differs from the supplied notes." });
-				if (before.acknowledged === params.notes.length) return run.next(manifest.workflows.verify, { notes: params.notes });
+				if (before.acknowledged === params.notes.length) return manifest.workflows.verify({ notes: params.notes });
 				if (before.leased > 0 || params.round >= params.notes.length) return run.fail({ summary: "Unfinished claims or exhausted rounds; inspect queue and agent logs before recovery." });
 				const reports = await processRound({ run, queue, round: params.round });
 				await run.artifacts.write(`rounds/${params.round}.json`, JSON.stringify(reports, null, 2));
@@ -43,8 +43,8 @@ export default definePlugin(manifest, {
 					return run.fail({ summary: "The agent round did not finish its claims; inspect the saved reports and queue before recovery." });
 				}
 				return after.acknowledged === params.notes.length
-					? run.next(manifest.workflows.verify, { notes: params.notes })
-					: run.next(manifest.workflows.work, { ...params, round: params.round + 1 });
+					? manifest.workflows.verify({ notes: params.notes })
+					: manifest.workflows.work({ ...params, round: params.round + 1 });
 			},
 		},
 		verify: {

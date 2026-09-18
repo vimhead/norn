@@ -7,6 +7,8 @@ import { getRunLeaseHealth } from "./run-lease.ts";
 import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
 import { createRunFileCoordinator, type NornFileCoordinator } from "@vimhead.dev/norn/files";
 import { runCurrentRoot } from "./run-store.ts";
+import { jsonValueSchema } from "@vimhead.dev/norn/schema";
+import { Value } from "typebox/value";
 
 export const RUN_STATE_FILE_NAME = "run-state.json";
 const LEGACY_RUN_STATE_FILE_NAME = "runtime-state.json";
@@ -208,12 +210,14 @@ export class NornRunStateStore {
 		await this.files.withExclusiveLock(this.path, async (path) => {
 			const current = parseNornRunState(await readRunStateFile({ path, legacyPath: join(dirname(this.path), LEGACY_RUN_STATE_FILE_NAME) }));
 			const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
+			if (next.current?.params !== undefined) Value.Assert(jsonValueSchema, next.current.params);
 			await writeJsonAtomically(path, next);
 			this.state = next;
 		});
 	}
 
 	private async write(): Promise<void> {
+		if (this.state.current?.params !== undefined) Value.Assert(jsonValueSchema, this.state.current.params);
 		await mkdir(dirname(this.path), { recursive: true });
 		await this.files.withExclusiveLock(this.path, (path) => writeJsonAtomically(path, this.state));
 	}

@@ -55,7 +55,7 @@ export default definePlugin(manifest, {
 					JSON.stringify({ source: params.source, draft }, null, 2),
 				);
 				await run.state.set(manifest.states.draftArtifact, draftArtifact);
-				return run.next(manifest.workflows.analyze, { draftArtifact });
+				return manifest.workflows.analyze({ draftArtifact });
 			},
 		},
 		analyze: {

@@ -28,7 +28,7 @@ export async function executeImplementationWorkflow(
 	await ensureCommandSucceeded(status);
 	const statusOutput = await run.logs.read(status.stdoutLog);
 	await run.artifacts.write(`implementation/iteration-${params.iteration}-status.txt`, statusOutput);
-	return run.next(worktreeDevelopmentLoopManifest.workflows.review, {
+	return worktreeDevelopmentLoopManifest.workflows.review({
 		task: params.task,
 		iteration: params.iteration,
 	});

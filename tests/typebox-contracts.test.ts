@@ -47,14 +47,19 @@ test("native schema inference preserves input/output, direct state leaves and ex
 });
 
 function verifyAuthoringTypes(run: NornRun, reference: StaticDecode<typeof continuation>) {
-	run.next(manifest.workflows.step, { count: "2" });
+	manifest.workflows.step({ count: "2" });
 	// @ts-expect-error Workflow callers supply the encoded type.
-	run.next(manifest.workflows.step, { count: 2 });
-	run.next(reference.workflow, { ...reference.forwardParams, report: "finished" });
-	// @ts-expect-error Continuations require the declared contribution.
-	run.next(reference.workflow, { ...reference.forwardParams });
-	// @ts-expect-error Continuations retain their caller's forwarded parameters.
-	run.next(reference.workflow, { report: "finished" });
+	manifest.workflows.step({ count: 2 });
+	// @ts-expect-error Complete workflow input is required.
+	manifest.workflows.step({});
+	run.next(manifest.workflows.step.id, { count: "2" });
+	// @ts-expect-error Dynamic calls accept IDs, not declarations.
+	run.next(manifest.workflows.step, {});
+	reference({ report: "finished" });
+	// @ts-expect-error References require the declared contribution.
+	reference({});
+	// @ts-expect-error Contributions retain native field types.
+	reference({ report: 42 });
 	run.state.set(manifest.states.count, 2);
 	// @ts-expect-error State values match their native schema's encoded type.
 	run.state.set(manifest.states.count, "2");

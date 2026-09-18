@@ -31,7 +31,7 @@ export default definePlugin(manifest, {
 					response: Type.Object({ copied: Type.Literal(true) }),
 					maxAttempts: 1,
 				});
-				return run.next(manifest.workflows.verify, {});
+				return manifest.workflows.verify({});
 			},
 		},
 		verify: {

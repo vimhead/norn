@@ -1,6 +1,7 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
-import type { NornAnyWorkflowDeclaration, NornProjectRun, NornRunOutcomeMetadata, NornWorkflowIsolationMode, NornWorkflowTarget, NornWorkflowTargetParamsInput, NornRun } from "@vimhead.dev/norn";
+import type { NornAnyWorkflowDeclaration, NornProjectRun, NornRunOutcomeMetadata, NornWorkflowIsolationMode, NornRun } from "@vimhead.dev/norn";
+import { createWorkflowTransition } from "@vimhead.dev/norn-core/workflow-transition";
 import type { NornAgentResponseCollector } from "./agent-response-tool.ts";
 import type { NornArtifacts } from "./artifacts.ts";
 import { NornAgentRunner } from "./agents.ts";
@@ -106,12 +107,8 @@ export class NornRunContext implements NornProjectRun {
 		return this.resolveFromRoot(this.projectRoot, this.projectRoot, relativePath);
 	}
 
-	next<TWorkflow extends NornWorkflowTarget<any>>(workflow: TWorkflow, params: NornWorkflowTargetParamsInput<TWorkflow>): ReturnType<NornRun["next"]> {
-		return {
-			type: "next",
-			workflowId: typeof workflow === "string" ? workflow : workflow.id,
-			params,
-		};
+	next(workflowId: string, params: unknown): ReturnType<NornRun["next"]> {
+		return createWorkflowTransition({ workflowId, params });
 	}
 
 	complete(metadata?: NornRunOutcomeMetadata): ReturnType<NornRun["complete"]> {

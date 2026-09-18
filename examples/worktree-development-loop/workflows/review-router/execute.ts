@@ -47,5 +47,5 @@ export async function executeReviewRouterWorkflow(
 
 	const nextIteration = currentIteration + 1;
 	await run.state.set(worktreeDevelopmentLoopManifest.states.developmentLoop.currentIteration, nextIteration);
-	return run.next(worktreeDevelopmentLoopManifest.workflows.implementation, { task, iteration: nextIteration });
+	return worktreeDevelopmentLoopManifest.workflows.implementation({ task, iteration: nextIteration });
 }

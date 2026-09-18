@@ -255,12 +255,12 @@ test("CLI and client inspection advertise contribution schemas without losing fo
 			finish: { isEntrypoint: false, params: Type.Object({ taskId: Type.String(), context: Type.Record(Type.String(), Type.Unknown()), records: artifactRefSchema }) }
 		}`,
 		implementation: `{ workflows: {
-			caller: { execute: (run, params) => run.next(manifest.workflows.collect, {
+			caller: { execute: (_run, params) => manifest.workflows.collect({
 				query: "recent incidents", next: { workflow: manifest.workflows.finish.id, forwardParams: params }
 			}) },
 			collect: { async execute(run, params) {
 				const records = await run.artifacts.write("records.json", JSON.stringify([params.query]));
-				return run.next(params.next.workflow, { ...params.next.forwardParams, records });
+				return params.next({ records });
 			} },
 			finish: { execute: (run, params) => run.complete({ data: params }) }
 		} }`,

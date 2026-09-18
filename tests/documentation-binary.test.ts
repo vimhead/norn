@@ -44,10 +44,13 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	await mkdir(piAgentDir, { recursive: true });
 	await writeFile(join(piAgentDir, "auth.json"), piAuth, { mode: 0o600 });
 	const environment = { SystemRoot: process.env.SystemRoot, HOME: home, USERPROFILE: home, PI_CODING_AGENT_DIR: piAgentDir, PI_PACKAGE_DIR: "/unrelated-pi", PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", NORN_PI_CACHE_DIR: join(root, "pi-assets"), NORN_DOCS_CACHE_DIR: cacheRoot, PATH: "", NODE_PATH: "" };
-	const invoke = async (args: readonly string[], cwd = detachedRoot) => {
+	const invoke = async (args: readonly string[], cwd = detachedRoot, input?: unknown) => {
 		const execution = execute(binary, args, { cwd, env: environment, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
-		execution.child.stdin?.end();
-		return JSON.parse((await execution).stdout);
+		execution.child.stdin?.end(input === undefined ? undefined : JSON.stringify(input));
+		return JSON.parse((await execution.catch(error => {
+			error.message += `\n${readProcessStdout(error)}`;
+			throw error;
+		})).stdout);
 	};
 	assert.equal((await invoke(["version"])).build.commit, commit);
 	assert.equal((await invoke(["commands", "inspect", "docs.inspect"])).command.id, "docs.inspect");
@@ -85,27 +88,39 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	assert.equal(finished.status, "completed", JSON.stringify(finished));
 	assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Offline!\n");
 	await writeFile(join(projectRoot, "native.ts"), `
-import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
+import { definePlugin, definePluginManifest, workflowRefSchema } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { Compile } from "typebox/compile";
 import { Check } from "typebox/schema";
+const result = Type.Object({ count: Type.Integer(), origin: Type.String() });
 const manifest = definePluginManifest({ id: "native", states: { count: Type.Integer() }, workflows: {
-  check: { isEntrypoint: true, instructions: "Exercise detached TypeBox imports and decoding.", params: Type.Object({ count: Type.Decode(Type.String({ default: "41" }), value => Number(value) + 1) }) },
+  check: { isEntrypoint: true, instructions: "Exercise detached TypeBox imports and decoding.", params: Type.Object({
+    count: Type.Decode(Type.String({ default: "41" }), value => Number(value) + 1),
+    next: workflowRefSchema({ params: Type.Object({ count: Type.Integer() }) }),
+  }) },
+  finish: { isEntrypoint: false, params: result },
+  dynamic: { isEntrypoint: false, params: result },
+  done: { isEntrypoint: false, params: result },
 } });
-export default definePlugin(manifest, { workflows: { check: { async execute(run, params) {
-  const expected = Type.Literal(42);
-  if (!Value.Check(expected, params.count) || !Compile(expected).Check(params.count) || !Check(expected, params.count)) throw new Error("Incorrect decoded count");
-  await run.state.set(manifest.states.count, params.count);
-  const count = await run.state.get(manifest.states.count);
-  return run.complete({ data: { count } });
-} } } });
+export default definePlugin(manifest, { workflows: {
+  check: { async execute(run, params) {
+    const expected = Type.Literal(42);
+    if (!Value.Check(expected, params.count) || !Compile(expected).Check(params.count) || !Check(expected, params.count)) throw new Error("Incorrect decoded count");
+    await run.state.set(manifest.states.count, params.count);
+    const count = await run.state.get(manifest.states.count);
+    return params.next({ count });
+  } },
+  finish: { execute: (_run, params) => manifest.workflows.dynamic(params) },
+  dynamic: { execute: (run, params) => run.next("native.done", params) },
+  done: { execute: (run, params) => run.complete({ data: params }) },
+} });
 `);
 	await writeFile(join(projectRoot, "norn.project.json"), JSON.stringify({ plugins: ["./plugin.ts", "./native.ts"] }));
-	const nativeLaunch = await invoke(["runs", "start", "native.check"], projectRoot);
+	const nativeLaunch = await invoke(["runs", "start", "native.check"], projectRoot, { params: { next: { workflow: "native.finish", forwardParams: { origin: "queued" } } } });
 	const nativeResult = (await invoke(["runs", "wait", nativeLaunch.run.id], projectRoot)).run;
 	assert.equal(nativeResult.status, "completed", JSON.stringify(nativeResult));
-	assert.deepEqual(nativeResult.outcome?.metadata?.data, { count: 42 });
+	assert.deepEqual(nativeResult.outcome?.metadata?.data, { count: 42, origin: "queued" });
 	await writeFile(documentation.paths.index, "modified");
 	await assert.rejects(invoke(["docs", "inspect"]), error => {
 		assert.match(readProcessStdout(error), /cache is incomplete or modified/);

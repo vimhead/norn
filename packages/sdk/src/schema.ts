@@ -17,7 +17,29 @@ export function inspectSchema(schema: TSchema): NornJsonSchema {
 	const inspected: unknown = JSON.parse(JSON.stringify(schema));
 	Value.Assert(Meta["https://json-schema.org/draft/2020-12/schema"], inspected);
 	if (!isPlainObject(inspected)) throw new Error("Norn inspection requires an object schema");
+	assertWorkflowReferenceAnnotations(inspected);
 	return inspected;
+}
+
+function assertWorkflowReferenceAnnotations(schema: unknown): void {
+	if (!isPlainObject(schema)) return;
+	if (Object.hasOwn(schema, "x-norn-workflow-ref")) {
+		const annotation = schema["x-norn-workflow-ref"];
+		if (!isPlainObject(annotation) || !Object.hasOwn(annotation, "contributedParamsSchema")) throw new Error("Invalid workflow reference annotation");
+		Value.Assert(Meta["https://json-schema.org/draft/2020-12/schema"], annotation.contributedParamsSchema);
+		assertWorkflowReferenceAnnotations(annotation.contributedParamsSchema);
+	}
+	for (const keyword of ["properties", "patternProperties", "$defs", "definitions", "dependentSchemas"]) {
+		const schemas = schema[keyword];
+		if (isPlainObject(schemas)) for (const child of Object.values(schemas)) assertWorkflowReferenceAnnotations(child);
+	}
+	for (const keyword of ["allOf", "anyOf", "oneOf", "prefixItems"]) {
+		const schemas = schema[keyword];
+		if (Array.isArray(schemas)) for (const child of schemas) assertWorkflowReferenceAnnotations(child);
+	}
+	for (const keyword of ["additionalProperties", "unevaluatedProperties", "propertyNames", "items", "contains", "not", "if", "then", "else", "unevaluatedItems", "contentSchema"]) {
+		assertWorkflowReferenceAnnotations(schema[keyword]);
+	}
 }
 
 export function assertWorkflowMetadata(workflow: NornAnyWorkflowDeclaration): void {

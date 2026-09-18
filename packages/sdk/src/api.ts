@@ -1,7 +1,9 @@
 import type { CreateAgentSessionOptions, EventBus, PromptOptions } from "@earendil-works/pi-coding-agent";
-import { Type, type Static, type StaticDecode, type StaticEncode, type TAny, type TCodec, type TSchema } from "typebox";
+import { Type, type Static, type StaticDecode, type StaticEncode, type TCodec, type TSchema } from "typebox";
 import type { TLocalizedValidationError } from "typebox/error";
-import { inspectSchema, isPlainObject } from "./schema.ts";
+import { createWorkflowTransition } from "@vimhead.dev/norn-core/workflow-transition";
+import { Value } from "typebox/value";
+import { isPlainObject, jsonValueSchema } from "./schema.ts";
 import type { NornResolvedSeerModeConfig } from "./seer/config.ts";
 
 const WORKFLOW_DECLARATION_KIND = "norn.workflow";
@@ -20,24 +22,14 @@ export type NornWorkflowIsolation<Mode extends NornWorkflowIsolationMode = NornW
 	readonly mode: Mode;
 };
 
-declare const nornWorkflowRefParamsBrand: unique symbol;
-declare const nornWorkflowRefForwardParamsBrand: unique symbol;
-
-type NornWorkflowRefForwardParams = Record<string, unknown> & {
-	readonly [nornWorkflowRefForwardParamsBrand]: true;
-};
-
-export type NornWorkflowRef<ParamsSchema extends TSchema = TSchema, Id extends string = string, ForwardParams = unknown> = Id & {
-	readonly [nornWorkflowRefParamsBrand]: (params: StaticEncode<ParamsSchema> & ForwardParams) => StaticEncode<ParamsSchema> & ForwardParams;
-};
-
 export type NornWorkflowDeclaration<
 	Id extends string = string,
 	ParamsSchema extends TSchema = TSchema,
 	IsolationMode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
 > = {
+	(params: StaticEncode<ParamsSchema>): NornRunNext;
 	readonly kind: typeof WORKFLOW_DECLARATION_KIND;
-	readonly id: NornWorkflowRef<ParamsSchema, Id>;
+	readonly id: Id;
 	readonly isEntrypoint: boolean;
 	readonly instructions?: string;
 	readonly params: ParamsSchema;
@@ -45,25 +37,15 @@ export type NornWorkflowDeclaration<
 	readonly isolation: NornWorkflowIsolation<IsolationMode>;
 };
 
-export type NornAnyWorkflowDeclaration = Omit<NornWorkflowDeclaration, "id"> & { readonly id: NornWorkflowRef<TAny> };
-export type NornWorkflowTarget<ParamsSchema extends TSchema = TSchema> = NornWorkflowDeclaration<string, ParamsSchema> | NornWorkflowRef<ParamsSchema>;
-export type NornAnyWorkflowTarget = NornAnyWorkflowDeclaration | NornWorkflowRef<TAny, string, any>;
+export type NornAnyWorkflowDeclaration = Pick<NornWorkflowDeclaration, keyof NornWorkflowDeclaration> & ((params: never) => NornRunNext);
 export type NornWorkflowRefSchemaOptions<ParamsSchema extends TSchema = TSchema> = {
 	readonly params?: ParamsSchema;
 };
 export type NornWorkflowRefInput = StaticEncode<typeof workflowReferenceInputSchema>;
-export type NornWorkflowRefOutput<ParamsSchema extends TSchema> = {
-	readonly workflow: NornWorkflowRef<ParamsSchema, string, NornWorkflowRefForwardParams>;
-	readonly forwardParams: NornWorkflowRefForwardParams;
-};
+export type NornWorkflowRefOutput<ParamsSchema extends TSchema> = (params: StaticEncode<ParamsSchema> & object) => NornRunNext;
 
 export type NornWorkflowParamsInput<TWorkflow extends NornAnyWorkflowDeclaration> = StaticEncode<TWorkflow["params"]>;
 export type NornWorkflowParams<TWorkflow extends NornAnyWorkflowDeclaration> = StaticDecode<TWorkflow["params"]>;
-export type NornWorkflowTargetParamsInput<TWorkflow extends NornAnyWorkflowTarget> = TWorkflow extends { readonly params: infer ParamsSchema extends TSchema }
-	? StaticEncode<ParamsSchema>
-	: TWorkflow extends NornWorkflowRef<infer ParamsSchema, string, infer ForwardParams>
-		? StaticEncode<ParamsSchema> & ForwardParams
-		: never;
 
 export type NornWorkflowGate<ParamsSchema extends TSchema> = unknown extends StaticEncode<ParamsSchema>
 	? NornWorkflowAnyGate
@@ -437,18 +419,18 @@ const workflowReferenceInputSchema = Type.Union([
 	Type.Object({ workflow: Type.String({ minLength: 1 }), forwardParams: Type.Record(Type.String(), Type.Unknown()) }),
 ]);
 
-class WorkflowContributionMetadata {
-	constructor(private readonly schema: TSchema) {}
-	toJSON() { return { contributedParamsSchema: inspectSchema(this.schema) }; }
-}
-
-export function workflowRefSchema(): TCodec<typeof workflowReferenceInputSchema, NornWorkflowRefOutput<typeof emptyWorkflowRefParamsSchema>>;
-export function workflowRefSchema<ParamsSchema extends TSchema = typeof emptyWorkflowRefParamsSchema>(options: NornWorkflowRefSchemaOptions<ParamsSchema>): TCodec<typeof workflowReferenceInputSchema, NornWorkflowRefOutput<ParamsSchema>>;
-export function workflowRefSchema(options?: NornWorkflowRefSchemaOptions) {
-	return Type.With(Type.Decode(workflowReferenceInputSchema, reference =>
-		(typeof reference === "string" ? { workflow: reference, forwardParams: {} } : reference) as NornWorkflowRefOutput<TSchema>), {
-		"x-norn-workflow-ref": new WorkflowContributionMetadata(options?.params ?? emptyWorkflowRefParamsSchema),
-	});
+export function workflowRefSchema<ParamsSchema extends TSchema = typeof emptyWorkflowRefParamsSchema>(options?: NornWorkflowRefSchemaOptions<ParamsSchema>): TCodec<typeof workflowReferenceInputSchema, NornWorkflowRefOutput<ParamsSchema>> {
+	const contributionSchema = options?.params ?? emptyWorkflowRefParamsSchema;
+	return Type.With(Type.Decode(workflowReferenceInputSchema, reference => {
+		const workflowId = typeof reference === "string" ? reference : reference.workflow;
+		const forwardParams = typeof reference === "string" ? {} : reference.forwardParams;
+		return (params: StaticEncode<ParamsSchema> & object): NornRunNext => {
+			Value.Assert(contributionSchema, params);
+			if (!isPlainObject(params)) throw new Error("Workflow reference contributions must be objects");
+			Value.Assert(jsonValueSchema, params);
+			return createWorkflowTransition({ workflowId, params: { ...forwardParams, ...params } });
+		};
+	}), { "x-norn-workflow-ref": { contributedParamsSchema: contributionSchema } });
 }
 
 export type NornLogRef = {
@@ -611,7 +593,7 @@ type NornRunBase = {
 	workspace: string;
 	cwd: string;
 	path(relativePath: string): string;
-	next<TWorkflow extends NornAnyWorkflowTarget>(workflow: TWorkflow, params: NoInfer<NornWorkflowTargetParamsInput<TWorkflow>>): NornRunNext;
+	next(workflowId: string, params: unknown): NornRunNext;
 	complete(metadata?: NornRunOutcomeMetadata): NornRunComplete;
 	fail(metadata: NornRunOutcomeMetadata & { readonly summary: string }): NornRunFail;
 	resources: import("./resources.ts").NornResources;
@@ -727,7 +709,8 @@ function qualifyWorkflow<PluginId extends string, TWorkflow extends NornAnyWorkf
 	declaredIds: Set<string>,
 ): NornQualifiedPluginWorkflow<PluginId, string, TWorkflow> {
 	const id = resolveDeclarationId(pluginId, [key], workflow.id, "workflow", declaredIds);
-	return { kind: WORKFLOW_DECLARATION_KIND, ...workflow, id, isolation: workflow.isolation ?? { mode: "runWorkspace" } } as unknown as NornQualifiedPluginWorkflow<PluginId, string, TWorkflow>;
+	const declaration = (params: unknown): NornRunNext => createWorkflowTransition({ workflowId: id, params });
+	return Object.assign(declaration, { ...workflow, kind: WORKFLOW_DECLARATION_KIND, id, isolation: workflow.isolation ?? { mode: "runWorkspace" } }) as unknown as NornQualifiedPluginWorkflow<PluginId, string, TWorkflow>;
 }
 
 function qualifyStateTree(pluginId: string, node: unknown, path: readonly string[], declaredIds: Set<string>): unknown {
@@ -741,7 +724,7 @@ function qualifyStateTree(pluginId: string, node: unknown, path: readonly string
 }
 
 export function isWorkflowDeclaration(value: unknown): value is NornAnyWorkflowDeclaration {
-	if (!value || typeof value !== "object") return false;
+	if (typeof value !== "function") return false;
 	const candidate = value as { kind?: unknown; id?: unknown; instructions?: unknown; isEntrypoint?: unknown; params?: unknown; isolation?: { mode?: unknown } };
 	return (
 		candidate.kind === WORKFLOW_DECLARATION_KIND &&

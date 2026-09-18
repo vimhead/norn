@@ -14,7 +14,8 @@ The implementation's `execute(run, params, config)` returns one control result:
 
 | Control | Meaning |
 |---|---|
-| `run.next(target, params)` | Transfer to another registered workflow in the same run. See [composition](composition.md). |
+| `target(params)` / `params.next(contribution)` | Construct a typed transition using a declaration or decoded workflow reference. See [composition](composition.md). |
+| `run.next(workflowId, params)` | Construct a transition to a dynamically selected string ID; its input is checked at execution. |
 | `run.complete(metadata)` | Complete the whole run, optionally exposing `summary`, `artifacts`, `logs`, and `data`. |
 | `run.fail({ summary, ...metadata })` | Record failure with an actionable explanation and optional evidence. |
 

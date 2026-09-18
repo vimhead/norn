@@ -48,7 +48,7 @@ Best practices shown:
 - manifest keys derive fully qualified workflow ids;
 - state leaves are TypeBox schemas and derive ids from the state tree;
 - `plugin.ts` binds implementations and dynamic gate descriptions;
-- workflows only route with `run.next(...)`;
+- workflows route by returning callable declaration results;
 - runs finish explicitly with `run.complete(...)` or
   `run.fail(...)`;
 - final details are persisted as small outcome metadata pointing to artifacts;

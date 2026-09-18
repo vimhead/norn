@@ -156,6 +156,8 @@ const manifest = definePluginManifest({
 
 These declarations produce `manifest.states.count.id === "progress.count"` and `manifest.states.details.name.id === "progress.details.name"`. A leaf can instead use `{ id, description, schema }` for explicit metadata. [Persistence](persistence.md) owns state lifetime and storage.
 
-Gates, queued runs and recovery retain encoded params. Config overrides merge with encoded config before decoding; they do not re-decode previously transformed results. Codecs may run at validation, gate-description and execution boundaries, each against encoded input.
+Gates, queued runs and recovery retain encoded params. This includes [workflow references](composition.md#caller-selected-workflow-reference): their decoded values are callable transition builders, while persisted input contains IDs and captured JSON params. Reference invocation validates encoded contributions with `Value.Assert`, without executing contribution codecs.
+
+Config overrides merge with encoded config before decoding; they do not re-decode previously transformed results. Codecs may run at validation, gate-description and execution boundaries, each against encoded input.
 
 Further API reference: [TypeBox documentation](https://sinclairzx81.github.io/typebox/).

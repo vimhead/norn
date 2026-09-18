@@ -80,11 +80,14 @@ const plugin = definePlugin(manifest, { workflows: { test: { async execute(run, 
   const count: number = params.count;
   await run.state.set(manifest.states.count, count);
   const saved: number = await run.state.get(manifest.states.count);
-  return run.next(params.next.workflow, { ...params.next.forwardParams, report: String(saved) });
+  return params.next({ report: String(saved) });
 } } } });
-run.next(manifest.workflows.test, { count: "1", next: "consumer.test" });
+manifest.workflows.test({ count: "1", next: "consumer.test" });
+run.next("consumer.test", { count: "1", next: "consumer.test" });
+// @ts-expect-error Dynamic calls accept IDs, not declarations.
+run.next(manifest.workflows.test, {});
 // @ts-expect-error Callers supply encoded inputs, not decoded values.
-run.next(manifest.workflows.test, { count: 1, next: "consumer.test" });
+manifest.workflows.test({ count: 1, next: "consumer.test" });
 // @ts-expect-error Direct state schemas retain their native value types.
 run.state.set(manifest.states.count, "1");
 const client = createNornClient({ spawnCwd: process.cwd() });
