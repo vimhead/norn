@@ -7,6 +7,7 @@ Norn capabilities are ordinary TypeScript plugins: an agent can write one during
 | Task | Documentation | Runnable example |
 |---|---|---|
 | Build, register, or diagnose workflows with the Norn SDK | [Projects and loading](projects.md), [Workflow authoring](workflows.md) | [Create → run → change](../examples/minimal-workflow/README.md) |
+| Define TypeBox schemas, constraints, or codecs | [TypeBox schemas](schemas.md) | — |
 | Discover contracts or invoke Norn from another harness | [CLI and client](cli.md) | [Create → run → change](../examples/minimal-workflow/README.md) |
 | Configure providers, models, and authentication for Norn agents | [Providers and authentication](providers.md) | — |
 | Delegate work with explicit inputs and structured results | [Norn agents](agents.md) | [Norn agent → saved artifact → analysis](../examples/agent-then-analysis/README.md) |
