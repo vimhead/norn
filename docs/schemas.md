@@ -127,32 +127,4 @@ const text = Value.Encode(CountText, 42);
 
 `Value.Decode` is not a validation-only operation: in this version it clones, applies defaults, converts, cleans, validates, then runs decode callbacks. `Value.Check` and `Value.Assert` do not run codec callbacks. Callback behavior remains executable TypeBox code, not portable JSON Schema validation.
 
-## Using schemas in Norn
-
-For workflow params and plugin config, callers supply the schema's input type (`StaticEncode`); `execute` receives its output type (`StaticDecode`). With `CountText` above, the caller supplies `"42"` and the workflow receives `42`. Agent prompts likewise return the response schema's output type.
-
-Default annotations do not make statically required inputs optional. `Type.Optional` controls that separately. TypeBox infers decoded callback return types; a codec can produce a required field from an optional input.
-
-Codec callbacks may be evaluated more than once for the same input. Use them for value conversion, such as `text => Number(text)`, not file writes or agent calls.
-
-State values use `Static` and must be JSON data. Declare their schemas directly, with nested objects providing grouping:
-
-```ts
-import { definePluginManifest } from "@vimhead.dev/norn";
-import { Type } from "typebox";
-
-const manifest = definePluginManifest({
-  id: "progress",
-  workflows: {},
-  states: {
-    count: Type.Integer(),
-    details: { name: Type.String() },
-  },
-});
-```
-
-These declarations produce `manifest.states.count.id === "progress.count"` and `manifest.states.details.name.id === "progress.details.name"`. A leaf can instead use `{ id, description, schema }` for explicit metadata. See [state and artifacts](persistence.md) for reading and writing values.
-
-For caller-selected next steps, use [`workflowRefSchema`](composition.md#caller-selected-workflow-reference). That guide shows the reference supplied by the caller and the function available to the workflow.
-
 Further API reference: [TypeBox documentation](https://sinclairzx81.github.io/typebox/).

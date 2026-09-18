@@ -8,7 +8,7 @@ Start with the complete [minimal plugin](../examples/minimal-workflow/plugin.ts)
 
 `definePluginManifest` qualifies workflow keys as `pluginId.workflowKey`, binds TypeBox params, optional plugin config, and optional state declarations. `definePlugin` binds every declared key to an implementation. Entrypoints need nonempty caller-facing `instructions`; internal steps may omit them. `isEntrypoint` controls default catalogue visibility, not an authorization boundary: the CLI can start a known internal workflow ID directly.
 
-`instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare params and config with [TypeBox schemas](schemas.md#using-schemas-in-norn). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
+`instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare params and config with [TypeBox schemas](schemas.md). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
 
 The implementation's `execute(run, params, config)` returns one control result:
 
