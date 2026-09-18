@@ -1,3 +1,2 @@
-export { implementationWorkflow } from "./declaration.ts";
-export { executeImplementationWorkflow } from "./execute.ts";
-export { implementationAgentResponseSchema, implementationParamsSchema, type ImplementationParams } from "./schema.ts";
+export { implementationWorkflow } from "./execute.ts";
+export { implementationAgentResponseSchema, implementationArgsSchema, type ImplementationArgs } from "./schema.ts";

@@ -1,3 +1,2 @@
-export { reviewRouterWorkflow } from "./declaration.ts";
-export { executeReviewRouterWorkflow } from "./execute.ts";
-export { reviewRouterParamsSchema, type ReviewRouterParams } from "./schema.ts";
+export { reviewRouterWorkflow } from "./execute.ts";
+export { reviewRouterArgsSchema, type ReviewRouterArgs } from "./schema.ts";

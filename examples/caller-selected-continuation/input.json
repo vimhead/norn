@@ -1,9 +1,9 @@
 {
-  "params": {
+  "args": {
     "name": "Ada",
     "next": {
       "workflow": "greetingConsumer.saveJson",
-      "forwardParams": { "batchId": "batch-17" }
+      "forwardArgs": { "batchId": "batch-17" }
     }
   }
 }

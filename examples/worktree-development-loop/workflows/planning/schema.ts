@@ -1,7 +1,9 @@
 import { Type, type StaticDecode } from "typebox";
 
-export const planningParamsSchema = Type.Object({
+export const planningArgsSchema = Type.Object({
 	task: Type.String(),
+	repositoryPath: Type.String(),
+	maxIterations: Type.Integer({ minimum: 1, maximum: 10 }),
 });
 
 export const planningAgentResponseSchema = Type.Object({
@@ -9,4 +11,4 @@ export const planningAgentResponseSchema = Type.Object({
 	summary: Type.String(),
 });
 
-export type PlanningParams = StaticDecode<typeof planningParamsSchema>;
+export type PlanningArgs = StaticDecode<typeof planningArgsSchema>;

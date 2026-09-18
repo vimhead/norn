@@ -25,9 +25,9 @@ function assertWorkflowReferenceAnnotations(schema: unknown): void {
 	if (!isPlainObject(schema)) return;
 	if (Object.hasOwn(schema, "x-norn-workflow-ref")) {
 		const annotation = schema["x-norn-workflow-ref"];
-		if (!isPlainObject(annotation) || !Object.hasOwn(annotation, "contributedParamsSchema")) throw new Error("Invalid workflow reference annotation");
-		Value.Assert(Meta["https://json-schema.org/draft/2020-12/schema"], annotation.contributedParamsSchema);
-		assertWorkflowReferenceAnnotations(annotation.contributedParamsSchema);
+		if (!isPlainObject(annotation) || !Object.hasOwn(annotation, "contributedArgsSchema")) throw new Error("Invalid workflow reference annotation");
+		Value.Assert(Meta["https://json-schema.org/draft/2020-12/schema"], annotation.contributedArgsSchema);
+		assertWorkflowReferenceAnnotations(annotation.contributedArgsSchema);
 	}
 	for (const keyword of ["properties", "patternProperties", "$defs", "definitions", "dependentSchemas"]) {
 		const schemas = schema[keyword];

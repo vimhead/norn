@@ -1,20 +1,27 @@
-import type { NornRunNext, NornRun } from "@vimhead.dev/norn";
-import { worktreeDevelopmentLoopManifest } from "../../manifest.ts";
-import { planningAgentResponseSchema, type PlanningParams } from "./schema.ts";
+import { implementationWorkflow } from "../implementation/execute.ts";
+import type { WorkflowResult } from "@vimhead.dev/norn";
+import { developmentLoopScope } from "../../scope.ts";
+import { planningArgsSchema } from "./schema.ts";
+import { planningAgentResponseSchema } from "./schema.ts";
 
-export async function executePlanningWorkflow(run: NornRun, params: PlanningParams): Promise<NornRunNext> {
-	const repositoryPath = await run.state.get(worktreeDevelopmentLoopManifest.states.developmentLoop.repositoryPath);
-	const planning = await run.agents.prompt({
-		label: "planning",
-		cwd: repositoryPath,
-		tools: ["read", "grep", "find", "ls"],
-		prompt: buildPlanningPrompt(params.task),
-		response: planningAgentResponseSchema,
-	});
-	const planArtifact = await run.artifacts.write("planning/plan.md", planning.plan);
-	await run.state.set(worktreeDevelopmentLoopManifest.states.planning.planArtifact, planArtifact);
-	return worktreeDevelopmentLoopManifest.workflows.implementation({ task: params.task, iteration: 1 });
-}
+export const planningWorkflow = developmentLoopScope.workflow({
+	id: "planning",
+	isEntrypoint: false,
+	instructions: "Create an implementation plan for a repository task.",
+	args: planningArgsSchema,
+	async execute({ args, run }): Promise<WorkflowResult> {
+		const repositoryPath = args.repositoryPath;
+		const planning = await run.agents.prompt({
+			label: "planning",
+			cwd: repositoryPath,
+			tools: ["read", "grep", "find", "ls"],
+			prompt: buildPlanningPrompt(args.task),
+			response: planningAgentResponseSchema,
+		});
+		const planArtifact = await run.artifacts.write("planning/plan.md", planning.plan);
+		return implementationWorkflow({ ...args, planArtifact, iteration: 1 });
+	}
+});
 
 function buildPlanningPrompt(task: string): string {
 	return [

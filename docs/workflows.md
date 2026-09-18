@@ -2,20 +2,48 @@
 
 The Norn SDK is the TypeScript interface for building reusable workflows. A workflow can execute code and commands, delegate work to [Norn agents](agents.md), or combine both. Norn is the runtime that runs those workflows; the [CLI and client](cli.md) expose its lifecycle. Import authoring APIs from `@vimhead.dev/norn`; `@vimhead.dev/norn-cli` supplies the runtime. [Installation](../README.md#build-workflows-with-the-norn-sdk) covers SDK types and version matching.
 
-Start with the complete [minimal plugin](../examples/minimal-workflow/plugin.ts) and its [write/run/change exercise](../examples/minimal-workflow/README.md). Split files only as the implementation requires; a manifest, state module, and directory per step are not prerequisites.
+Start with the complete [minimal workflow](../examples/minimal-workflow/plugin.ts) and its [write/run/change exercise](../examples/minimal-workflow/README.md).
 
-## Declaration and implementation
+## Define a workflow
 
-`definePluginManifest` qualifies workflow keys as `pluginId.workflowKey`, binds TypeBox params, optional plugin config, and optional state declarations. `definePlugin` binds every declared key to an implementation. Entrypoints need nonempty caller-facing `instructions`; internal steps may omit them. `isEntrypoint` controls default catalogue visibility, not an authorization boundary: the CLI can start a known internal workflow ID directly.
+`workflow` declares a complete, typed callable workflow:
 
-`instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare params and config with [TypeBox schemas](schemas.md). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
+```ts
+import { workflow } from "@vimhead.dev/norn";
+import { Type } from "typebox";
 
-The implementation's `execute(run, params, config)` returns one control result:
+export const greet = workflow({
+  id: "greet",
+  isEntrypoint: true,
+  instructions: "Return a greeting for the supplied name.",
+  args: Type.Object({ name: Type.String() }),
+  execute({ args, run }) {
+    return run.complete({ summary: `Hello, ${args.name}!` });
+  },
+});
+
+export default [greet];
+```
+
+Supply `id`, `args`, `isEntrypoint`, and `execute` explicitly. Standalone IDs are used as-is. Entrypoints need nonempty caller-facing `instructions`; internal steps may omit them. `isEntrypoint` controls default catalogue visibility, not authorization: the CLI can start a known internal workflow ID directly.
+
+`instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare args and config with [TypeBox schemas](schemas.md). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
+
+`execute(context)` receives inferred `args`, `config`, `scope`, and `run`:
+
+| Property | Value |
+|---|---|
+| `args` | Decoded invocation arguments |
+| `config` | Decoded workflow-local configuration, or `undefined` without a schema |
+| `scope` | `{ id, config }` for scoped workflows; the property is absent for standalone workflows |
+| `run` | Run control, agents, commands, artifacts, and resources |
+
+It returns one control result:
 
 | Control | Meaning |
 |---|---|
-| `target(params)` / `params.next(contribution)` | Select a known workflow or a caller-supplied next step. See [composition](composition.md). |
-| `run.next(workflowId, params)` | Select a workflow by string ID; its input is checked at execution. |
+| `target(args)` / `args.next(contribution)` | Select a known workflow or a caller-supplied next step. See [composition](composition.md). |
+| `run.next(workflowId, args)` | Select a workflow by string ID; its input is checked at execution. |
 | `run.complete(metadata)` | Complete the whole run, optionally exposing `summary`, `artifacts`, `logs`, and `data`. |
 | `run.fail({ summary, ...metadata })` | Record failure with an actionable explanation and optional evidence. |
 
@@ -25,6 +53,66 @@ Throwing also fails execution. Neither a Norn agent returning text nor writing a
 |---|---|---|
 | IF a required outcome was prevented, THEN return failure or reach an explicitly declared gate. ELSE complete with evidence for the actual outcome. | Delivery failure retains assessment refs and reports the delivery error. | A completed wrapper whose separate coordinator still has required work pending. |
 | IF a helper only transforms data, THEN keep it an ordinary function. ELSE use a workflow boundary when control and recovery must be retained. | Local label normalization inside a persisted assessment step. | A workflow transition for each string operation. |
+
+## Shared scopes and configuration
+
+A scope gives workflows a namespace and optional shared configuration. Each workflow can also declare its own configuration:
+
+```ts
+import { workflowScope } from "@vimhead.dev/norn";
+import { Type } from "typebox";
+
+export const reports = workflowScope({
+  id: "reports",
+  config: Type.Object({ path: Type.String() }),
+});
+
+export const save = reports.workflow({
+  id: "save",
+  isEntrypoint: false,
+  args: Type.Object({ text: Type.String() }),
+  config: Type.Object({ filename: Type.String() }),
+  async execute({ args, config, scope, run }) {
+    const artifact = await run.artifacts.write(`${scope.config.path}/${config.filename}`, args.text);
+    return run.complete({ artifacts: { report: artifact } });
+  },
+});
+```
+
+The workflow ID is `reports.save`. Configuration uses separate keys:
+
+```json
+{
+  "config": {
+    "reports": { "path": "reports" },
+    "reports.save": { "filename": "summary.txt" }
+  }
+}
+```
+
+`config` and `scope.config` are independently validated; neither inherits or overrides the other. Run overrides use the same keys and merge into each owner's encoded configuration before decoding. A scope without a config schema supplies `scope.config` as `undefined`.
+
+Workflows in different files share a scope by importing one scope definition. Independently declaring the same scope ID is an error, even with identical schemas. Workflow IDs must be unique, and a workflow ID cannot also belong to a scope. [Registration](projects.md) is explicit; declaring or importing a workflow does not register it.
+
+## Recursive transitions
+
+For a workflow that references itself, annotate the execution return type with `WorkflowResult` (or `Promise<WorkflowResult>` for async execution). Context properties remain inferred:
+
+```ts
+import { workflow, type WorkflowResult } from "@vimhead.dev/norn";
+import { Type } from "typebox";
+
+const repeat = workflow({
+  id: "repeat",
+  isEntrypoint: false,
+  args: Type.Object({ remaining: Type.Integer() }),
+  execute({ args, run }): WorkflowResult {
+    return args.remaining > 0
+      ? repeat({ remaining: args.remaining - 1 })
+      : run.complete();
+  },
+});
+```
 
 ## Commands
 

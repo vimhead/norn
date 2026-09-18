@@ -1,4 +1,4 @@
-import { artifactRefSchema, definePlugin, definePluginManifest, workflowRefSchema } from "@vimhead.dev/norn";
+import { artifactRefSchema, workflowScope, workflowRefSchema } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 
 export const greetingContributionSchema = Type.Object({
@@ -6,27 +6,19 @@ export const greetingContributionSchema = Type.Object({
 	summary: Type.String(),
 });
 
-export const producerManifest = definePluginManifest({
-	id: "greetingProducer",
-	workflows: {
-		write: {
-			isEntrypoint: true,
-			instructions: "Write a greeting artifact for name, then invoke the caller-selected next workflow with resultArtifact and summary. The continuation owns completion; no model or external service is used.",
-			params: Type.Object({
-				name: Type.String({ minLength: 1 }),
-				next: workflowRefSchema({ params: greetingContributionSchema }),
-			}),
-		},
-	},
+const scope = workflowScope({ id: "greetingProducer" });
+export const write = scope.workflow({
+	id: "write",
+	isEntrypoint: true,
+	instructions: "Write a greeting artifact for name, then invoke the caller-selected next workflow with resultArtifact and summary. The continuation owns completion; no model or external service is used.",
+	args: Type.Object({
+		name: Type.String({ minLength: 1 }),
+		next: workflowRefSchema({ args: greetingContributionSchema }),
+	}),
+	async execute({ args, run }) {
+		const resultArtifact = await run.artifacts.write("greeting.txt", `Hello, ${args.name}!`);
+		return args.next({ resultArtifact, summary: `Greeting prepared for ${args.name}.` });
+	}
 });
 
-export default definePlugin(producerManifest, {
-	workflows: {
-		write: {
-			async execute(run, params) {
-				const resultArtifact = await run.artifacts.write("greeting.txt", `Hello, ${params.name}!`);
-				return params.next({ resultArtifact, summary: `Greeting prepared for ${params.name}.` });
-			},
-		},
-	},
-});
+export default [write];

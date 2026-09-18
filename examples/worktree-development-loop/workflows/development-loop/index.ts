@@ -1,4 +1,3 @@
-export { developmentLoopWorkflow } from "./declaration.ts";
-export { executeDevelopmentLoopWorkflow } from "./execute.ts";
-export { developmentLoopConfigSchema, developmentLoopParamsSchema } from "./schema.ts";
-export type { DevelopmentLoopConfig, DevelopmentLoopParams } from "./schema.ts";
+export { developmentLoopWorkflow } from "./execute.ts";
+export { developmentLoopConfigSchema, developmentLoopArgsSchema } from "./schema.ts";
+export type { DevelopmentLoopConfig, DevelopmentLoopArgs } from "./schema.ts";

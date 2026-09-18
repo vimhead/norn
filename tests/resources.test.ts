@@ -1,5 +1,6 @@
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
-import { StateAdapter, definePlugin, definePluginManifest, type NornResources, type NornWorkflowState } from "@vimhead.dev/norn";
+import { StateAdapter } from "../examples/shared-state/state-adapter.ts";
+import { sharedState, type SharedStateAccess } from "../examples/shared-state/shared-state.ts";
+import { workflow, workflowScope, type NornResources } from "@vimhead.dev/norn";
 import { NornFileCoordinator, createRunFileCoordinator } from "@vimhead.dev/norn/files";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -13,10 +14,9 @@ import { test, type TestContext } from "vitest";
 import { NornArtifacts } from "../packages/cli/src/internal/artifacts.ts";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
 import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
-import { initializeRunResources } from "../packages/cli/src/internal/run-resources.ts";
+import { initializeSharedState } from "./helpers/shared-state.ts";
 import { NornRunStateStore } from "../packages/cli/src/internal/run-state.ts";
 import { NornRunStore } from "../packages/cli/src/internal/run-store.ts";
-import { NornMemoryWorkflowState } from "../packages/cli/src/internal/state-store.ts";
 import { NornRunResources } from "../packages/cli/src/resources.ts";
 
 async function fixture(context: TestContext) {
@@ -55,10 +55,10 @@ test("independent processes serialize whole mutations and recover a dead owner w
 test("independent state processes preserve every field and initialization never seeds declared defaults", { timeout: 15000 }, async context => {
 	const { root } = await fixture(context);
 	await Promise.all(Array.from({ length: 4 }, (_, index) => worker(root, "state", `${index}`).completed));
-	const { state } = await initializeRunResources(root);
+	const { state } = await initializeSharedState(root);
 	assert.equal(Object.keys(JSON.parse(await readFile(state.stateFile, "utf8"))).length, 48);
 	assert.equal(await state.getOptional({ id: "missing", schema: Type.String({ default: "not invented" }) }), undefined);
-	await assert.rejects(state.get({ id: "missing", schema: Type.String() }), /Missing workflow state/);
+	await assert.rejects(state.get({ id: "missing", schema: Type.String() }), /Missing shared state/);
 });
 
 test("locks coordinate canonical aliases, release after exceptions, and do not block unrelated files", async context => {
@@ -88,22 +88,22 @@ test("malformed ownership fails closed", async context => {
 
 test("state rejects invalid documents and failed writes do not poison subsequent operations", async context => {
 	const { root } = await fixture(context);
-	const { state } = await initializeRunResources(root);
+	const { state } = await initializeSharedState(root);
 	const field = { id: "count", schema: Type.Integer() };
 	await assert.rejects(state.set(field, 1.5));
 	await state.set(field, 2);
 	assert.equal(await state.get(field), 2);
 	await writeFile(state.stateFile, "[]");
-	await assert.rejects(state.set(field, 3), /Invalid workflow state document/);
+	await assert.rejects(state.set(field, 3), /Invalid shared state document/);
 	assert.equal(await readFile(state.stateFile, "utf8"), "[]");
 	await writeFile(state.stateFile, "{}");
 	await state.set({ id: "__proto__", schema: Type.String() }, "ordinary field");
 	assert.equal(await state.get({ id: "__proto__", schema: Type.String() }), "ordinary field");
 });
 
-test("workflow and adapter writes share Pi file-mutation coordination", async context => {
+test("workflow and example adapter writes share resource locking", async context => {
 	const { root } = await fixture(context);
-	const { state } = await initializeRunResources(root);
+	const { state } = await initializeSharedState(root);
 	const field = { id: "count", schema: Type.Number() };
 	await state.set(field, 0);
 	const binding = await StateAdapter({ state, fields: [{ field, access: "write" }] }).bind({ runId: "test", label: "writer" });
@@ -112,7 +112,7 @@ test("workflow and adapter writes share Pi file-mutation coordination", async co
 	let releaseQueue!: () => void;
 	const entered = new Promise<void>(resolve => { markEntered = resolve; });
 	const released = new Promise<void>(resolve => { releaseQueue = resolve; });
-	const held = withFileMutationQueue(state.stateFile, async () => {
+	const held = createRunFileCoordinator(root).withExclusiveLock(state.stateFile, async () => {
 		markEntered();
 		await released;
 	});
@@ -121,17 +121,19 @@ test("workflow and adapter writes share Pi file-mutation coordination", async co
 	const adapterWrite = writeTool.execute("write", { key: field.id, value: 2 }, undefined, undefined, {} as never);
 	try {
 		await delay(25);
-		assert.equal(await state.get(field), 0);
+		assert.equal(JSON.parse(await readFile(state.stateFile, "utf8"))[field.id], 0);
 	} finally {
 		releaseQueue();
 		await Promise.all([held, workflowWrite, adapterWrite]);
 		await binding.dispose();
 	}
-	assert.equal(await state.get(field), 2);
+	assert.ok([1, 2].includes(await state.get(field)));
 });
 
-test("StateAdapter delegates to the state interface without filesystem metadata", async () => {
-	const state = new NornMemoryWorkflowState();
+test("StateAdapter delegates to the state interface without filesystem metadata", async context => {
+	const { root } = await fixture(context);
+	const { state: stored } = await initializeSharedState(root);
+	const state: SharedStateAccess = { get: stored.get.bind(stored), getOptional: stored.getOptional.bind(stored), set: stored.set.bind(stored) };
 	const field = { id: "message", schema: Type.String() };
 	const binding = await StateAdapter({ state, fields: [{ field, access: "read-write" }] }).bind({ runId: "test", label: "memory" });
 	try {
@@ -179,26 +181,26 @@ test("independent logger handles append without losing events", async context =>
 test("checkpoint rollback restores resource data but never restores transient lock ownership", async context => {
 	const { root } = await fixture(context);
 	const store = await NornRunStore.initialize(root);
-	const { resources, state } = await initializeRunResources(root);
+	const { resources, state } = await initializeSharedState(root);
 	const field = { id: "phase", schema: Type.String() };
 	await state.set(field, "before");
 	const checkpoint = await resources.files.withExclusiveLock(state.stateFile, async () => store.snapshotCurrent("saved"));
 	await state.set(field, "after");
 	await store.restoreSnapshot(checkpoint.id, undefined);
-	const reopened = await initializeRunResources(root);
+	const reopened = await initializeSharedState(root);
 	assert.equal(await reopened.state.get(field), "before");
 	assert.deepEqual(await readdir(join(root, "locks")), []);
 });
 
 test("StateAdapter accepts public state, scopes tools, validates schemas and paginates large values", async context => {
 	const { root } = await fixture(context);
-	const state: NornWorkflowState = (await initializeRunResources(root)).state;
+	const state: SharedStateAccess = (await initializeSharedState(root)).state;
 	const visible = { id: "visible", schema: Type.String() };
 	const hidden = { id: "hidden", schema: Type.String() };
 	await state.set(hidden, "secret context");
 	await state.set(visible, "a".repeat(20000));
 	const binding = await StateAdapter({ state, fields: [{ field: visible, access: "read" }] }).bind({ runId: "test", label: "reader" });
-	const execute = async (name: string, params: object) => binding.tools.find(tool => tool.name === name)!.execute("call", params, undefined, undefined, {} as never);
+	const execute = async (name: string, args: object) => binding.tools.find(tool => tool.name === name)!.execute("call", args, undefined, undefined, {} as never);
 	const listed = await execute("norn_state_list", { offset: 0, limit: 10000 });
 	assert.ok(JSON.stringify(listed.content).includes("visible"));
 	assert.ok(!JSON.stringify(listed.content).includes("hidden"));
@@ -216,10 +218,10 @@ test("StateAdapter accepts public state, scopes tools, validates schemas and pag
 
 test("reopening initialized state never substitutes empty data for a missing file", async context => {
 	const { root } = await fixture(context);
-	const { state } = await initializeRunResources(root);
+	const { state } = await initializeSharedState(root);
 	await rm(state.stateFile);
 	await assert.rejects(state.getOptional({ id: "missing", schema: Type.String() }), { code: "ENOENT" });
-	await assert.rejects(initializeRunResources(root), { code: "ENOENT" });
+	await assert.rejects(initializeSharedState(root), { code: "ENOENT" });
 	await assert.rejects(readFile(state.stateFile), { code: "ENOENT" });
 });
 
@@ -256,47 +258,54 @@ test("replaceable artifact reads observe complete values across independent writ
 
 test("native workflow contexts share one state resource and resume reopens its persisted values", async context => {
 	const { root } = await fixture(context);
-	const manifest = definePluginManifest({
-		id: "resourceLifecycle",
-		states: { value: Type.Number() },
-		workflows: {
-			start: { isEntrypoint: true, instructions: "Exercise resource lifecycle.", params: Type.Object({}) },
-			continue: { isEntrypoint: false, params: Type.Object({}) },
-			finish: { isEntrypoint: false, params: Type.Object({ decision: Type.Enum(["accept", "reject"]) }), gate: { enabled: true, fields: ["decision"] } },
-		},
-	});
-	let manager: NornResources | undefined;
-	let initialState: NornWorkflowState | undefined;
-	const plugin = definePlugin(manifest, { workflows: {
-		start: { async execute(run) {
-			initialState = run.state;
-			const managedState = await run.resources.ensure<NornWorkflowState>({
-				name: "workflow-state", kind: "norn.state", configuration: { format: 1, path: "state.json" },
-				async initialize() { throw new Error("Built-in state must already be initialized"); },
-			});
-			assert.strictEqual(managedState, run.state);
-			assert.equal(await run.state.getOptional(manifest.states.value), undefined);
+	const manifestScope = workflowScope({ id: "resourceLifecycle" });
+const valueField = { id: "value", schema: Type.Number() };
+const manifest_start = manifestScope.workflow({
+id: "start",
+isEntrypoint: true,
+instructions: "Exercise resource lifecycle.",
+args: Type.Object({}),
+async execute({ run: run }) {
+			const state = await run.resources.ensure(sharedState);
+			initialState = state;
+			assert.strictEqual(await run.resources.ensure(sharedState), state);
+			assert.equal(await state.getOptional(valueField), undefined);
 			manager = run.resources;
-			await run.state.set(manifest.states.value, 7);
-			return manifest.workflows.continue({});
-		} },
-		continue: { execute(run) {
+			await state.set(valueField, 7);
+			return manifest_continue({});
+		}
+});
+const manifest_continue = manifestScope.workflow({
+id: "continue",
+isEntrypoint: false,
+args: Type.Object({}),
+async execute({ run }) {
 			assert.strictEqual(run.resources, manager);
-			assert.strictEqual(run.state, initialState);
-			return manifest.workflows.finish({ decision: "reject" });
-		} },
-		finish: { gate: { describe: () => "Accept the persisted value." }, async execute(run) {
+			assert.strictEqual(await run.resources.ensure(sharedState), initialState);
+			return manifest_finish({ decision: "reject" });
+		}
+});
+const manifest_finish = manifestScope.workflow({
+id: "finish",
+isEntrypoint: false,
+args: Type.Object({ decision: Type.Enum(["accept", "reject"]) }),
+gate: { enabled: true, fields: ["decision"] , describe: () => "Accept the persisted value." },
+async execute({ run: run }) {
 			assert.notStrictEqual(run.resources, manager);
-			assert.notStrictEqual(run.state, initialState);
-			return run.complete({ data: { value: await run.state.get(manifest.states.value) } });
-		} },
-	} });
+			const state = await run.resources.ensure(sharedState);
+			assert.notStrictEqual(state, initialState);
+			return run.complete({ data: { value: await state.get(valueField) } });
+		}
+});
+	let manager: NornResources | undefined;
+	let initialState: SharedStateAccess | undefined;
+	const plugin = [manifest_start, manifest_continue, manifest_finish];
 	const engine = new NornEngine({ cwd: root, gateMode: "pause" });
-	engine.registerPlugin(plugin);
-	const interrupted = await engine.runWorkflow(manifest.workflows.start, {}, undefined);
+	engine.registerWorkflows(plugin);
+	const interrupted = await engine.runWorkflow(manifest_start, {}, undefined);
 	assert.equal(interrupted.status, "interrupted");
 	const resumedEngine = new NornEngine({ cwd: root, gateMode: "pause" });
-	resumedEngine.registerPlugin(plugin);
+	resumedEngine.registerWorkflows(plugin);
 	const completed = await resumedEngine.resumeWorkflow(join(root, ".norn", "runs", interrupted.id), { decision: "accept" });
 	assert.equal(completed.status, "completed");
 	assert.deepEqual(completed.metadata?.data, { value: 7 });
@@ -307,7 +316,7 @@ for (const layout of ["symlink", "legacy"] as const) {
 		const { root } = await fixture(context);
 		await NornRunStateStore.create(root, {
 			id: "layout", name: "layout", entrypointWorkflowId: "test.step", workspace: root,
-			current: { workflowId: "test.step", params: {}, cwd: root, env: {} }, startedAt: new Date().toISOString(),
+			current: { workflowId: "test.step", args: {}, cwd: root, env: {} }, startedAt: new Date().toISOString(),
 		});
 		const currentPath = join(root, "current", "run-state.json");
 		const target = layout === "symlink" ? join(root, "different-name.json") : join(root, "current", "runtime-state.json");

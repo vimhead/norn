@@ -8,12 +8,12 @@ means writing a local artifact, not contacting an external service.
 ## Declare and supply
 
 - [producer.ts](producer.ts) declares `next` with `workflowRefSchema` and invokes
-  `params.next({ resultArtifact, summary })`. It names no consumer workflow.
+  `args.next({ resultArtifact, summary })`. It names no consumer workflow.
 - [caller.ts](caller.ts) provides two consumers: `greetingConsumer.saveJson` and
   `greetingConsumer.saveText`. Each accepts the contributed fields plus `batchId`.
-- [norn.project.json](norn.project.json) registers both plugins.
+- [norn.project.json](norn.project.json) registers both workflow modules.
 - [input.json](input.json) selects `greetingConsumer.saveJson` and supplies
-  `batchId: "batch-17"` through `next.forwardParams`.
+  `batchId: "batch-17"` through `next.forwardArgs`.
 
 The consumer reads the greeting artifact and completes the run with a delivery
 artifact. The [composition reference](../../docs/composition.md#caller-selected-workflow-reference)
@@ -63,13 +63,13 @@ Read `.norn/runs/$RUN/current/artifacts/delivery.json`; its content should be:
 
 ## Select another consumer without changing the producer
 
-In the copied `input.json`, change only `params.next.workflow` to
+In the copied `input.json`, change only `args.next.workflow` to
 `greetingConsumer.saveText`. Inspect that consumer, start the producer again, and
 wait on the **new** run ID. Its outcome should identify `greetingConsumer.saveText`,
 report `format: "text"`, and reference `delivery.txt` containing
 `batch-17: Hello, Ada!` followed by a newline. The first run retains its JSON delivery.
 
-For a failure exercise, keep a valid consumer ID but change `forwardParams` to
+For a failure exercise, keep a valid consumer ID but change `forwardArgs` to
 `{}`. Start and inspect a new run: it should fail because the consumer requires
 `batchId`, with no delivery artifact. A valid producer contribution alone does
 not establish compatibility with the consumer's complete input contract.

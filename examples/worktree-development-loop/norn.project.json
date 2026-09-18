@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "plugins": ["./plugin.ts"],
+  "workflows": ["./plugin.ts"],
   "config": {
     "worktreeDevelopmentLoop": {
       "repositoryRoot": "/absolute/path/to/source-repository"

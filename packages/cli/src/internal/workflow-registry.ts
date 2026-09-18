@@ -1,24 +1,40 @@
-import { isWorkflowComplete, isWorkflowFail, isWorkflowNext, type NornAnyWorkflowDeclaration, type NornDispose, type NornInspectedWorkflowInfo, type NornRegisteredWorkflowInfo, type NornRunComplete, type NornRunFail, type NornRunFor, type NornRunNext, type NornWorkflowGateInfo, type NornWorkflowImplementation, type NornWorkflowParams, type NornWorkflowPluginInfo } from "@vimhead.dev/norn";
+import { isWorkflowComplete, isWorkflowDeclaration, isWorkflowFail, isWorkflowNext, type NornAnyWorkflowDeclaration, type NornDispose, type NornInspectedWorkflowInfo, type NornRegisteredWorkflowInfo, type NornRunComplete, type NornRunFail, type NornRunFor, type NornRunNext, type NornWorkflowContext, type NornWorkflowGateInfo, type NornWorkflowSource, type NornWorkflowScopeInfo, type NornProjectConfigurationInfo } from "@vimhead.dev/norn";
 import { assertWorkflowMetadata, inspectSchema, isPlainObject, schemaShape, schemaType, unwrapSchema } from "@vimhead.dev/norn/schema";
-import { type TSchema } from "typebox";
+import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
 
+export type NornRegisteredConfiguration = { readonly key: string; readonly schema: TSchema | undefined; readonly input: unknown; readonly value: unknown };
 export type NornRegisteredWorkflow = {
-	workflow: NornAnyWorkflowDeclaration;
-	implementation: NornWorkflowImplementation<NornAnyWorkflowDeclaration, unknown>;
-	configuration?: NornRegisteredConfiguration;
-	plugin?: NornWorkflowPluginInfo;
+	readonly workflow: NornAnyWorkflowDeclaration;
+	readonly configuration: NornRegisteredConfiguration;
+	readonly scopeId: string | undefined;
+	readonly source: NornWorkflowSource | undefined;
 };
 
-export type NornRegisteredConfiguration = { readonly schema: TSchema; readonly input: unknown; readonly value: unknown };
+type NornRegisteredScope = { readonly definition: NornWorkflowScopeInfo; readonly configuration: NornRegisteredConfiguration };
 
-export function decodePluginConfiguration(input: { readonly pluginId: string; readonly schema: TSchema | undefined; readonly value: unknown }): NornRegisteredConfiguration | undefined {
+export function decodeConfiguration(input: { readonly key: string; readonly schema: TSchema | undefined; readonly value: unknown }): NornRegisteredConfiguration {
 	if (!input.schema) {
-		if (input.value !== undefined) throw new Error(`Norn config provided for plugin without config schema: ${input.pluginId}`);
-		return undefined;
+		if (input.value !== undefined) throw new Error(`Norn config provided without config schema: ${input.key}`);
+		return { key: input.key, schema: undefined, input: undefined, value: undefined };
 	}
-	const value = defaultConfigInput(input.schema, input.value);
-	return { schema: input.schema, input: value, value: Value.Decode(input.schema, value) };
+	const value = input.value === undefined && schemaType(unwrapSchema(input.schema)) === "object" ? {} : input.value;
+	return { key: input.key, schema: input.schema, input: value, value: Value.Decode(input.schema, value) };
+}
+
+export function assertCompatibleConfigurationOwners(workflows: readonly NornAnyWorkflowDeclaration[]): void {
+	const owners = new Map<string, { readonly kind: "workflow" | "scope"; readonly definition: object }>();
+	for (const workflow of workflows) {
+		for (const owner of [
+			{ key: workflow.id, kind: "workflow" as const, definition: workflow },
+			...(workflow.scope ? [{ key: workflow.scope.id, kind: "scope" as const, definition: workflow.scope }] : []),
+		]) {
+			const previous = owners.get(owner.key);
+			if (previous && previous.kind !== owner.kind) throw new Error(`Ambiguous configuration key: ${owner.key}`);
+			if (previous && owner.kind === "scope" && previous.definition !== owner.definition) throw new Error(`Duplicate workflow scope id: ${owner.key}; import one shared scope definition`);
+			owners.set(owner.key, owner);
+		}
+	}
 }
 
 export type NornWorkflowStepResult =
@@ -28,155 +44,142 @@ export type NornWorkflowStepResult =
 
 export class NornWorkflowRegistry {
 	private readonly entries = new Map<string, NornRegisteredWorkflow>();
+	private readonly scopes = new Map<string, NornRegisteredScope>();
 
-	register<TWorkflow extends NornAnyWorkflowDeclaration>(
-		workflow: TWorkflow,
-		implementation: NornWorkflowImplementation<TWorkflow, unknown>,
-		metadata: { readonly plugin?: NornWorkflowPluginInfo; readonly configuration?: NornRegisteredConfiguration } = {},
-	): NornDispose {
+	register(input: { readonly workflow: NornAnyWorkflowDeclaration; readonly config: Readonly<Record<string, unknown>>; readonly source: NornWorkflowSource | undefined }): NornDispose {
+		const { workflow, config, source } = input;
+		assertWorkflowDefinition(workflow);
 		if (this.entries.has(workflow.id)) throw new Error(`Workflow already registered: ${workflow.id}`);
-
+		assertCompatibleConfigurationOwners([...this.sortedEntries().map(entry => entry.workflow), workflow]);
 		const entry: NornRegisteredWorkflow = {
-			workflow,
-			implementation: implementation as NornWorkflowImplementation<NornAnyWorkflowDeclaration, unknown>,
-			configuration: metadata.configuration,
-			plugin: metadata.plugin,
+			workflow, source, scopeId: workflow.scope?.id,
+			configuration: decodeConfiguration({ key: workflow.id, schema: workflow.config, value: configurationInput(config, workflow.id) }),
 		};
-		assertWorkflowMetadata(workflow);
-		assertGateWorkflow(workflow);
+		if (workflow.scope && !this.scopes.has(workflow.scope.id)) {
+			this.scopes.set(workflow.scope.id, {
+				definition: workflow.scope,
+				configuration: decodeConfiguration({ key: workflow.scope.id, schema: workflow.scope.config, value: configurationInput(config, workflow.scope.id) }),
+			});
+		}
 		this.entries.set(workflow.id, entry);
-
 		return () => {
-			if (this.entries.get(workflow.id) === entry) this.entries.delete(workflow.id);
+			if (this.entries.get(workflow.id) !== entry) return;
+			this.entries.delete(workflow.id);
+			if (entry.scopeId && ![...this.entries.values()].some(other => other.scopeId === entry.scopeId)) this.scopes.delete(entry.scopeId);
 		};
 	}
 
 	list(options: { readonly entrypointsOnly?: boolean } = {}): NornRegisteredWorkflowInfo[] {
-		const entries = options.entrypointsOnly ? this.launchableEntries() : this.sortedEntries();
-		return entries.map((entry) => workflowInfo(entry));
+		return (options.entrypointsOnly ? this.launchableEntries() : this.sortedEntries()).map(workflowInfo);
 	}
 
 	inspect(workflowId: string): NornInspectedWorkflowInfo | undefined {
 		const entry = this.entries.get(workflowId);
-		return entry ? inspectedWorkflowInfo(entry) : undefined;
+		const scope = entry?.scopeId ? this.scopes.get(entry.scopeId) : undefined;
+		return entry ? {
+			...workflowInfo(entry),
+			argsSchema: inspectSchema(entry.workflow.args),
+			configSchema: entry.configuration.schema ? inspectSchema(entry.configuration.schema) : null,
+			scope: scope ? {
+				id: scope.definition.id,
+				configKey: scope.configuration.key,
+				configSchema: scope.configuration.schema ? inspectSchema(scope.configuration.schema) : null,
+			} : undefined,
+			gate: gateInfo(entry.workflow),
+		} : undefined;
 	}
 
-	launchableEntries(): NornRegisteredWorkflow[] {
-		return this.sortedEntries().filter(({ workflow }) => workflow.isEntrypoint);
+	configurationInfos(): NornProjectConfigurationInfo[] {
+		return [
+			...this.sortedEntries().map(entry => ({ configuration: entry.configuration, scopeId: null })),
+			...[...this.scopes.values()].map(scope => ({ configuration: scope.configuration, scopeId: scope.definition.id })),
+		].map(({ configuration, scopeId }) => ({ key: configuration.key, scopeId, configSchema: configuration.schema ? inspectSchema(configuration.schema) : null, config: configuration.value }));
 	}
 
-	workflowById(workflowId: string): NornAnyWorkflowDeclaration | undefined {
-		return this.entries.get(workflowId)?.workflow;
-	}
+	launchableEntries(): NornRegisteredWorkflow[] { return this.sortedEntries().filter(({ workflow }) => workflow.isEntrypoint); }
+	workflowById(workflowId: string): NornAnyWorkflowDeclaration | undefined { return this.entries.get(workflowId)?.workflow; }
 
-	async describeGate<TWorkflow extends NornAnyWorkflowDeclaration>(
-		workflow: TWorkflow,
-		run: NornRunFor<TWorkflow>,
-		params: unknown,
-		configOverride?: unknown,
-	): Promise<string> {
-		const entry = this.entries.get(workflow.id);
-		if (!entry) throw new Error(`Unknown workflow: ${workflow.id}`);
+	async describeGate<TWorkflow extends NornAnyWorkflowDeclaration>(workflow: TWorkflow, run: NornRunFor<TWorkflow>, args: unknown, configOverride?: unknown): Promise<string> {
+		const entry = this.requireEntry(workflow.id);
 		if (!workflow.gate) throw new Error(`Workflow is not gated: ${workflow.id}`);
-		const parsedParams = Value.Decode(workflow.params, params) as NornWorkflowParams<TWorkflow>;
-		const parsedConfig = parseExecutionConfig(entry, configOverride);
-		const description = await (entry.implementation as NornWorkflowImplementation<TWorkflow, unknown>).gate?.describe(run, parsedParams, parsedConfig);
-		return validateGateDescription(description ?? workflow.id, workflow.id);
+		const context = this.createExecutionContext({ entry, run, args, configOverride });
+		const description = await entry.workflow.gate?.describe?.(context) ?? workflow.id;
+		if (typeof description !== "string" || description.trim().length === 0) throw new Error(`Workflow gate description must not be empty: ${workflow.id}`);
+		return description.trim();
 	}
 
-	async execute<TWorkflow extends NornAnyWorkflowDeclaration>(
-		workflow: TWorkflow,
-		run: NornRunFor<TWorkflow>,
-		params: unknown,
-		configOverride?: unknown,
-	): Promise<NornWorkflowStepResult> {
-		const entry = this.entries.get(workflow.id);
-		if (!entry) throw new Error(`Unknown workflow: ${workflow.id}`);
-
-		const parsedParams = Value.Decode(workflow.params, params) as NornWorkflowParams<TWorkflow>;
-		const parsedConfig = parseExecutionConfig(entry, configOverride);
-		const result = await (entry.implementation as NornWorkflowImplementation<TWorkflow, unknown>).execute(run, parsedParams, parsedConfig);
+	async execute<TWorkflow extends NornAnyWorkflowDeclaration>(workflow: TWorkflow, run: NornRunFor<TWorkflow>, args: unknown, configOverride?: unknown): Promise<NornWorkflowStepResult> {
+		const entry = this.requireEntry(workflow.id);
+		const result = await entry.workflow.execute(this.createExecutionContext({ entry, run, args, configOverride }));
 		if (isWorkflowNext(result)) return result;
 		if (isWorkflowComplete(result)) return { type: "complete", workflow, metadata: result.metadata };
 		if (isWorkflowFail(result)) return { type: "fail", workflow, metadata: result.metadata };
 		throw new Error(`Workflow returned invalid control result: ${workflow.id}`);
 	}
 
-	private sortedEntries(): NornRegisteredWorkflow[] {
-		return Array.from(this.entries.values()).sort((left, right) => left.workflow.id.localeCompare(right.workflow.id));
+	private createExecutionContext(input: { readonly entry: NornRegisteredWorkflow; readonly run: NornRunFor<NornAnyWorkflowDeclaration>; readonly args: unknown; readonly configOverride: unknown }): NornWorkflowContext {
+		const { entry, run, configOverride } = input;
+		const scope = entry.scopeId ? this.scopes.get(entry.scopeId) : undefined;
+		return {
+			args: Value.Decode(entry.workflow.args, input.args),
+			config: parseExecutionConfig(entry.configuration, configOverride),
+			...(scope ? { scope: { id: scope.definition.id, config: parseExecutionConfig(scope.configuration, configOverride) } } : {}),
+			run,
+		};
 	}
-}
 
-function defaultConfigInput(configSchema: TSchema, config: unknown): unknown {
-	if (config !== undefined) return config;
-	return schemaType(unwrapSchema(configSchema)) === "object" ? {} : undefined;
-}
-
-function parseExecutionConfig(entry: NornRegisteredWorkflow, configOverride: unknown): unknown {
-	const pluginConfigOverride = pluginConfigOverrideInput(entry, configOverride);
-	if (!entry.configuration) {
-		if (pluginConfigOverride !== undefined) throw new Error(`Run config override provided for plugin without config schema: ${entry.plugin?.id ?? entry.workflow.id}`);
-		return undefined;
+	private requireEntry(id: string): NornRegisteredWorkflow {
+		const entry = this.entries.get(id);
+		if (!entry) throw new Error(`Unknown workflow: ${id}`);
+		return entry;
 	}
-	if (pluginConfigOverride === undefined) return entry.configuration.value;
-	const rawConfig = isPlainObject(entry.configuration.input) && isPlainObject(pluginConfigOverride)
-		? deepMerge(entry.configuration.input, pluginConfigOverride)
-		: pluginConfigOverride;
-	return Value.Decode(entry.configuration.schema, rawConfig);
+	private sortedEntries(): NornRegisteredWorkflow[] { return [...this.entries.values()].sort((left, right) => left.workflow.id.localeCompare(right.workflow.id)); }
 }
 
-function pluginConfigOverrideInput(entry: NornRegisteredWorkflow, configOverride: unknown): unknown {
-	if (configOverride === undefined) return undefined;
-	if (!isPlainObject(configOverride)) throw new Error("Run config override must be an object keyed by plugin id");
-	const pluginId = entry.plugin?.id;
-	return pluginId ? configOverride[pluginId] : undefined;
+function configurationInput(config: Readonly<Record<string, unknown>>, key: string): unknown {
+	return Object.hasOwn(config, key) ? config[key] : undefined;
+}
+
+function parseExecutionConfig(configuration: NornRegisteredConfiguration, overrides: unknown): unknown {
+	if (overrides !== undefined && !isPlainObject(overrides)) throw new Error("Run config override must be an object keyed by workflow or scope id");
+	const override = overrides ? configurationInput(overrides, configuration.key) : undefined;
+	if (override === undefined) return configuration.value;
+	if (!configuration.schema) throw new Error(`Run config override provided without config schema: ${configuration.key}`);
+	const input = isPlainObject(configuration.input) && isPlainObject(override) ? deepMerge(configuration.input, override) : override;
+	return Value.Decode(configuration.schema, input);
 }
 
 function deepMerge(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
-	const result: Record<string, unknown> = { ...base };
-	for (const [key, value] of Object.entries(override)) {
-		const baseValue = result[key];
-		result[key] = isPlainObject(baseValue) && isPlainObject(value) ? deepMerge(baseValue, value) : value;
-	}
+	const result = { ...base };
+	for (const [key, value] of Object.entries(override)) result[key] = isPlainObject(result[key]) && isPlainObject(value) ? deepMerge(result[key], value) : value;
 	return result;
+}
+
+export function assertWorkflowDefinition(workflow: NornAnyWorkflowDeclaration): void {
+	assertWorkflowMetadata(workflow);
+	if (!isWorkflowDeclaration(workflow)) throw new Error("Invalid workflow definition");
+	assertGateWorkflow(workflow);
 }
 
 function assertGateWorkflow(workflow: NornAnyWorkflowDeclaration): void {
 	if (!workflow.gate) return;
 	if (workflow.gate.enabled !== true) throw new Error(`Workflow gate must be enabled with true: ${workflow.id}`);
+	if (workflow.gate.describe !== undefined && typeof workflow.gate.describe !== "function") throw new Error(`Invalid gate description callback: ${workflow.id}`);
 	if (!workflow.gate.fields) return;
-	const paramsSchema = unwrapSchema(workflow.params);
-	if (schemaType(paramsSchema) !== "object") throw new Error(`Workflow gate fields require object params: ${workflow.id}`);
-	const paramsShape = schemaShape(paramsSchema);
-	for (const field of workflow.gate.fields) {
-		if (!Object.prototype.hasOwnProperty.call(paramsShape, field)) throw new Error(`Unknown workflow gate field ${field}: ${workflow.id}`);
-	}
-}
-
-function validateGateDescription(description: string, workflowId: string): string {
-	const trimmed = description.trim();
-	if (trimmed.length === 0) throw new Error(`Workflow gate description must not be empty: ${workflowId}`);
-	return trimmed;
-}
-
-function inspectedWorkflowInfo(entry: NornRegisteredWorkflow): NornInspectedWorkflowInfo {
-	return {
-		...workflowInfo(entry),
-		paramsSchema: inspectSchema(entry.workflow.params),
-		gate: gateInfo(entry.workflow),
-	};
+	const argsSchema = unwrapSchema(workflow.args);
+	if (schemaType(argsSchema) !== "object") throw new Error(`Workflow gate fields require object args: ${workflow.id}`);
+	const shape = schemaShape(argsSchema);
+	for (const field of workflow.gate.fields) if (!Object.hasOwn(shape, field)) throw new Error(`Unknown workflow gate field ${field}: ${workflow.id}`);
 }
 
 function workflowInfo(entry: NornRegisteredWorkflow): NornRegisteredWorkflowInfo {
 	return {
-		id: entry.workflow.id,
-		instructions: entry.workflow.instructions,
-		isEntrypoint: entry.workflow.isEntrypoint,
-		isolation: entry.workflow.isolation,
-		plugin: entry.plugin,
+		id: entry.workflow.id, instructions: entry.workflow.instructions, isEntrypoint: entry.workflow.isEntrypoint,
+		isolation: entry.workflow.isolation, source: entry.source,
+		configKey: entry.workflow.id,
+		scope: entry.scopeId ? { id: entry.scopeId } : undefined,
 	};
 }
-
 function gateInfo(workflow: NornAnyWorkflowDeclaration): NornWorkflowGateInfo | null {
 	return workflow.gate ? { enabled: true, fields: workflow.gate.fields } : null;
 }

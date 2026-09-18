@@ -5,23 +5,26 @@ import { join } from "node:path";
 import { Type } from "typebox";
 import { test, type TestContext } from "vitest";
 
-import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
+import { workflow, workflowScope } from "@vimhead.dev/norn";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
 import { readOptionalRunResumeRequest, writeRunResumeRequest, type NornRunResumeRequest } from "../packages/cli/src/internal/launch-request.ts";
 
 async function createFixture(context: TestContext, gateMode: "pause" | "auto" | undefined, isEntrypoint: boolean) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-gate-test-"));
 	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
-	const manifest = definePluginManifest({ id: "gates", workflows: {
-		decide: { instructions: "Use to supply the test decision.", isEntrypoint, params: Type.Object({ answer: Type.Boolean() }), gate: { enabled: true, fields: ["answer"] } },
-	} });
+	const manifestScope = workflowScope({ id: "gates" });
+const manifest_decide = manifestScope.workflow({
+id: "decide",
+instructions: "Use to supply the test decision.",
+isEntrypoint,
+args: Type.Object({ answer: Type.Boolean() }),
+gate: { enabled: true, fields: ["answer"] , describe: () => "Choose the answer before execution." },
+execute: ({ args: args, run: run }) => { executionCount++; return run.complete({ data: args }); }
+});
 	let executionCount = 0;
 	const engine = new NornEngine({ cwd, gateMode });
-	engine.registerPlugin(definePlugin(manifest, { workflows: { decide: {
-		gate: { describe: () => "Choose the answer before execution." },
-		execute: (run, params) => { executionCount++; return run.complete({ data: params }); },
-	} } }));
-	return { cwd, engine, workflow: manifest.workflows.decide, count: () => executionCount };
+	engine.registerWorkflows([manifest_decide]);
+	return { cwd, engine, workflow: manifest_decide, count: () => executionCount };
 }
 
 for (const isEntrypoint of [true, false]) {
@@ -76,12 +79,12 @@ for (const isExpired of [false, true]) {
 		const interrupted = await fixture.engine.runWorkflow(fixture.workflow, { answer: false }, undefined);
 		const runRoot = join(fixture.cwd, ".norn/runs", interrupted.id);
 		const [initial] = await fixture.engine.listRunCheckpoints(runRoot);
-		const request: NornRunResumeRequest = { version: 1, type: "resume", id: interrupted.id, requestId: "old-request", params: { answer: true }, createdAt: new Date(Date.now() - (isExpired ? 120000 : 0)).toISOString() };
+		const request: NornRunResumeRequest = { version: 2, type: "resume", id: interrupted.id, requestId: "old-request", args: { answer: true }, createdAt: new Date(Date.now() - (isExpired ? 120000 : 0)).toISOString() };
 		await writeRunResumeRequest(runRoot, request);
 		if (isExpired) {
 			assert.equal((await fixture.engine.rollbackRun(runRoot, initial.id)).status, "pendingResume");
 			assert.equal(await readOptionalRunResumeRequest(runRoot), undefined);
-			await assert.rejects(fixture.engine.resumeRequestedWorkflow({ runRoot, request }), /do not accept params|request changed/);
+			await assert.rejects(fixture.engine.resumeRequestedWorkflow({ runRoot, request }), /do not accept args|request changed/);
 			assert.equal((await fixture.engine.resumeWorkflow(runRoot)).status, "interrupted");
 		} else {
 			await assert.rejects(fixture.engine.rollbackRun(runRoot, initial.id), /still pending/);

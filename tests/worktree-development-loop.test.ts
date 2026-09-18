@@ -5,14 +5,15 @@ import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { test, vi, type TestContext } from "vitest";
-import { worktreeDevelopmentLoopManifest as manifest } from "../examples/worktree-development-loop/manifest.ts";
-import { executeDevelopmentLoopWorkflow } from "../examples/worktree-development-loop/workflows/development-loop/execute.ts";
-import { executeReviewRouterWorkflow } from "../examples/worktree-development-loop/workflows/review-router/execute.ts";
+import { planningWorkflow } from "../examples/worktree-development-loop/workflows/planning/execute.ts";
+import { implementationWorkflow } from "../examples/worktree-development-loop/workflows/implementation/execute.ts";
+import { developmentLoopWorkflow } from "../examples/worktree-development-loop/workflows/development-loop/execute.ts";
+import { reviewRouterWorkflow } from "../examples/worktree-development-loop/workflows/review-router/execute.ts";
 import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-response-tool.ts";
 import { NornArtifacts } from "../packages/cli/src/internal/artifacts.ts";
 import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
 import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
-import { initializeRunResources } from "../packages/cli/src/internal/run-resources.ts";
+import { NornRunResources } from "../packages/cli/src/resources.ts";
 import { NornRunContext } from "../packages/cli/src/internal/run.ts";
 
 const execute = promisify(execFile);
@@ -38,7 +39,7 @@ async function createExampleRun(context: TestContext) {
 	const currentRoot = join(runRoot, "current");
 	const workspace = join(currentRoot, "workspace");
 	await mkdir(workspace, { recursive: true });
-	const { resources, state } = await initializeRunResources(runRoot);
+	const resources = await NornRunResources.initialize(runRoot);
 	const run = new NornRunContext({
 		id: "worktree-example",
 		runRoot: currentRoot,
@@ -48,14 +49,13 @@ async function createExampleRun(context: TestContext) {
 		isolationMode: "runWorkspace",
 		responseCollector: new NornAgentResponseCollector(),
 		resources,
-		state,
 		artifacts: new NornArtifacts(join(currentRoot, "artifacts"), resources.files),
 		logs: new NornRunLogs(join(currentRoot, "logs"), resources.files),
 		logger: new NornRunLogger({
 			manifestPath: join(currentRoot, "manifest.json"),
 			files: resources.files,
 			manifest: {
-				id: "worktree-example", name: "worktree-example", workflowId: manifest.workflows.developmentLoop.id,
+				id: "worktree-example", name: "worktree-example", workflowId: developmentLoopWorkflow.id,
 				runRoot, workspace, initialCwd: workspace, startedAt: new Date().toISOString(),
 			},
 		}),
@@ -86,13 +86,9 @@ async function createSourceRepository(root: string) {
 test("worktree setup checks out the requested committed revision without changing the source repository", async context => {
 	const { root, run } = await createExampleRun(context);
 	const source = await createSourceRepository(root);
-	const params = { task: "Update the tracked file", baseRef: source.baseRevision, maxIterations: 3 };
-	const result = await executeDevelopmentLoopWorkflow(run, params, { repositoryRoot: source.repositoryRoot });
-	assert.deepEqual(result, manifest.workflows.planning({ task: params.task }));
-	assert.equal(await run.state.get(manifest.states.developmentLoop.repositoryPath), "repo");
-	assert.equal(await run.state.get(manifest.states.developmentLoop.task), params.task);
-	assert.equal(await run.state.get(manifest.states.developmentLoop.currentIteration), 1);
-	assert.equal(await run.state.get(manifest.states.developmentLoop.maxIterations), 3);
+	const args = { task: "Update the tracked file", baseRef: source.baseRevision, maxIterations: 3 };
+	const result = await developmentLoopWorkflow.execute({ args, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot: source.repositoryRoot } }, run });
+	assert.deepEqual(result, planningWorkflow({ task: args.task, repositoryPath: "repo", maxIterations: 3 }));
 	const clone = run.path("repo");
 	assert.equal(await runGit({ cwd: clone, args: ["rev-parse", "HEAD"] }), source.baseRevision);
 	assert.equal(await readFile(join(clone, "tracked.txt"), "utf8"), "base revision\n");
@@ -104,18 +100,16 @@ test("worktree setup checks out the requested committed revision without changin
 	assert.equal(await runGit({ cwd: source.repositoryRoot, args: ["status", "--porcelain"] }), source.sourceStatus);
 });
 
-test("worktree setup rejects a missing base revision before recording successful initialization", async context => {
+test("worktree setup rejects a missing base revision before transitioning to planning", async context => {
 	const { root, run } = await createExampleRun(context);
 	const { repositoryRoot } = await createSourceRepository(root);
-	await assert.rejects(executeDevelopmentLoopWorkflow(run, {
+	await assert.rejects(async () => developmentLoopWorkflow.execute({ args: {
 		task: "Do not reach planning", baseRef: "missing-base-revision", maxIterations: 3,
-	}, { repositoryRoot }), /materialize-workspace-repository failed/);
-	assert.equal(await run.state.getOptional(manifest.states.developmentLoop.repositoryPath), undefined);
-	assert.equal(await run.state.getOptional(manifest.states.developmentLoop.currentIteration), undefined);
+	}, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot } }, run }), /materialize-workspace-repository failed/);
 });
 
 test("the worktree review gate permits decision and summary patches", () => {
-	assert.deepEqual(manifest.workflows.reviewRouter.gate, { enabled: true, fields: ["decision", "summary"] });
+	assert.deepEqual(reviewRouterWorkflow.gate?.fields, ["decision", "summary"]);
 });
 
 for (const scenario of [
@@ -132,35 +126,26 @@ for (const scenario of [
 		const automatedReviewArtifact = await run.artifacts.write(
 			`review/iteration-${scenario.iteration}-automated.json`, JSON.stringify(automatedReview),
 		);
-		await run.state.set(manifest.states.developmentLoop.repositoryPath, "repo");
-		await run.state.set(manifest.states.developmentLoop.task, task);
-		await run.state.set(manifest.states.developmentLoop.currentIteration, scenario.iteration);
-		await run.state.set(manifest.states.developmentLoop.maxIterations, 3);
-		await run.state.set(manifest.states.planning.planArtifact, planArtifact);
-		const params = {
-			iteration: scenario.iteration, decision: scenario.decision,
+		const args = {
+			task, repositoryPath: "repo", maxIterations: 3, planArtifact, iteration: scenario.iteration, decision: scenario.decision,
 			summary: "Selected decision after checking evidence.", automatedReviewArtifact,
 		};
-		const result = await executeReviewRouterWorkflow(run, params);
+		const result = await reviewRouterWorkflow.execute({ args, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot: run.cwd } }, run });
 		assert.equal(result.type, scenario.resultType);
 		const reviewArtifact = { path: `review/iteration-${scenario.iteration}-decision.json` };
 		assert.deepEqual(JSON.parse(await run.artifacts.read(reviewArtifact)), {
-			decision: params.decision, summary: params.summary, automatedReviewArtifact,
+			decision: args.decision, summary: args.summary, automatedReviewArtifact,
 		});
 		assert.deepEqual(JSON.parse(await run.artifacts.read(automatedReviewArtifact)), automatedReview);
-		assert.equal(await run.state.get(manifest.states.review.reviewDecision), params.decision);
-		assert.deepEqual(await run.state.get(manifest.states.review.reviewArtifact), reviewArtifact);
 		if (result.type === "next") {
-			assert.deepEqual(result, manifest.workflows.implementation({ task, iteration: 2 }));
-			assert.equal(await run.state.get(manifest.states.developmentLoop.currentIteration), 2);
+			assert.deepEqual(result, implementationWorkflow({ task, repositoryPath: "repo", maxIterations: 3, planArtifact, previousReviewArtifact: reviewArtifact, iteration: 2 }));
 		} else {
 			assert.equal(result.metadata?.summary, scenario.summary);
 			assert.deepEqual(result.metadata?.artifacts, { plan: planArtifact, review: reviewArtifact });
 			assert.deepEqual(result.metadata?.data, {
 				status: scenario.status, repositoryPath: "repo", iterations: scenario.iteration,
-				lastReview: { decision: params.decision, summary: params.summary, reviewArtifact },
+				lastReview: { decision: args.decision, summary: args.summary, reviewArtifact },
 			});
-			assert.equal(await run.state.get(manifest.states.developmentLoop.currentIteration), scenario.iteration);
 		}
 	});
 }

@@ -61,7 +61,7 @@ Successful results and raw attempts are written under `current/logs/agents/`; Pi
 
 ## Prompts, tools, and resource loading
 
-The default tool allowlist is `read`, `bash`, `edit`, `write`, plus the response tool. An explicit `tools: []` requests no built-in task tools, but still includes the response tool and any explicitly attached [resource-adapter tools](resources.md#explicit-agent-attachment). `resourceAdapters` is accepted by both session creation and one-shot prompting; omitting it attaches no workflow state.
+The default tool allowlist is `read`, `bash`, `edit`, `write`, plus the response tool. An explicit `tools: []` requests no built-in task tools, but still includes the response tool and any explicitly attached [resource-adapter tools](resources.md#explicit-agent-attachment). `resourceAdapters` is accepted by both session creation and one-shot prompting; omitting it attaches no resource tools.
 
 Each session loads resources for its `cwd` and [Norn configuration](providers.md#norn-configuration). Installed provider extensions register before default-model selection. Both `run.agents.createSession` and `run.agents.prompt` accept per-session `model` and `thinkingLevel` overrides; omitted values use Pi's configured selection and defaults. Discoverable settings, skills, context files, and extensions can therefore affect it. It does **not** inherit the outer conversation or its in-memory tool registrations. Loaded extensions may change active tools; the requested tool list alone is not an adversarial restriction.
 

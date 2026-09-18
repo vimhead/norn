@@ -18,10 +18,10 @@ test("inspection cannot pair an old interruption with a just-cleared resume requ
 	context.onTestFinished(() => { readFileOverride = undefined; return fs.rm(root, { recursive: true, force: true }); });
 	const state = await NornRunStateStore.create(root, {
 		id: "race", name: "race", entrypointWorkflowId: "test.step", workspace: join(root, "current/workspace"),
-		current: { workflowId: "test.step", params: {}, cwd: root, env: {} }, startedAt: new Date().toISOString(),
+		current: { workflowId: "test.step", args: {}, cwd: root, env: {} }, startedAt: new Date().toISOString(),
 	});
 	await state.interruptCurrent({}, { description: "Old interruption" });
-	await writeRunResumeRequest(root, { version: 1, type: "resume", id: "race", createdAt: new Date().toISOString() });
+	await writeRunResumeRequest(root, { version: 2, type: "resume", id: "race", createdAt: new Date().toISOString() });
 	const statePath = join(root, "current", RUN_STATE_FILE_NAME);
 	const requestPath = join(root, RESUME_REQUEST_FILE_NAME);
 	const oldState = await fs.readFile(statePath, "utf8");

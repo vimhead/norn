@@ -13,19 +13,19 @@ import { Value } from "typebox/value";
 export const RUN_STATE_FILE_NAME = "run-state.json";
 const LEGACY_RUN_STATE_FILE_NAME = "runtime-state.json";
 
-export function mergeInterruptedWorkflowParams(currentParams: unknown, params: unknown, fields: readonly string[] | undefined): unknown {
-	if (!isRecord(currentParams) || !isRecord(params)) return params;
+export function mergeInterruptedWorkflowArgs(currentArgs: unknown, args: unknown, fields: readonly string[] | undefined): unknown {
+	if (!isRecord(currentArgs) || !isRecord(args)) return args;
 	if (fields) {
-		const unsupportedFields = Object.keys(params).filter((field) => !fields.includes(field));
-		if (unsupportedFields.length > 0) throw new Error(`Interrupted workflow params cannot update non-gate fields: ${unsupportedFields.join(", ")}`);
+		const unsupportedFields = Object.keys(args).filter((field) => !fields.includes(field));
+		if (unsupportedFields.length > 0) throw new Error(`Interrupted workflow args cannot update non-gate fields: ${unsupportedFields.join(", ")}`);
 	}
-	return { ...currentParams, ...params };
+	return { ...currentArgs, ...args };
 }
-const RUN_STATE_VERSION = 1;
+const RUN_STATE_VERSION = 2;
 
 type NornRunWorkflowStep = {
 	readonly workflowId: string;
-	readonly params: unknown;
+	readonly args: unknown;
 	readonly cwd: string;
 	readonly env: Record<string, string>;
 	readonly interruption?: RuntimeInterruption;
@@ -58,7 +58,7 @@ type NornRunWorkflowOutcome = {
 };
 
 export type NornRunState = {
-	readonly version: typeof RUN_STATE_VERSION;
+	readonly version: 1 | typeof RUN_STATE_VERSION;
 	readonly id: string;
 	readonly name: string;
 	readonly entrypointWorkflowId: string;
@@ -119,7 +119,7 @@ export class NornRunStateStore {
 	static async load(runRoot: string): Promise<NornRunStateStore> {
 		const currentRoot = runCurrentRoot(runRoot);
 		const files = createRunFileCoordinator(runRoot);
-		const state = await files.withExclusiveLock(join(currentRoot, RUN_STATE_FILE_NAME), async (path) => parseNornRunState(await readRunStateFile({ path, legacyPath: join(currentRoot, LEGACY_RUN_STATE_FILE_NAME) })));
+		const state = await files.withExclusiveLock(join(currentRoot, RUN_STATE_FILE_NAME), async (path) => parseNornRunState(await readRunStateFile({ path, legacyPath: join(currentRoot, LEGACY_RUN_STATE_FILE_NAME) }), "execute"));
 		return new NornRunStateStore({ path: join(currentRoot, RUN_STATE_FILE_NAME), state, files });
 	}
 
@@ -163,11 +163,11 @@ export class NornRunStateStore {
 		});
 	}
 
-	async interruptCurrent(params: unknown, interruption: { readonly description: string; readonly fields?: readonly string[] }): Promise<void> {
+	async interruptCurrent(args: unknown, interruption: { readonly description: string; readonly fields?: readonly string[] }): Promise<void> {
 		if (!this.state.current) throw new Error("Cannot interrupt run without current step");
 		await this.update({
 			status: "interrupted",
-			current: { ...this.state.current, params, interruption: { status: "pending", ...interruption } },
+			current: { ...this.state.current, args, interruption: { status: "pending", ...interruption } },
 			outcome: null,
 			failed: null,
 		});
@@ -185,11 +185,11 @@ export class NornRunStateStore {
 		await this.update({ status: "stopped", outcome: null, failed: null });
 	}
 
-	async replaceCurrentParams(params: unknown): Promise<void> {
+	async replaceCurrentArgs(args: unknown): Promise<void> {
 		if (!this.state.current) throw new Error("Cannot resume run without current step");
 		await this.update({
 			status: "running",
-			current: { ...this.state.current, params, interruption: { ...this.state.current.interruption, status: "satisfied" } },
+			current: { ...this.state.current, args, interruption: { ...this.state.current.interruption, status: "satisfied" } },
 			outcome: null,
 			failed: null,
 		});
@@ -208,16 +208,16 @@ export class NornRunStateStore {
 
 	private async update(patch: Partial<NornRunState>): Promise<void> {
 		await this.files.withExclusiveLock(this.path, async (path) => {
-			const current = parseNornRunState(await readRunStateFile({ path, legacyPath: join(dirname(this.path), LEGACY_RUN_STATE_FILE_NAME) }));
+			const current = parseNornRunState(await readRunStateFile({ path, legacyPath: join(dirname(this.path), LEGACY_RUN_STATE_FILE_NAME) }), "execute");
 			const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
-			if (next.current?.params !== undefined) Value.Assert(jsonValueSchema, next.current.params);
+			if (next.current?.args !== undefined) Value.Assert(jsonValueSchema, next.current.args);
 			await writeJsonAtomically(path, next);
 			this.state = next;
 		});
 	}
 
 	private async write(): Promise<void> {
-		if (this.state.current?.params !== undefined) Value.Assert(jsonValueSchema, this.state.current.params);
+		if (this.state.current?.args !== undefined) Value.Assert(jsonValueSchema, this.state.current.args);
 		await mkdir(dirname(this.path), { recursive: true });
 		await this.files.withExclusiveLock(this.path, (path) => writeJsonAtomically(path, this.state));
 	}
@@ -239,8 +239,14 @@ export async function listRuns(sessionCwd: string): Promise<NornRunInfo[]> {
 
 export async function getRunInfo(runRoot: string): Promise<NornRunInfo> {
 	try {
-		const resumeRequest = await readOptionalRunResumeRequest(runRoot);
-		const state = parseNornRunState(await readRunStateJson(runCurrentRoot(runRoot)));
+		// Read the request first so a completed handoff cannot revive an old interruption.
+		const pendingResume = await readOptionalRunResumeRequest(runRoot).then(
+			request => ({ status: "fulfilled" as const, request }),
+			(error: unknown) => ({ status: "rejected" as const, error }),
+		);
+		const state = parseNornRunState(await readRunStateJson(runCurrentRoot(runRoot)), "inspect");
+		if (state.version === RUN_STATE_VERSION && pendingResume.status === "rejected") throw pendingResume.error;
+		const resumeRequest = state.version === RUN_STATE_VERSION && pendingResume.status === "fulfilled" ? pendingResume.request : undefined;
 		return {
 			version: state.version,
 			id: state.id,
@@ -337,10 +343,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function parseNornRunState(value: unknown): NornRunState {
+export function assertRunVersion(version: unknown): void {
+	if (version !== RUN_STATE_VERSION) throw new Error(`Incompatible saved run state version ${String(version)}; this alpha requires version ${RUN_STATE_VERSION}. Use the original Norn version to resume this run, or start a new run. Saved files have not been migrated.`);
+}
+
+function parseNornRunState(value: unknown, mode: "execute" | "inspect"): NornRunState {
 	if (!value || typeof value !== "object") throw new Error("Invalid run state");
 	const state = value as Partial<NornRunState> & { rootWorkflowId?: unknown };
-	if (state.version !== RUN_STATE_VERSION) throw new Error(`Unsupported run state version: ${String(state.version)}`);
+	if (mode === "execute" || state.version !== 1) assertRunVersion(state.version);
 	if (typeof state.id !== "string" || state.id.length === 0) throw new Error("Invalid run state id");
 	const normalizedState = state as { name?: string; entrypointWorkflowId?: unknown; rootWorkflowId?: unknown };
 	if (typeof normalizedState.name !== "string" || normalizedState.name.length === 0) normalizedState.name = state.id;
@@ -369,7 +379,7 @@ function runInterruption(state: NornRunState): NornRunInterruption | undefined {
 	if (state.status !== "interrupted" || !state.current?.interruption) return undefined;
 	return {
 		workflowId: state.current.workflowId,
-		params: state.current.params,
+		args: state.version === 1 ? (state.current as { readonly params?: unknown }).params : state.current.args,
 		description: state.current.interruption.description ?? "",
 		fields: state.current.interruption.fields,
 	};

@@ -1,20 +1,18 @@
-# State, artifacts, and workspaces
+# Persistence, artifacts, and workspaces
 
 ## Choose what survives
 
 | Value | Lifetime and access |
 |---|---|
-| Local variables / plugin factory memory | Current invocation or executor only; not a resume contract. |
-| Factory context `state` / `client.state` | In-memory registration state for the loaded project, not a selected run's persisted state. |
-| `run.state` | Per-run, schema-validated JSON shared across steps. `get` requires a value; `getOptional` permits absence; `set` persists it. |
+| Local variables / module memory | Current invocation or executor only; not a resume contract. |
 | `run.resources` data | Per-run data included in checkpoint recovery. Resume reopens handles; closures do not survive. |
 | `run.artifacts` | Text files addressed by `{ path }` relative to this run's artifacts directory. Write content, pass the ref, read and validate at the consumer. |
 | Outcome metadata | Caller-facing summary, artifact/log refs and small data, exposed by run inspection. |
-| Workflow params | Explicit input to the current/next step, persisted for recovery. |
+| Workflow args | Explicit input to the current/next step, persisted for recovery. |
 
-Workflow state is a built-in [run resource](resources.md), available without an explicit `ensure` call. State declarations live in the manifest; declaring a field, including a schema default, does not set its value. The [agent example](../examples/agent-then-analysis/plugin.ts) saves the draft ref in run state and also passes it explicitly to analysis. The state value is a retained run record; the params are the consumer's input contract.
+Use arguments for step inputs, artifacts for retained outputs, and [resources](resources.md) for mutable storage. The [shared-state example](../examples/shared-state/README.md) provides a custom store; Norn has no dedicated application-state API. The [agent example](../examples/agent-then-analysis/plugin.ts) saves a draft artifact and passes its reference explicitly to analysis.
 
-Artifact refs are paths, not content hashes, and a write to the same path replaces its content. State writes are serialized and atomic; an artifact write plus a state update is not a single transaction. An artifact read returns text, so a JSON consumer still needs parsing and schema validation.
+Artifact refs are paths, not content hashes, and writing to the same path replaces its content. An artifact read returns text, so a JSON consumer still needs parsing and schema validation. Separate artifact and resource writes are not one transaction.
 
 | Decision | GOOD | BAD |
 |---|---|---|
@@ -31,7 +29,6 @@ current/
   workspace/       working files
   artifacts/       capability evidence and results
   resources/       resource definitions and data
-  state.json       workflow state values
   run-state.json   scheduler state
   manifest.json    recorded events
   logs/            command and agent output
@@ -51,8 +48,8 @@ store/             snapshot manifests and content-addressed objects
 | Decision | GOOD | BAD |
 |---|---|---|
 | IF work needs existing project files, THEN declare project isolation or explicitly prepare a copy/worktree inside the run workspace. ELSE use the empty per-run workspace. | A project-mode verifier checks the actual project; an editing workflow prepares its own worktree. | Run `npm test` in an empty workspace and assume the repository is present. |
-| IF rollback must undo a change, THEN keep it in snapshotted run files or separately manage the external effect. ELSE do not promise rollback of that change. | Reconcile a project-root edit or remote delivery explicitly. | Assume snapshots restore project plugin source, remote APIs, or symlink targets. |
+| IF rollback must undo a change, THEN keep it in snapshotted run files or separately manage the external effect. ELSE do not promise rollback of that change. | Reconcile a project-root edit or remote delivery explicitly. | Assume snapshots restore project workflow source, remote APIs, or symlink targets. |
 
 Snapshots cover `current/`, preserve symlinks as links rather than copying targets, and do not include project-root source. [Recovery](recovery.md) defines when snapshots are taken and how to select a retry boundary.
 
-Sources: [state store](../packages/cli/src/internal/state-store.ts), [artifacts](../packages/cli/src/internal/artifacts.ts), [run paths](../packages/cli/src/internal/run.ts), [snapshot store](../packages/cli/src/internal/run-store.ts).
+Sources: [artifacts](../packages/cli/src/internal/artifacts.ts), [run paths](../packages/cli/src/internal/run.ts), [snapshot store](../packages/cli/src/internal/run-store.ts).

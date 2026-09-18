@@ -10,22 +10,22 @@ export const RESUME_REQUEST_FILE_NAME = "resume-request.json";
 export const RESUME_START_GRACE_MS = 60_000;
 
 export type NornRunLaunchRequest = {
-	readonly version: 1;
+	readonly version: 2;
 	readonly type: "run";
 	readonly id: string;
 	readonly name: string;
 	readonly workflowId: string;
-	readonly params: unknown;
+	readonly args: unknown;
 	readonly configOverride?: unknown;
 	readonly createdAt: string;
 };
 
 export type NornRunResumeRequest = {
-	readonly version: 1;
+	readonly version: 2;
 	readonly type: "resume";
 	readonly id: string;
 	readonly requestId?: string;
-	readonly params?: unknown;
+	readonly args?: unknown;
 	readonly createdAt: string;
 };
 
@@ -75,7 +75,7 @@ export async function clearRunResumeRequest(input: { readonly runRoot: string; r
 function parseRunLaunchRequest(value: unknown): NornRunLaunchRequest {
 	if (!value || typeof value !== "object") throw new Error("Invalid workflow launch request");
 	const request = value as Partial<NornRunLaunchRequest>;
-	if (request.version !== 1 || request.type !== "run") throw new Error("Unsupported workflow launch request");
+	if (request.version !== 2 || request.type !== "run") throw new Error("Unsupported workflow launch request");
 	if (typeof request.id !== "string" || request.id.length === 0) throw new Error("Invalid workflow launch request id");
 	if (typeof request.name !== "string" || request.name.length === 0) throw new Error("Invalid workflow launch request name");
 	if (typeof request.workflowId !== "string" || request.workflowId.length === 0) throw new Error("Invalid workflow launch request workflow id");
@@ -86,7 +86,7 @@ function parseRunLaunchRequest(value: unknown): NornRunLaunchRequest {
 function parseRunResumeRequest(value: unknown): NornRunResumeRequest {
 	if (!value || typeof value !== "object") throw new Error("Invalid workflow resume request");
 	const request = value as Partial<NornRunResumeRequest>;
-	if (request.version !== 1 || request.type !== "resume") throw new Error("Unsupported workflow resume request");
+	if (request.version !== 2 || request.type !== "resume") throw new Error("Unsupported workflow resume request");
 	if (typeof request.id !== "string" || request.id.length === 0) throw new Error("Invalid workflow resume request id");
 	if (request.requestId !== undefined && (typeof request.requestId !== "string" || request.requestId.length === 0)) throw new Error("Invalid workflow resume request token");
 	if (typeof request.createdAt !== "string" || Number.isNaN(Date.parse(request.createdAt))) throw new Error("Invalid workflow resume request timestamp");

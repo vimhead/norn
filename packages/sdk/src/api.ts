@@ -1,9 +1,9 @@
 import type { CreateAgentSessionOptions, EventBus, PromptOptions } from "@earendil-works/pi-coding-agent";
-import { Type, type Static, type StaticDecode, type StaticEncode, type TCodec, type TSchema } from "typebox";
+import { Type, type StaticDecode, type StaticEncode, type TCodec, type TSchema } from "typebox";
 import type { TLocalizedValidationError } from "typebox/error";
 import { createWorkflowTransition } from "@vimhead.dev/norn-core/workflow-transition";
 import { Value } from "typebox/value";
-import { isPlainObject, jsonValueSchema } from "./schema.ts";
+import { assertWorkflowMetadata, isPlainObject, jsonValueSchema } from "./schema.ts";
 
 const WORKFLOW_DECLARATION_KIND = "norn.workflow";
 
@@ -23,35 +23,42 @@ export type NornWorkflowIsolation<Mode extends NornWorkflowIsolationMode = NornW
 
 export type NornWorkflowDeclaration<
 	Id extends string = string,
-	ParamsSchema extends TSchema = TSchema,
+	ArgsSchema extends TSchema = TSchema,
 	IsolationMode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
+	ConfigSchema extends TSchema | undefined = TSchema | undefined,
+	Scope extends NornWorkflowScopeInfo | undefined = NornWorkflowScopeInfo | undefined,
 > = {
-	(params: StaticEncode<ParamsSchema>): NornRunNext;
+	(args: StaticEncode<ArgsSchema>): NornRunNext;
 	readonly kind: typeof WORKFLOW_DECLARATION_KIND;
 	readonly id: Id;
 	readonly isEntrypoint: boolean;
 	readonly instructions?: string;
-	readonly params: ParamsSchema;
-	readonly gate?: NornWorkflowAnyGate;
+	readonly args: ArgsSchema;
+	readonly gate?: NornWorkflowGate<ArgsSchema> & {
+		describe?(context: NornWorkflowContext<ArgsSchema, IsolationMode, ConfigSchema, Scope>): MaybePromise<string>;
+	};
 	readonly isolation: NornWorkflowIsolation<IsolationMode>;
+	readonly config?: ConfigSchema;
+	readonly scope: Scope;
+	execute(context: NornWorkflowContext<ArgsSchema, IsolationMode, ConfigSchema, Scope>): MaybePromise<WorkflowResult>;
 };
 
-export type NornAnyWorkflowDeclaration = Pick<NornWorkflowDeclaration, keyof NornWorkflowDeclaration> & ((params: never) => NornRunNext);
-export type NornWorkflowRefSchemaOptions<ParamsSchema extends TSchema = TSchema> = {
-	readonly params?: ParamsSchema;
+export type NornAnyWorkflowDeclaration = Pick<NornWorkflowDeclaration, keyof NornWorkflowDeclaration> & ((args: never) => NornRunNext);
+export type NornWorkflowRefSchemaOptions<ArgsSchema extends TSchema = TSchema> = {
+	readonly args?: ArgsSchema;
 };
 export type NornWorkflowRefInput = StaticEncode<typeof workflowReferenceInputSchema>;
-export type NornWorkflowRefOutput<ParamsSchema extends TSchema> = (params: StaticEncode<ParamsSchema> & object) => NornRunNext;
+export type NornWorkflowRefOutput<ArgsSchema extends TSchema> = (args: StaticEncode<ArgsSchema> & object) => NornRunNext;
 
-export type NornWorkflowParamsInput<TWorkflow extends NornAnyWorkflowDeclaration> = StaticEncode<TWorkflow["params"]>;
-export type NornWorkflowParams<TWorkflow extends NornAnyWorkflowDeclaration> = StaticDecode<TWorkflow["params"]>;
+export type NornWorkflowArgsInput<TWorkflow extends NornAnyWorkflowDeclaration> = StaticEncode<TWorkflow["args"]>;
+export type NornWorkflowArgs<TWorkflow extends NornAnyWorkflowDeclaration> = StaticDecode<TWorkflow["args"]>;
 
-export type NornWorkflowGate<ParamsSchema extends TSchema> = unknown extends StaticEncode<ParamsSchema>
+export type NornWorkflowGate<ArgsSchema extends TSchema> = unknown extends StaticEncode<ArgsSchema>
 	? NornWorkflowAnyGate
-	: StaticEncode<ParamsSchema> extends Record<string, unknown>
+	: StaticEncode<ArgsSchema> extends Record<string, unknown>
 		? {
 			readonly enabled: true;
-			readonly fields?: readonly Extract<keyof StaticEncode<ParamsSchema>, string>[];
+			readonly fields?: readonly Extract<keyof StaticEncode<ArgsSchema>, string>[];
 		}
 		: {
 			readonly enabled: true;
@@ -62,149 +69,96 @@ type NornWorkflowInstructions =
 	| { readonly isEntrypoint: true; readonly instructions: string }
 	| { readonly isEntrypoint: false; readonly instructions?: string };
 
-export type NornWorkflowDefinition<
-	Id extends string | undefined = string | undefined,
-	ParamsSchema extends TSchema = TSchema,
-	IsolationMode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
-> = {
-	readonly id?: Id;
-	readonly params: ParamsSchema;
-	readonly gate?: NornWorkflowGate<ParamsSchema>;
-	readonly isolation?: NornWorkflowIsolation<IsolationMode>;
-} & NornWorkflowInstructions;
+type RunForIsolation<Mode extends NornWorkflowIsolationMode> = Mode extends "project" ? NornProjectRun : NornRun;
+type WorkflowConfig<Schema extends TSchema | undefined> = Schema extends TSchema ? StaticDecode<Schema> : undefined;
 
-export type NornAnyWorkflowDefinition = {
-	readonly id?: string;
-	readonly params: TSchema;
-	readonly gate?: NornWorkflowAnyGate;
-	readonly isolation?: NornWorkflowIsolation;
-} & NornWorkflowInstructions;
-
-export type NornWorkflowStateDefinition<Schema extends TSchema = TSchema, Id extends string = string> = {
-	readonly id: Id;
-	readonly description?: string;
-	readonly schema: Schema;
-};
-
-export type NornWorkflowStateDefinitionInput<Schema extends TSchema = TSchema, Id extends string | undefined = string | undefined> = {
-	readonly id?: Id;
-	readonly description?: string;
-	readonly schema: Schema;
-};
-
-export type NornWorkflowPluginWorkflows = Record<string, NornAnyWorkflowDefinition>;
-export type NornWorkflowPluginStateTree = { readonly [key: string]: NornWorkflowPluginStateTreeNode };
-type NornStateSchema = TSchema & ({ readonly "~kind": string } | { readonly "~unsafe": unknown });
-export type NornWorkflowPluginStateTreeNode = NornStateSchema | NornWorkflowStateDefinitionInput | NornWorkflowPluginStateTree;
-
-type JoinPath<Head extends string, Parts extends readonly string[]> = Parts extends readonly []
-	? Head
-	: Parts extends readonly [infer First extends string, ...infer Rest extends string[]]
-		? JoinPath<`${Head}.${First}`, Rest>
-		: string;
-
-type NornInvalidGateFields<TWorkflow> = TWorkflow extends { readonly params: infer ParamsSchema extends TSchema; readonly gate: { readonly fields: infer Fields extends readonly string[] } }
-	? Exclude<Fields[number], Extract<keyof StaticEncode<ParamsSchema>, string>>
-	: never;
-
-type NornValidatedWorkflowGate<TWorkflow> = [NornInvalidGateFields<TWorkflow>] extends [never]
-	? unknown
-	: { readonly gate: { readonly fields: readonly Extract<keyof StaticEncode<TWorkflow extends { readonly params: infer ParamsSchema extends TSchema } ? ParamsSchema : TSchema>, string>[] } };
-
-export type NornValidatedWorkflowGates<Workflows> = {
-	readonly [Key in keyof Workflows]: NornValidatedWorkflowGate<Workflows[Key]>;
-};
-
-export type NornQualifiedPluginWorkflow<
-	PluginId extends string,
-	WorkflowKey extends string,
-	TWorkflow extends NornAnyWorkflowDefinition,
-> = TWorkflow extends { readonly params: infer ParamsSchema extends TSchema }
-	? NornWorkflowDeclaration<
-		TWorkflow extends { readonly id: infer ExplicitId extends string } ? ExplicitId : `${PluginId}.${WorkflowKey}`,
-		ParamsSchema,
-		TWorkflow extends { readonly isolation: { readonly mode: infer IsolationMode extends NornWorkflowIsolationMode } } ? IsolationMode : "runWorkspace"
-	>
-	: never;
-
-export type NornQualifiedPluginWorkflows<PluginId extends string, Workflows extends NornWorkflowPluginWorkflows> = {
-	readonly [Key in keyof Workflows]: NornQualifiedPluginWorkflow<PluginId, Key & string, Workflows[Key]>;
-};
-
-export type NornQualifiedPluginStates<PluginId extends string, States, Path extends readonly string[] = []> = {
-	readonly [Key in keyof States]: States[Key] extends NornStateSchema
-		? NornWorkflowStateDefinition<States[Key], JoinPath<PluginId, [...Path, Key & string]>>
-		: States[Key] extends NornWorkflowStateDefinitionInput<infer Schema extends NornStateSchema>
-			? NornWorkflowStateDefinition<Schema, States[Key] extends { readonly id: infer Id extends string } ? Id : JoinPath<PluginId, [...Path, Key & string]>>
-			: States[Key] extends NornWorkflowPluginStateTree
-				? NornQualifiedPluginStates<PluginId, States[Key], [...Path, Key & string]>
-				: never;
-};
-
-export type NornWorkflowPluginManifest<
-	PluginId extends string = string,
+export type NornWorkflowContext<
+	ArgsSchema extends TSchema = TSchema,
+	Mode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
 	ConfigSchema extends TSchema | undefined = TSchema | undefined,
-	Workflows extends Record<string, NornAnyWorkflowDeclaration> = Record<string, NornAnyWorkflowDeclaration>,
-	States = undefined,
+	Scope extends NornWorkflowScopeInfo | undefined = NornWorkflowScopeInfo | undefined,
 > = {
-	readonly id: PluginId;
+	readonly args: StaticDecode<ArgsSchema>;
+	readonly config: WorkflowConfig<ConfigSchema>;
+	readonly run: RunForIsolation<Mode>;
+} & (Scope extends NornWorkflowScopeInfo ? {
+	readonly scope: { readonly id: Scope["id"]; readonly config: WorkflowConfig<Scope["config"]> };
+} : {});
+
+export type NornWorkflowDefinition<
+	Id extends string = string,
+	ArgsSchema extends TSchema = TSchema,
+	IsolationMode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
+	ConfigSchema extends TSchema | undefined = undefined,
+	Scope extends NornWorkflowScopeInfo | undefined = undefined,
+> = {
+	readonly id: Id;
+	readonly args: ArgsSchema;
 	readonly config?: ConfigSchema;
-	readonly workflows: Workflows;
-	readonly states: States;
+	readonly isolation?: NornWorkflowIsolation<IsolationMode>;
+	readonly gate?: NornWorkflowGate<ArgsSchema> & {
+		describe?(context: NornWorkflowContext<ArgsSchema, IsolationMode, ConfigSchema, Scope>): MaybePromise<string>;
+	};
+	execute(context: NornWorkflowContext<ArgsSchema, IsolationMode, ConfigSchema, Scope>): MaybePromise<WorkflowResult>;
+} & NornWorkflowInstructions;
+
+export type NornWorkflowScopeInfo = {
+	readonly id: string;
+	readonly config?: TSchema;
 };
 
-export type NornAnyWorkflowPluginManifest = NornWorkflowPluginManifest<string, TSchema | undefined, Record<string, NornAnyWorkflowDeclaration>, unknown>;
-
-export type NornWorkflowPluginConfigSchema<TManifest extends NornAnyWorkflowPluginManifest> = TManifest extends { readonly config?: infer ConfigSchema extends TSchema | undefined }
-	? ConfigSchema
-	: undefined;
-
-export type NornWorkflowPluginConfig<TManifest extends NornAnyWorkflowPluginManifest> = NornWorkflowPluginConfigSchema<TManifest> extends undefined
-	? undefined
-	: StaticDecode<NonNullable<NornWorkflowPluginConfigSchema<TManifest>>>;
-
-export type NornDefinePluginManifestInput<
-	PluginId extends string,
-	ConfigSchema extends TSchema | undefined,
-	Workflows extends NornWorkflowPluginWorkflows,
-	States extends NornWorkflowPluginStateTree | undefined,
-> = {
-	readonly id: PluginId;
-	readonly config?: ConfigSchema;
-	readonly workflows: Workflows & NornValidatedWorkflowGates<Workflows>;
-	readonly states?: States;
+export type NornWorkflowScope<Id extends string, ConfigSchema extends TSchema | undefined> = {
+	readonly id: Id;
+	readonly config: ConfigSchema;
+	workflow<const LocalId extends string, ArgsSchema extends TSchema, const Mode extends NornWorkflowIsolationMode = "runWorkspace", LocalConfig extends TSchema | undefined = undefined>(
+		definition: NornWorkflowDefinition<LocalId, ArgsSchema, Mode, LocalConfig, { readonly id: Id; readonly config: ConfigSchema }>,
+	): NornWorkflowDeclaration<`${Id}.${LocalId}`, ArgsSchema, Mode, LocalConfig, { readonly id: Id; readonly config: ConfigSchema }>;
 };
 
-export function definePluginManifest<
-	const PluginId extends string,
-	const ConfigSchema extends TSchema | undefined = undefined,
-	const Workflows extends NornWorkflowPluginWorkflows = NornWorkflowPluginWorkflows,
-	const States extends NornWorkflowPluginStateTree | undefined = undefined,
->(
-	input: NornDefinePluginManifestInput<PluginId, ConfigSchema, Workflows, States>,
-): NornWorkflowPluginManifest<
-	PluginId,
-	ConfigSchema,
-	NornQualifiedPluginWorkflows<PluginId, Workflows>,
-	States extends NornWorkflowPluginStateTree ? NornQualifiedPluginStates<PluginId, States> : undefined
-> {
-	assertLocalDeclarationId(input.id, "plugin");
-	const declaredIds = new Set<string>();
-	const workflows = Object.fromEntries(
-		Object.entries(input.workflows).map(([key, workflow]) => [key, qualifyWorkflow(input.id, key, workflow, declaredIds)]),
-	) as NornQualifiedPluginWorkflows<PluginId, Workflows>;
+export function workflow<
+	const Id extends string,
+	ArgsSchema extends TSchema,
+	const Mode extends NornWorkflowIsolationMode = "runWorkspace",
+	ConfigSchema extends TSchema | undefined = undefined,
+>(definition: NornWorkflowDefinition<Id, ArgsSchema, Mode, ConfigSchema>): NornWorkflowDeclaration<Id, ArgsSchema, Mode, ConfigSchema, undefined> {
+	return createWorkflow({ definition, scope: undefined });
+}
+
+function createWorkflow<Id extends string, ArgsSchema extends TSchema, Mode extends NornWorkflowIsolationMode, ConfigSchema extends TSchema | undefined, Scope extends NornWorkflowScopeInfo | undefined>(
+	input: { readonly definition: NornWorkflowDefinition<Id, ArgsSchema, Mode, ConfigSchema, Scope>; readonly scope: Scope },
+): NornWorkflowDeclaration<Id, ArgsSchema, Mode, ConfigSchema, Scope> {
+	const { definition, scope } = input;
+	assertDeclarationId(definition.id);
+	const callable = (args: StaticEncode<ArgsSchema>): NornRunNext => createWorkflowTransition({ workflowId: definition.id, args });
+	const result = Object.assign(callable, definition, {
+		kind: WORKFLOW_DECLARATION_KIND,
+		scope,
+		isolation: definition.isolation ?? { mode: "runWorkspace" },
+	}) as NornWorkflowDeclaration<Id, ArgsSchema, Mode, ConfigSchema, Scope>;
+	if (!isWorkflowDeclaration(result)) throw new Error(`Invalid workflow definition: ${definition.id}`);
+	assertWorkflowMetadata(result);
+	return result;
+}
+
+export function workflowScope<const Id extends string, ConfigSchema extends TSchema | undefined = undefined>(
+	input: { readonly id: Id; readonly config?: ConfigSchema },
+): NornWorkflowScope<Id, ConfigSchema> {
+	assertDeclarationId(input.id);
+	const scope = { id: input.id, config: input.config as ConfigSchema };
 	return {
 		id: input.id,
-		config: input.config,
-		workflows,
-		states: qualifyStateTree(input.id, input.states, [], declaredIds) as States extends NornWorkflowPluginStateTree ? NornQualifiedPluginStates<PluginId, States> : undefined,
+		config: input.config as ConfigSchema,
+		workflow(definition) {
+			assertDeclarationId(definition.id);
+			return createWorkflow({ definition: { ...definition, id: `${input.id}.${definition.id}` }, scope });
+		},
 	};
 }
 
 export type NornRunNext = {
 	readonly type: "next";
 	readonly workflowId: string;
-	readonly params: unknown;
+	readonly args: unknown;
 };
 
 export type NornRunOutcomeMetadata = {
@@ -224,28 +178,11 @@ export type NornRunFail = {
 	readonly metadata: NornRunOutcomeMetadata & { readonly summary: string };
 };
 
-export type NornWorkflowExecutionResult = NornRunNext | NornRunComplete | NornRunFail;
+export type WorkflowResult = NornRunNext | NornRunComplete | NornRunFail;
 
 export type NornRunFor<TWorkflow extends NornAnyWorkflowDeclaration> = TWorkflow extends { readonly isolation: { readonly mode: "project" } }
 	? NornProjectRun
 	: NornRun;
-
-export type NornWorkflowGateImplementation<TWorkflow extends NornAnyWorkflowDeclaration, TConfig> = {
-	describe(
-		run: NornRunFor<TWorkflow>,
-		params: NornWorkflowParams<TWorkflow>,
-		config: TConfig,
-	): MaybePromise<string>;
-};
-
-export type NornWorkflowImplementation<TWorkflow extends NornAnyWorkflowDeclaration, TConfig = unknown> = {
-	readonly gate?: NornWorkflowGateImplementation<TWorkflow, TConfig>;
-	execute(
-		run: NornRunFor<TWorkflow>,
-		params: NornWorkflowParams<TWorkflow>,
-		config: TConfig,
-	): MaybePromise<NornWorkflowExecutionResult>;
-};
 
 export type NornRunStartOptions = {
 	readonly id?: string;
@@ -294,7 +231,7 @@ export type NornStoppedRunResult = {
 
 export type NornRunInterruption = {
 	readonly workflowId: string;
-	readonly params: unknown;
+	readonly args: unknown;
 	readonly description: string;
 	readonly fields?: readonly string[];
 };
@@ -358,46 +295,6 @@ export type NornRunCheckpoint = {
 	readonly createdAt: string;
 };
 
-export type NornWorkflowStateReader = {
-	get<Schema extends TSchema>(state: NornWorkflowStateDefinition<Schema>): Promise<Static<Schema>>;
-	getOptional<Schema extends TSchema>(state: NornWorkflowStateDefinition<Schema>): Promise<Static<Schema> | undefined>;
-};
-
-export type NornWorkflowState = NornWorkflowStateReader & {
-	set<Schema extends TSchema>(state: NornWorkflowStateDefinition<Schema>, value: NoInfer<Static<Schema>>): Promise<void>;
-};
-
-export type NornWorkflowPluginContext = {
-	readonly cwd: string;
-	readonly state: NornWorkflowState;
-};
-
-export type NornWorkflowPluginImplementation<TManifest extends NornAnyWorkflowPluginManifest> = {
-	readonly workflows: {
-		readonly [Key in keyof TManifest["workflows"]]: NornWorkflowImplementation<TManifest["workflows"][Key], NornWorkflowPluginConfig<TManifest>>;
-	};
-};
-
-export type NornWorkflowPluginImplementationFactory<TManifest extends NornAnyWorkflowPluginManifest> = (
-	context: NornWorkflowPluginContext,
-) => NornWorkflowPluginImplementation<TManifest>;
-
-export type NornWorkflowPluginImplementationInput<TManifest extends NornAnyWorkflowPluginManifest> =
-	| NornWorkflowPluginImplementation<TManifest>
-	| NornWorkflowPluginImplementationFactory<TManifest>;
-
-export type NornWorkflowPlugin<TManifest extends NornAnyWorkflowPluginManifest = NornAnyWorkflowPluginManifest> = {
-	readonly manifest: TManifest;
-	readonly implementation: NornWorkflowPluginImplementationInput<TManifest>;
-};
-
-export function definePlugin<TManifest extends NornAnyWorkflowPluginManifest>(
-	manifest: TManifest,
-	implementation: NornWorkflowPluginImplementationInput<TManifest>,
-): NornWorkflowPlugin<TManifest> {
-	return { manifest, implementation };
-}
-
 export type NornCommandRunInput = {
 	readonly label: string;
 	readonly command: string | readonly [string, ...string[]];
@@ -412,24 +309,24 @@ export const artifactRefSchema = Type.Object({
 
 export type NornArtifactRef = StaticDecode<typeof artifactRefSchema>;
 
-const emptyWorkflowRefParamsSchema = Type.Object({});
+const emptyWorkflowRefArgsSchema = Type.Object({});
 const workflowReferenceInputSchema = Type.Union([
 	Type.String({ minLength: 1 }),
-	Type.Object({ workflow: Type.String({ minLength: 1 }), forwardParams: Type.Record(Type.String(), Type.Unknown()) }),
+	Type.Object({ workflow: Type.String({ minLength: 1 }), forwardArgs: Type.Record(Type.String(), Type.Unknown()) }),
 ]);
 
-export function workflowRefSchema<ParamsSchema extends TSchema = typeof emptyWorkflowRefParamsSchema>(options?: NornWorkflowRefSchemaOptions<ParamsSchema>): TCodec<typeof workflowReferenceInputSchema, NornWorkflowRefOutput<ParamsSchema>> {
-	const contributionSchema = options?.params ?? emptyWorkflowRefParamsSchema;
+export function workflowRefSchema<ArgsSchema extends TSchema = typeof emptyWorkflowRefArgsSchema>(options?: NornWorkflowRefSchemaOptions<ArgsSchema>): TCodec<typeof workflowReferenceInputSchema, NornWorkflowRefOutput<ArgsSchema>> {
+	const contributionSchema = options?.args ?? emptyWorkflowRefArgsSchema;
 	return Type.With(Type.Decode(workflowReferenceInputSchema, reference => {
 		const workflowId = typeof reference === "string" ? reference : reference.workflow;
-		const forwardParams = typeof reference === "string" ? {} : reference.forwardParams;
-		return (params: StaticEncode<ParamsSchema> & object): NornRunNext => {
-			Value.Assert(contributionSchema, params);
-			if (!isPlainObject(params)) throw new Error("Workflow reference contributions must be objects");
-			Value.Assert(jsonValueSchema, params);
-			return createWorkflowTransition({ workflowId, params: { ...forwardParams, ...params } });
+		const forwardArgs = typeof reference === "string" ? {} : reference.forwardArgs;
+		return (args: StaticEncode<ArgsSchema> & object): NornRunNext => {
+			Value.Assert(contributionSchema, args);
+			if (!isPlainObject(args)) throw new Error("Workflow reference contributions must be objects");
+			Value.Assert(jsonValueSchema, args);
+			return createWorkflowTransition({ workflowId, args: { ...forwardArgs, ...args } });
 		};
-	}), { "x-norn-workflow-ref": { contributedParamsSchema: contributionSchema } });
+	}), { "x-norn-workflow-ref": { contributedArgsSchema: contributionSchema } });
 }
 
 export type NornLogRef = {
@@ -592,11 +489,10 @@ type NornRunBase = {
 	workspace: string;
 	cwd: string;
 	path(relativePath: string): string;
-	next(workflowId: string, params: unknown): NornRunNext;
+	next(workflowId: string, args: unknown): NornRunNext;
 	complete(metadata?: NornRunOutcomeMetadata): NornRunComplete;
 	fail(metadata: NornRunOutcomeMetadata & { readonly summary: string }): NornRunFail;
 	resources: import("./resources.ts").NornResources;
-	state: NornWorkflowState;
 	artifacts: {
 		write(path: string, content: string): Promise<NornArtifactRef>;
 		read(ref: NornArtifactRef): Promise<string>;
@@ -613,10 +509,9 @@ type NornRunBase = {
 	};
 };
 
-export type NornWorkflowPluginInfo = {
-	readonly id: string;
-	readonly path?: string;
-	readonly configPath?: string;
+export type NornWorkflowSource = {
+	readonly path: string;
+	readonly configPath: string;
 };
 
 export type NornJsonSchema = Record<string, unknown>;
@@ -631,27 +526,31 @@ export type NornRegisteredWorkflowInfo = {
 	readonly instructions?: string;
 	readonly isEntrypoint: boolean;
 	readonly isolation: NornWorkflowIsolation;
-	readonly plugin?: NornWorkflowPluginInfo;
+	readonly scope?: { readonly id: string };
+	readonly source?: NornWorkflowSource;
+	readonly configKey: string;
 };
 
 export type NornInspectedWorkflowInfo = NornRegisteredWorkflowInfo & {
-	readonly paramsSchema: NornJsonSchema;
+	readonly scope?: { readonly id: string; readonly configKey: string; readonly configSchema: NornJsonSchema | null };
+	readonly argsSchema: NornJsonSchema;
+	readonly configSchema: NornJsonSchema | null;
 	readonly gate: NornWorkflowGateInfo | null;
 };
 
-export type NornPluginDiagnostic = {
+export type NornWorkflowDiagnostic = {
 	readonly configPath: string;
-	readonly pluginPath: string;
-	readonly pluginId: string | null;
+	readonly modulePath: string;
+	readonly scopeId: string | null;
 	readonly workflowId: string | null;
-	readonly stage: "import" | "declaration" | "config" | "implementation" | "duplicate" | "schema";
+	readonly stage: "import" | "declaration" | "config" | "duplicate" | "schema";
 	readonly message: string;
 	readonly issues: readonly TLocalizedValidationError[];
 };
 
 export type NornProjectLoadStatus = {
 	readonly isComplete: boolean;
-	readonly diagnostics: readonly NornPluginDiagnostic[];
+	readonly diagnostics: readonly NornWorkflowDiagnostic[];
 };
 
 export type NornWorkflowCatalogInfo = NornProjectLoadStatus & {
@@ -666,7 +565,9 @@ export type NornProjectInspection = NornProjectLoadStatus & {
 	readonly project: NornProjectInfo;
 };
 
-export type NornProjectPluginInfo = NornWorkflowPluginInfo & {
+export type NornProjectConfigurationInfo = {
+	readonly key: string;
+	readonly scopeId: string | null;
 	readonly configSchema: NornJsonSchema | null;
 	readonly config: unknown;
 };
@@ -678,89 +579,32 @@ export type NornProjectInfo = {
 	readonly configPath: string;
 	readonly configRoot: string;
 	readonly configFiles: readonly string[];
-	readonly plugins: readonly NornProjectPluginInfo[];
+	readonly configurations: readonly NornProjectConfigurationInfo[];
+	readonly modules: readonly NornWorkflowSource[];
 };
 
-function assertLocalDeclarationId(id: string, kind: "plugin" | "workflow" | "state"): void {
-	if (id.length === 0) throw new Error(`Workflow ${kind} id must not be empty`);
-	if (id.includes(".")) throw new Error(`Workflow ${kind} id must not contain dots: ${id}`);
-}
-
-function resolveDeclarationId(pluginId: string, path: readonly string[], explicitId: string | undefined, kind: "workflow" | "state", declaredIds: Set<string>): string {
-	for (const segment of path) assertLocalDeclarationId(segment, kind);
-	const id = explicitId ?? [pluginId, ...path].join(".");
-	if (explicitId !== undefined) assertPluginQualifiedId(pluginId, explicitId, kind);
-	if (declaredIds.has(id)) throw new Error(`Duplicate Norn ${kind} id: ${id}`);
-	declaredIds.add(id);
-	return id;
-}
-
-function assertPluginQualifiedId(pluginId: string, id: string, kind: "workflow" | "state"): void {
-	if (!id.startsWith(`${pluginId}.`)) throw new Error(`Explicit Norn ${kind} id must start with ${pluginId}.: ${id}`);
-	if (id.length === pluginId.length + 1) throw new Error(`Explicit Norn ${kind} id must not be empty after ${pluginId}.`);
-}
-
-function qualifyWorkflow<PluginId extends string, TWorkflow extends NornAnyWorkflowDefinition>(
-	pluginId: PluginId,
-	key: string,
-	workflow: TWorkflow,
-	declaredIds: Set<string>,
-): NornQualifiedPluginWorkflow<PluginId, string, TWorkflow> {
-	const id = resolveDeclarationId(pluginId, [key], workflow.id, "workflow", declaredIds);
-	const declaration = (params: unknown): NornRunNext => createWorkflowTransition({ workflowId: id, params });
-	return Object.assign(declaration, { ...workflow, kind: WORKFLOW_DECLARATION_KIND, id, isolation: workflow.isolation ?? { mode: "runWorkspace" } }) as unknown as NornQualifiedPluginWorkflow<PluginId, string, TWorkflow>;
-}
-
-function qualifyStateTree(pluginId: string, node: unknown, path: readonly string[], declaredIds: Set<string>): unknown {
-	if (node === undefined) return undefined;
-	if (isTypeboxSchema(node)) return { id: resolveDeclarationId(pluginId, path, undefined, "state", declaredIds), schema: node };
-	if (path.length > 0 && isWorkflowStateDefinitionInput(node)) {
-		return { ...node, id: resolveDeclarationId(pluginId, path, node.id, "state", declaredIds) };
-	}
-	if (!isPlainObject(node)) throw new Error(`Invalid state declaration: ${[pluginId, ...path].join(".")}`);
-	return Object.fromEntries(Object.entries(node).map(([key, child]) => [key, qualifyStateTree(pluginId, child, [...path, key], declaredIds)]));
+function assertDeclarationId(id: string): void {
+	if (typeof id !== "string" || id.trim().length === 0 || id.split(".").some(segment => segment.length === 0)) throw new Error(`Invalid workflow or scope id: ${id}`);
 }
 
 export function isWorkflowDeclaration(value: unknown): value is NornAnyWorkflowDeclaration {
 	if (typeof value !== "function") return false;
-	const candidate = value as { kind?: unknown; id?: unknown; instructions?: unknown; isEntrypoint?: unknown; params?: unknown; isolation?: { mode?: unknown } };
+	const candidate = value as { kind?: unknown; id?: unknown; instructions?: unknown; isEntrypoint?: unknown; args?: unknown; execute?: unknown; isolation?: { mode?: unknown } };
 	return (
 		candidate.kind === WORKFLOW_DECLARATION_KIND &&
 		typeof candidate.id === "string" &&
 		candidate.id.length > 0 &&
 		(candidate.instructions === undefined || typeof candidate.instructions === "string") &&
 		typeof candidate.isEntrypoint === "boolean" &&
-		Boolean(candidate.params) &&
+		Boolean(candidate.args) &&
+		typeof candidate.execute === "function" &&
 		(candidate.isolation?.mode === "runWorkspace" || candidate.isolation?.mode === "project")
 	);
 }
 
-function isTypeboxSchema(value: unknown): value is NornStateSchema {
-	return Type.IsUnsafe(value) || Boolean(value && typeof value === "object" && "~kind" in value && typeof value["~kind"] === "string");
-}
-
-function isWorkflowStateDefinitionInput(value: unknown): value is NornWorkflowStateDefinitionInput {
-	if (!isPlainObject(value)) return false;
-	return (value.id === undefined || typeof value.id === "string") && isTypeboxSchema(value.schema);
-}
-
-export function isWorkflowPlugin(value: unknown): value is NornWorkflowPlugin {
-	if (!value || typeof value !== "object") return false;
-	const candidate = value as { manifest?: unknown; implementation?: unknown };
-	return isWorkflowPluginManifest(candidate.manifest) && Boolean(candidate.implementation);
-}
-
-export function isWorkflowPluginManifest(value: unknown): value is NornAnyWorkflowPluginManifest {
-	if (!value || typeof value !== "object") return false;
-	const candidate = value as { id?: unknown; workflows?: unknown };
-	if (typeof candidate.id !== "string" || candidate.id.length === 0) return false;
-	if (!candidate.workflows || typeof candidate.workflows !== "object") return false;
-	return Object.values(candidate.workflows).every(isWorkflowDeclaration);
-}
-
 export function isWorkflowNext(value: unknown): value is NornRunNext {
 	if (!value || typeof value !== "object") return false;
-	const candidate = value as { type?: unknown; workflowId?: unknown; params?: unknown };
+	const candidate = value as { type?: unknown; workflowId?: unknown; args?: unknown };
 	return candidate.type === "next" && typeof candidate.workflowId === "string" && candidate.workflowId.length > 0;
 }
 

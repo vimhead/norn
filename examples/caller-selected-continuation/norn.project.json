@@ -1,4 +1,4 @@
 {
   "version": 1,
-  "plugins": ["./producer.ts", "./caller.ts"]
+  "workflows": ["./producer.ts", "./caller.ts"]
 }

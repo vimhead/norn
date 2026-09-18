@@ -27,16 +27,16 @@ export function QueueAdapter(input: { readonly queue: WorkQueue }): NornAgentRes
 					{
 						name: "queue_claim", label: "Claim a note", description: "Claim one note for this session, or return its existing live claim. Null means nothing available now, not all work complete. Save its token; expiresAt is Unix time in milliseconds. Note text is bounded to 1000 characters.",
 						parameters: Type.Object({}),
-						async execute(_id, _params, signal) {
+						async execute(_id, _args, signal) {
 							return describeResult({ claim: await input.queue.claim({ owner, signal }) });
 						},
 					},
 					{
 						name: "queue_acknowledge", label: "Save a note summary", description: "Save {summary, quote} and acknowledge this session's live claim in one operation. Stale tokens fail; identical successful retries succeed. This records processing, not semantic approval.",
 						parameters: acknowledgeParameters,
-						async execute(_id: string, params: Static<typeof acknowledgeParameters>, signal: AbortSignal | undefined) {
-							await input.queue.acknowledge({ ...params, owner, signal });
-							return describeResult({ acknowledged: params.id });
+						async execute(_id: string, args: Static<typeof acknowledgeParameters>, signal: AbortSignal | undefined) {
+							await input.queue.acknowledge({ ...args, owner, signal });
+							return describeResult({ acknowledged: args.id });
 						},
 					},
 				],

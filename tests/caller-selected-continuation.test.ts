@@ -2,31 +2,31 @@ import assert from "node:assert/strict";
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { NornWorkflowParamsInput } from "@vimhead.dev/norn";
+import type { NornWorkflowArgsInput } from "@vimhead.dev/norn";
 import { expect, test, type TestContext } from "vitest";
-import type { producerManifest } from "../examples/caller-selected-continuation/producer.ts";
+import type { write } from "../examples/caller-selected-continuation/producer.ts";
 import { createNornClient } from "../packages/cli/src/client.ts";
 
 async function copyContinuationExample(context: TestContext) {
 	const root = await mkdtemp(join(tmpdir(), "norn-continuation-"));
 	context.onTestFinished(() => rm(root, { recursive: true, force: true }));
 	await cp(new URL("../examples/caller-selected-continuation/", import.meta.url), root, { recursive: true });
-	const input: { params: NornWorkflowParamsInput<typeof producerManifest.workflows.write> } = JSON.parse(await readFile(join(root, "input.json"), "utf8"));
-	return { client: createNornClient({ spawnCwd: root }), params: input.params };
+	const input: { args: NornWorkflowArgsInput<typeof write> } = JSON.parse(await readFile(join(root, "input.json"), "utf8"));
+	return { client: createNornClient({ spawnCwd: root }), args: input.args };
 }
 
 test("the copied continuation example exposes its contribution contract and completes in the supplied consumer", async context => {
-	const { client, params } = await copyContinuationExample(context);
+	const { client, args } = await copyContinuationExample(context);
 	const catalogue = await client.workflows.list({ all: true });
 	assert.equal(catalogue.isComplete, true);
 	assert.deepEqual(catalogue.workflows.map(workflow => workflow.id).sort(), [
 		"greetingConsumer.saveJson", "greetingConsumer.saveText", "greetingProducer.write",
 	]);
 	const producer = await client.workflows.inspect("greetingProducer.write");
-	expect(producer.workflow?.paramsSchema).toHaveProperty("properties.next.x-norn-workflow-ref.contributedParamsSchema.required", ["resultArtifact", "summary"]);
+	expect(producer.workflow?.argsSchema).toHaveProperty("properties.next.x-norn-workflow-ref.contributedArgsSchema.required", ["resultArtifact", "summary"]);
 	const consumer = await client.workflows.inspect("greetingConsumer.saveJson");
-	expect(consumer.workflow?.paramsSchema).toHaveProperty("required", ["batchId", "resultArtifact", "summary"]);
-	const started = await client.runs.start({ workflowId: "greetingProducer.write", params });
+	expect(consumer.workflow?.argsSchema).toHaveProperty("required", ["batchId", "resultArtifact", "summary"]);
+	const started = await client.runs.start({ workflowId: "greetingProducer.write", args });
 	const finished = await client.runs.wait(started.id);
 	assert.equal(finished.status, "completed", JSON.stringify(finished));
 	assert.equal(finished.health, "healthy");
@@ -41,10 +41,10 @@ test("the copied continuation example exposes its contribution contract and comp
 });
 
 test("changing only the caller reference selects another consumer and forwards its batch ID", async context => {
-	const { client, params } = await copyContinuationExample(context);
+	const { client, args } = await copyContinuationExample(context);
 	const started = await client.runs.start({
 		workflowId: "greetingProducer.write",
-		params: { ...params, next: { workflow: "greetingConsumer.saveText", forwardParams: { batchId: "batch-99" } } },
+		args: { ...args, next: { workflow: "greetingConsumer.saveText", forwardArgs: { batchId: "batch-99" } } },
 	});
 	const finished = await client.runs.wait(started.id);
 	assert.equal(finished.status, "completed", JSON.stringify(finished));
@@ -56,10 +56,10 @@ test("changing only the caller reference selects another consumer and forwards i
 });
 
 test("a producer contribution cannot complete delivery without the consumer's required caller context", async context => {
-	const { client, params } = await copyContinuationExample(context);
+	const { client, args } = await copyContinuationExample(context);
 	const started = await client.runs.start({
 		workflowId: "greetingProducer.write",
-		params: { ...params, next: { workflow: "greetingConsumer.saveJson", forwardParams: {} } },
+		args: { ...args, next: { workflow: "greetingConsumer.saveJson", forwardArgs: {} } },
 	});
 	const finished = await client.runs.wait(started.id);
 	assert.equal(finished.status, "failed", JSON.stringify(finished));

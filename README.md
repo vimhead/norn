@@ -12,36 +12,27 @@ through the CLI from any harness. Agents run on the bundled
 2. **Combine an agent with code.** The agent writes a summary; code saves it as an artifact.
 
    ```ts
-   import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
+   import { workflow } from "@vimhead.dev/norn";
    import { Type } from "typebox";
 
-   const manifest = definePluginManifest({
-     id: "summary",
-     workflows: {
-       write: {
-         isEntrypoint: true,
-         instructions: "Summarize supplied text and save the result.",
-         params: Type.Object({ text: Type.String() }),
-       },
+   const summarize = workflow({
+     id: "summary.write",
+     isEntrypoint: true,
+     instructions: "Summarize supplied text and save the result.",
+     args: Type.Object({ text: Type.String() }),
+     async execute({ args, run }) {
+       const summary = await run.agents.prompt({
+         label: "summarize",
+         tools: [],
+         prompt: `Summarize this text in one sentence:\n${args.text}`,
+         response: Type.Object({ text: Type.String() }),
+       });
+       const artifact = await run.artifacts.write("summary.txt", summary.text);
+       return run.complete({ artifacts: { summary: artifact } });
      },
    });
 
-   export default definePlugin(manifest, {
-     workflows: {
-       write: {
-         async execute(run, { text }) {
-           const summary = await run.agents.prompt({
-             label: "summarize",
-             tools: [],
-             prompt: `Summarize this text in one sentence:\n${text}`,
-             response: Type.Object({ text: Type.String() }),
-           });
-           const artifact = await run.artifacts.write("summary.txt", summary.text);
-           return run.complete({ artifacts: { summary: artifact } });
-         },
-       },
-     },
-   });
+   export default [summarize];
    ```
 
    [Full example and project configuration](examples/getting-started/README.md)
@@ -49,7 +40,7 @@ through the CLI from any harness. Agents run on the bundled
 3. **Run it** from the example directory:
 
    ```sh
-   printf '%s\n' '{"params":{"text":"Norn workflows combine agents and code. They run from any harness through the CLI."}}' \
+   printf '%s\n' '{"args":{"text":"Norn workflows combine agents and code. They run from any harness through the CLI."}}' \
      | norn runs start summary.write
 
    norn runs wait <run-id>

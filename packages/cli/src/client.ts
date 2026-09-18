@@ -3,16 +3,15 @@ import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import type {
 	DeletedNornRunInfo,
-	NornPluginDiagnostic,
+	NornWorkflowDiagnostic,
 	NornProjectInspection,
 	NornWorkflowCatalogInfo,
 	NornWorkflowInspection,
 	NornRunCheckpoint,
 	NornRunInfo,
 	NornRunMetrics,
-	NornWorkflowStateReader,
 } from "@vimhead.dev/norn";
-import { loadNornProject } from "./plugin-loader.ts";
+import { loadNornProject } from "./workflow-loader.ts";
 import { NornProjectLoadError } from "./internal/errors.ts";
 import type { NornRegisteredWorkflow } from "./internal/workflow-registry.ts";
 
@@ -32,10 +31,9 @@ export type NornClient = {
 		inspect(workflowId: string): Promise<NornWorkflowInspection>;
 		entries(): Promise<readonly NornRegisteredWorkflow[]>;
 	};
-	readonly state: NornWorkflowStateReader;
 	readonly runs: {
-		start(input: { readonly workflowId: string; readonly params: unknown; readonly configOverride?: unknown }): Promise<NornRunInfo>;
-		resume(input: { readonly run: string; readonly params?: unknown }): Promise<NornRunInfo>;
+		start(input: { readonly workflowId: string; readonly args: unknown; readonly configOverride?: unknown }): Promise<NornRunInfo>;
+		resume(input: { readonly run: string; readonly args?: unknown }): Promise<NornRunInfo>;
 		wait(run: string): Promise<NornRunInfo>;
 		list(): Promise<NornRunInfo[]>;
 		inspect(run: string): Promise<NornRunInfo>;
@@ -61,7 +59,6 @@ export function createNornClient(input: NornClientInput = {}): NornClient {
 			inspect: async (workflowId) => processRunner.readJson<NornWorkflowInspection>(["workflows", "inspect", workflowId]),
 			entries: async () => (await catalog.load()).workflows,
 		},
-		state: catalog.state,
 		runs: {
 			start: async (startInput) => (await processRunner.readJson<{ run: NornRunInfo }>(["runs", "start", startInput.workflowId], JSON.stringify(runStartInput(startInput)))).run,
 			resume: async (resumeInput) => (await processRunner.readJson<{ run: NornRunInfo }>(["runs", "resume", resumeInput.run], runResumeStdin(resumeInput))).run,
@@ -82,10 +79,6 @@ export function createNornClient(input: NornClientInput = {}): NornClient {
 
 class NornWorkflowCatalog {
 	private loaded: ReturnType<typeof loadNornProject> | undefined;
-	readonly state: NornWorkflowStateReader = {
-		get: async (state) => (await this.load()).state.get(state),
-		getOptional: async (state) => (await this.load()).state.getOptional(state),
-	};
 
 	constructor(private readonly cwd: string) {}
 
@@ -107,7 +100,7 @@ class NornProcessRunner {
 
 	async readJson<T>(args: readonly string[], stdin?: string): Promise<T> {
 		const result = await this.spawn(args, stdin);
-		const parsed = JSON.parse(result.stdout) as T | { error?: { code?: string; message?: string; diagnostics?: NornPluginDiagnostic[] } };
+		const parsed = JSON.parse(result.stdout) as T | { error?: { code?: string; message?: string; diagnostics?: NornWorkflowDiagnostic[] } };
 		if (parsed && typeof parsed === "object" && "error" in parsed) {
 			if (parsed.error?.code === "NORN_PROJECT_INVALID" && Array.isArray(parsed.error.diagnostics)) throw new NornProjectLoadError({ diagnostics: parsed.error.diagnostics });
 			throw new Error(parsed.error?.message ?? "Norn command failed");
@@ -151,10 +144,10 @@ class NornProcessRunner {
 	}
 }
 
-function runStartInput(input: { readonly params: unknown; readonly configOverride?: unknown }): { readonly params: unknown; readonly config?: unknown } {
-	return input.configOverride === undefined ? { params: input.params } : { params: input.params, config: input.configOverride };
+function runStartInput(input: { readonly args: unknown; readonly configOverride?: unknown }): { readonly args: unknown; readonly config?: unknown } {
+	return input.configOverride === undefined ? { args: input.args } : { args: input.args, config: input.configOverride };
 }
 
-function runResumeStdin(input: { readonly params?: unknown }): string | undefined {
-	return input.params === undefined ? undefined : JSON.stringify({ params: input.params });
+function runResumeStdin(input: { readonly args?: unknown }): string | undefined {
+	return input.args === undefined ? undefined : JSON.stringify({ args: input.args });
 }

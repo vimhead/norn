@@ -1,4 +1,4 @@
-import { definePlugin, definePluginManifest, type NornAgentSession, type NornRun } from "@vimhead.dev/norn";
+import { workflowScope, type NornAgentSession, type NornRun, type WorkflowResult } from "@vimhead.dev/norn";
 import { Type, type StaticDecode } from "typebox";
 import { QueueAdapter } from "./queue-adapter.ts";
 import { noteSchema, workQueueDefinition, type WorkQueue } from "./work-queue.ts";
@@ -7,64 +7,60 @@ const notesSchema = Type.Refine(Type.Array(noteSchema, { minItems: 2, maxItems: 
 const inputSchema = Type.Object({ notes: notesSchema }, { additionalProperties: false });
 const workerReportSchema = Type.Object({ status: Type.Enum(["acknowledged", "idle", "blocked"]), detail: Type.String({ maxLength: 300 }) }, { additionalProperties: false });
 
-export const manifest = definePluginManifest({
-	id: "coordinatingAgents",
-	workflows: {
-		start: {
-			isEntrypoint: true,
-			instructions: "Summarize 2–12 supplied notes using two concurrent Norn agents and a shared leased work queue. Checkpoint completed rounds, verify every persisted result and exact source quotation, and return a summaries.json artifact. Requires configured Norn agent authentication; modifies only this run's resources, logs and artifacts.",
-			params: inputSchema,
-		},
-		work: { isEntrypoint: false, params: Type.Object({ ...inputSchema.properties, round: Type.Integer({ minimum: 0, maximum: 12 }) }, { additionalProperties: false }) },
-		verify: { isEntrypoint: false, params: inputSchema },
-	},
+const scope = workflowScope({ id: "coordinatingAgents" });
+export const start = scope.workflow({
+	id: "start",
+	isEntrypoint: true,
+	instructions: "Summarize 2–12 supplied notes using two concurrent Norn agents and a shared leased work queue. Checkpoint completed rounds, verify every persisted result and exact source quotation, and return a summaries.json artifact. Requires configured Norn agent authentication; modifies only this run's resources, logs and artifacts.",
+	args: inputSchema,
+	async execute({ args, run }) {
+		const queue = await run.resources.ensure(workQueueDefinition);
+		for (const note of args.notes) await queue.enqueue({ ...note, signal: undefined });
+		return work({ ...args, round: 0 });
+	}
+});
+export const work = scope.workflow({
+	id: "work",
+	isEntrypoint: false,
+	args: Type.Object({ ...inputSchema.properties, round: Type.Integer({ minimum: 0, maximum: 12 }) }, { additionalProperties: false }),
+	async execute({ args, run }): Promise<WorkflowResult> {
+		const queue = await run.resources.ensure(workQueueDefinition);
+		const before = await queue.inspect();
+		if (before.items.length !== args.notes.length) return run.fail({ summary: "Queue inventory differs from the supplied notes." });
+		if (before.acknowledged === args.notes.length) return verify({ notes: args.notes });
+		if (before.leased > 0 || args.round >= args.notes.length) return run.fail({ summary: "Unfinished claims or exhausted rounds; inspect queue and agent logs before recovery." });
+		const reports = await processRound({ run, queue, round: args.round });
+		await run.artifacts.write(`rounds/${args.round}.json`, JSON.stringify(reports, null, 2));
+		const after = await queue.inspect();
+		if (reports.some(report => report.status === "blocked") || after.leased > 0 || after.acknowledged <= before.acknowledged) {
+			return run.fail({ summary: "The agent round did not finish its claims; inspect the saved reports and queue before recovery." });
+		}
+		return after.acknowledged === args.notes.length
+			? verify({ notes: args.notes })
+			: work({ ...args, round: args.round + 1 });
+	}
+});
+export const verify = scope.workflow({
+	id: "verify",
+	isEntrypoint: false,
+	args: inputSchema,
+	async execute({ args, run }) {
+		const queue = await run.resources.ensure(workQueueDefinition);
+		const snapshot = await queue.inspect();
+		if (snapshot.items.length !== args.notes.length || snapshot.acknowledged !== args.notes.length) return run.fail({ summary: "Some notes have no persisted result." });
+		const results = args.notes.map(note => {
+			const item = snapshot.items.find(item => item.id === note.id);
+			if (!item || item.status !== "acknowledged" || item.text !== note.text || !note.text.includes(item.result.quote)) throw new Error(`Unverified result or source quotation: ${note.id}`);
+			return { id: note.id, source: note.text, ...item.result, deliveries: item.deliveries };
+		});
+		const artifact = await run.artifacts.write("summaries.json", JSON.stringify(results, null, 2));
+		return run.complete({ summary: "All queue results persisted; schemas and source quotations checked.", artifacts: { summaries: artifact }, data: { processed: results.length } });
+	}
 });
 
-export default definePlugin(manifest, {
-	workflows: {
-		start: {
-			async execute(run, params) {
-				const queue = await run.resources.ensure(workQueueDefinition);
-				for (const note of params.notes) await queue.enqueue({ ...note, signal: undefined });
-				return manifest.workflows.work({ ...params, round: 0 });
-			},
-		},
-		work: {
-			async execute(run, params) {
-				const queue = await run.resources.ensure(workQueueDefinition);
-				const before = await queue.inspect();
-				if (before.items.length !== params.notes.length) return run.fail({ summary: "Queue inventory differs from the supplied notes." });
-				if (before.acknowledged === params.notes.length) return manifest.workflows.verify({ notes: params.notes });
-				if (before.leased > 0 || params.round >= params.notes.length) return run.fail({ summary: "Unfinished claims or exhausted rounds; inspect queue and agent logs before recovery." });
-				const reports = await processRound({ run, queue, round: params.round });
-				await run.artifacts.write(`rounds/${params.round}.json`, JSON.stringify(reports, null, 2));
-				const after = await queue.inspect();
-				if (reports.some(report => report.status === "blocked") || after.leased > 0 || after.acknowledged <= before.acknowledged) {
-					return run.fail({ summary: "The agent round did not finish its claims; inspect the saved reports and queue before recovery." });
-				}
-				return after.acknowledged === params.notes.length
-					? manifest.workflows.verify({ notes: params.notes })
-					: manifest.workflows.work({ ...params, round: params.round + 1 });
-			},
-		},
-		verify: {
-			async execute(run, params) {
-				const queue = await run.resources.ensure(workQueueDefinition);
-				const snapshot = await queue.inspect();
-				if (snapshot.items.length !== params.notes.length || snapshot.acknowledged !== params.notes.length) return run.fail({ summary: "Some notes have no persisted result." });
-				const results = params.notes.map(note => {
-					const item = snapshot.items.find(item => item.id === note.id);
-					if (!item || item.status !== "acknowledged" || item.text !== note.text || !note.text.includes(item.result.quote)) throw new Error(`Unverified result or source quotation: ${note.id}`);
-					return { id: note.id, source: note.text, ...item.result, deliveries: item.deliveries };
-				});
-				const artifact = await run.artifacts.write("summaries.json", JSON.stringify(results, null, 2));
-				return run.complete({ summary: "All queue results persisted; schemas and source quotations checked.", artifacts: { summaries: artifact }, data: { processed: results.length } });
-			},
-		},
-	},
-});
+export default [start, work, verify];
 
-async function processRound(input: { readonly run: NornRun; readonly queue: WorkQueue; readonly round: number }) {
+async function processRound(input: { readonly run: NornRun; readonly queue: WorkQueue; readonly round: number; }) {
 	const sessions: NornAgentSession[] = [];
 	const reports: StaticDecode<typeof workerReportSchema>[] = [];
 	const errors: unknown[] = [];

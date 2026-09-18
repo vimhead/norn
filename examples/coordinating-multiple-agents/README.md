@@ -18,7 +18,7 @@ const agentSession = await run.agents.createSession({
 });
 ```
 
-The complete plugin owns prompting and disposal. Resource initialization and agent attachment remain separate; the queue does not start or schedule agents.
+The workflows own prompting and disposal. Resource initialization and agent attachment remain separate; the queue does not start or schedule agents.
 
 ## Run
 
@@ -45,7 +45,7 @@ Enqueue retries must use the same ID and text. Acknowledgment saves the result a
 
 ## Recover a failed round
 
-Use the [recovery procedure](../../docs/recovery.md#source-repair-and-rollback) after inspecting and repairing the failure. Stop every queue user before rollback and preserve wanted failed-attempt evidence outside `current/`. Select the actual checkpoint before the affected round, then resume without params.
+Use the [recovery procedure](../../docs/recovery.md#source-repair-and-rollback) after inspecting and repairing the failure. Stop every queue user before rollback and preserve wanted failed-attempt evidence outside `current/`. Select the actual checkpoint before the affected round, then resume without args.
 
 Completed earlier rounds survive that boundary. Work after it is rolled back and can repeat, including a successful peer's work from a failed round. Fresh bindings get new owners. Restoring a snapshot containing live claims retains their original expiry; tokens do not fence arbitrary rollback or external effects. The supplied workflow closes its sessions and checks for unfinished claims before taking a round boundary.
 

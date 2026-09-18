@@ -46,7 +46,7 @@ Finding a configured key or listing a model is not proof that a provider accepts
 
 ## Third-party provider packages
 
-Pi provider extensions are separate from Norn workflow plugins and outer-harness
+Pi provider extensions are separate from Norn workflow modules and outer-harness
 adapters. They register providers through Pi's APIs; do not put them in
 `norn.project.json` or install them only in Cursor's plugin marketplace.
 

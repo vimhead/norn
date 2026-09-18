@@ -1,10 +1,9 @@
-export { reviewWorkflow } from "./declaration.ts";
-export { executeReviewWorkflow } from "./execute.ts";
+export { reviewWorkflow } from "./execute.ts";
 export {
 	reviewAgentResponseSchema,
 	reviewDecisionSchema,
-	reviewParamsSchema,
+	reviewArgsSchema,
 	storedReviewSchema,
-	type ReviewParams,
+	type ReviewArgs,
 	type StoredReview,
 } from "./schema.ts";

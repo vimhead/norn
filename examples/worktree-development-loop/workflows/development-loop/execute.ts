@@ -1,18 +1,17 @@
-import type { NornRunNext, NornRun } from "@vimhead.dev/norn";
-import { worktreeDevelopmentLoopManifest } from "../../manifest.ts";
-import type { DevelopmentLoopConfig, DevelopmentLoopParams } from "./schema.ts";
+import { planningWorkflow } from "../planning/execute.ts";
+import type { WorkflowResult } from "@vimhead.dev/norn";
+import { developmentLoopScope } from "../../scope.ts";
+import { developmentLoopArgsSchema } from "./schema.ts";
 import { materializeWorkspaceRepository } from "./repository.ts";
 
-export async function executeDevelopmentLoopWorkflow(
-	run: NornRun,
-	params: DevelopmentLoopParams,
-	config: DevelopmentLoopConfig,
-): Promise<NornRunNext> {
-	const repositoryPath = await materializeWorkspaceRepository(run, config.repositoryRoot, params.baseRef);
-	await run.state.set(worktreeDevelopmentLoopManifest.states.developmentLoop.repositoryPath, repositoryPath);
-	await run.state.set(worktreeDevelopmentLoopManifest.states.developmentLoop.task, params.task);
-	await run.state.set(worktreeDevelopmentLoopManifest.states.developmentLoop.maxIterations, params.maxIterations);
-	await run.state.set(worktreeDevelopmentLoopManifest.states.developmentLoop.currentIteration, 1);
+export const developmentLoopWorkflow = developmentLoopScope.workflow({
+	id: "developmentLoop",
+	isEntrypoint: true,
+	instructions: "Plan once, then loop implementation and review in a workspace repository copy. Call this when a repository task should run through planning, implementation, and review.",
+	args: developmentLoopArgsSchema,
+	async execute({ args, scope, run }): Promise<WorkflowResult> {
+		const repositoryPath = await materializeWorkspaceRepository(run, scope.config.repositoryRoot, args.baseRef);
 
-	return worktreeDevelopmentLoopManifest.workflows.planning({ task: params.task });
-}
+		return planningWorkflow({ task: args.task, repositoryPath, maxIterations: args.maxIterations });
+	}
+});

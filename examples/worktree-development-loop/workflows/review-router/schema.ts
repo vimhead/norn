@@ -1,12 +1,13 @@
+import { implementationArgsSchema } from "../implementation/schema.ts";
 import { artifactRefSchema } from "@vimhead.dev/norn";
 import { Type, type StaticDecode } from "typebox";
 import { reviewDecisionSchema } from "../review/schema.ts";
 
-export const reviewRouterParamsSchema = Type.Object({
-	iteration: Type.Integer({ minimum: 1 }),
+export const reviewRouterArgsSchema = Type.Object({
+	...implementationArgsSchema.properties,
 	decision: reviewDecisionSchema,
 	summary: Type.String(),
 	automatedReviewArtifact: artifactRefSchema,
 });
 
-export type ReviewRouterParams = StaticDecode<typeof reviewRouterParamsSchema>;
+export type ReviewRouterArgs = StaticDecode<typeof reviewRouterArgsSchema>;

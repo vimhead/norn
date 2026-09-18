@@ -1,3 +1,2 @@
-export { planningWorkflow } from "./declaration.ts";
-export { executePlanningWorkflow } from "./execute.ts";
-export { planningAgentResponseSchema, planningParamsSchema, type PlanningParams } from "./schema.ts";
+export { planningWorkflow } from "./execute.ts";
+export { planningAgentResponseSchema, planningArgsSchema, type PlanningArgs } from "./schema.ts";

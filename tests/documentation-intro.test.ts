@@ -35,7 +35,7 @@ test("intro is compact, deterministic, and points to the index instead of copyin
 	assert.ok(intro.includes('["workflows", "list"]'));
 	assert.ok(intro.includes('["workflows", "inspect", "<workflow-id>"]'));
 	assert.ok(!intro.includes("agents.md"), "topic-to-page mapping stays in the documentation index");
-	assert.ok(!intro.includes("definePluginManifest"), "no authoring manual is embedded");
+	assert.ok(!intro.includes("workflowScope"), "no authoring manual is embedded");
 });
 
 test("runtime argv and paths retain whitespace, quotes, backslashes and newlines without shell quoting", () => {

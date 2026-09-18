@@ -2,7 +2,7 @@
 
 ## Initialization is separate from attachment
 
-`run.resources` provides shared resource handles, including [workflow state](persistence.md#choose-what-survives).
+`run.resources` provides shared resource handles. The [shared-state example](../examples/shared-state/README.md) demonstrates mutable storage as a custom resource.
 
 `run.resources.ensure(definition)` returns a shared handle for that resource across workflow contexts in the current executor. A definition contains `name`, `kind`, JSON `configuration`, and `initialize({directory, files, mode})`. Names are single alphanumeric/underscore/hyphen identifiers starting with an alphanumeric character. Identity/configuration conflicts fail; `configuration` owns format/version compatibility.
 
@@ -17,28 +17,13 @@
 
 ## Explicit agent attachment
 
-The [runnable shared-state example](../examples/shared-state/README.md) uses:
-
-```ts
-resourceAdapters: [StateAdapter({
-  state: run.state,
-  fields: [
-    { field: manifest.states.source, access: "read" },
-    { field: manifest.states.copiedText, access: "write" },
-  ],
-})]
-```
-
-`StateAdapter` is exported from `@vimhead.dev/norn` and accepts the public workflow-state interface, without a storage path. `read-write` is also supported. This adapter adds `norn_state_list`, `norn_state_get`, and `norn_state_set`, including when `tools: []` is requested. Discovery lists only selected fields and their schemas/permissions. Each operation checks its grant; setting validates against the declared field schema. Unset reads return `isSet:false`.
-
-List/get output is serialized JSON in bounded text pages. Requests specify UTF-16 `offset` and `limit` (1–10000); responses include `text`, `nextOffset` and a content `revision`. Pages are not a pinned snapshot. Set operations persist complete field values; get followed by set is not a transaction.
+The [shared-state example](../examples/shared-state/README.md) supplies its own resource and permission-selected adapter. The [queue example](../examples/coordinating-multiple-agents/README.md) supplies a different resource and tool contract. Neither adapter is a built-in SDK state facility.
 
 Custom adapters implement `NornAgentResourceAdapter`: a unique name and `bind({runId, label})` returning a `NornAgentResourceBinding` with tools and async `dispose()`. An adapter can expose one or several resource handles; initializing storage does not construct or attach tools. Session creation and one-shot prompting accept adapters through `resourceAdapters`, not through the resource manager or state handle directly. Attached tools are activated with the normal response tool. Duplicate adapter names and collisions with built-ins, the response tool, other adapters or already-loaded extension tools fail. Successful bindings are cleaned up in reverse order on session disposal or later creation failure. An initializer/binder that throws before returning its handle owns cleanup of its partial allocations.
 
 | Decision | GOOD | BAD |
 |---|---|---|
-| IF a Norn agent needs state access, THEN explicitly select its fields and permissions. ELSE omit the attachment. | A reviewer reads a pinned candidate field. | Automatically expose all manifest fields to every session. |
-| IF combining pages, THEN compare their revisions and restart the read when they differ. ELSE use a single returned page as a fragment only. | Re-read a value changed between pages. | Concatenate pages from different revisions. |
+| IF a Norn agent needs resource access, THEN attach an adapter exposing the required operations. ELSE omit the attachment. | A reviewer receives read-only access to a candidate. | Automatically expose every resource to every session. |
 | IF disposing a binding, THEN release session-local handles only. ELSE retain the resource for later sessions. | Close a subscription. | Delete workflow state when its agent exits. |
 
 The attachment never exposes internal scheduler/checkpoint control state. It is a cooperative tool boundary, not a sandbox against unrestricted filesystem tools or trusted extensions. [Agent loading](agents.md#prompts-tools-and-resource-loading) owns those limitations.
@@ -58,4 +43,4 @@ Reads of live command-output logs may return partial streams. File locks do not 
 | IF a callback holds a lock, THEN finish its short storage operation before prompting a model or taking another lock on the same file. ELSE release it first. | Persist a value and return. | Wait for a model turn while holding a file lock. |
 | IF restoring a checkpoint, THEN restore resource data but not lock ownership. ELSE follow the owning external resource's recovery contract. | Built-in locks live under the run's `locks/`, outside `current/`. | Restore an old owner's lock directory as live ownership. |
 
-Sources: [resource contracts](../packages/sdk/src/resources.ts), [resource manager](../packages/cli/src/resources.ts), [adapter contracts](../packages/sdk/src/agent-resource-adapter.ts), [StateAdapter](../packages/sdk/src/state-adapter.ts), [file coordinator](../packages/sdk/src/files.ts).
+Sources: [resource contracts](../packages/sdk/src/resources.ts), [resource manager](../packages/cli/src/resources.ts), [adapter contracts](../packages/sdk/src/agent-resource-adapter.ts), [file coordinator](../packages/sdk/src/files.ts).

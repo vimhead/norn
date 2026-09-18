@@ -10,7 +10,7 @@ It registers an entrypoint workflow named **Workspace development loop**. The
 workflow:
 
 1. clones the configured repository into `run.workspace/repo`;
-2. stores the repository path in workflow state;
+2. passes the repository path and retained artifact references through workflow arguments;
 3. passes explicit cwd values to agents and commands;
 4. plans once, then loops through implementation and automated review;
 5. routes automated review through a gated review router;
@@ -21,9 +21,8 @@ workflow:
 
 | File or directory | Role in this example |
 |---|---|
-| [manifest.ts](manifest.ts) | Registers the workflows, configuration schema, and state declarations. |
-| [plugin.ts](plugin.ts) | Binds implementations and the review gate's description. |
-| [state.ts](state.ts) | Declares values and artifact refs shared between steps. |
+| [scope.ts](scope.ts) | Declares the shared namespace and repository configuration. |
+| [plugin.ts](plugin.ts) | Exports the workflows for registration. |
 | [workflows/development-loop/](workflows/development-loop/) | Defines entrypoint inputs and repository setup. |
 | [workflows/planning/](workflows/planning/), [workflows/implementation/](workflows/implementation/), [workflows/review/](workflows/review/) | Define each agent step's inputs and execution. |
 | [workflows/review-router/](workflows/review-router/) | Defines editable gate fields and routes the chosen decision. |
@@ -49,7 +48,7 @@ checks suitable for a fresh clone.
 norn project inspect
 norn workflows inspect worktreeDevelopmentLoop.developmentLoop
 norn workflows inspect worktreeDevelopmentLoop.reviewRouter
-printf '%s\n' '{"params":{"task":"Add tests","baseRef":"HEAD","maxIterations":3}}' | norn runs start worktreeDevelopmentLoop.developmentLoop
+printf '%s\n' '{"args":{"task":"Add tests","baseRef":"HEAD","maxIterations":3}}' | norn runs start worktreeDevelopmentLoop.developmentLoop
 ```
 
 Discovery should report `isComplete: true`. Copy the returned `run.id`:
@@ -63,7 +62,7 @@ norn runs inspect "$RUN"
 After planning, implementation, and automated review succeed, expect
 `run.status: interrupted` at `worktreeDevelopmentLoop.reviewRouter`, **not** a
 completed run. Inspection exposes the iteration, proposed decision, summary, and
-automated-review artifact in `run.interruption.params`. A command or agent failure
+automated-review artifact in `run.interruption.args`. A command or agent failure
 can end the run before this gate; inspect the failure instead of attempting approval.
 
 ## Review and resume
@@ -98,7 +97,7 @@ Only `decision` and `summary` are gate-editable fields:
 For an authorized acceptance decision after checking the work:
 
 ```bash
-printf '%s\n' '{"params":{"decision":"accept","summary":"Verified changes and relevant checks."}}' | norn runs resume "$RUN"
+printf '%s\n' '{"args":{"decision":"accept","summary":"Verified changes and relevant checks."}}' | norn runs resume "$RUN"
 norn runs wait "$RUN"
 norn runs inspect "$RUN"
 ```

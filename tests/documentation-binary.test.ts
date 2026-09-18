@@ -82,7 +82,7 @@ test("compiled binary resolves complete offline docs without source and runs an 
 			else { try { resolve(JSON.parse(stdout)); } catch (parseError) { reject(parseError); } }
 		});
 		assert.ok(child.stdin);
-		child.stdin.end(JSON.stringify({ params: { name: "Offline" } }));
+		child.stdin.end(JSON.stringify({ args: { name: "Offline" } }));
 	});
 	const finished = (await invoke(["runs", "wait", launch.run.id], projectRoot)).run;
 	assert.equal(finished.status, "completed", JSON.stringify(finished));
@@ -97,37 +97,56 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	assert.deepEqual(JSON.parse(await readFile(join(delivered.path, "current/artifacts/delivery.json"), "utf8")), {
 		batchId: "batch-17", summary: "Greeting prepared for Ada.", greeting: "Hello, Ada!",
 	});
+	await cp(join(documentation.paths.examples, "shared-state"), join(projectRoot, "shared-state"), { recursive: true });
 	await writeFile(join(projectRoot, "native.ts"), `
-import { definePlugin, definePluginManifest, workflowRefSchema } from "@vimhead.dev/norn";
+import { sharedState } from "./shared-state/shared-state.ts";
+import { workflow, workflowScope, workflowRefSchema } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { Compile } from "typebox/compile";
 import { Check } from "typebox/schema";
 const result = Type.Object({ count: Type.Integer(), origin: Type.String() });
-const manifest = definePluginManifest({ id: "native", states: { count: Type.Integer() }, workflows: {
-  check: { isEntrypoint: true, instructions: "Exercise detached TypeBox imports and decoding.", params: Type.Object({
+const manifestScope = workflowScope({ id: "native" });
+const countField = { id: "count", schema: Type.Integer() };
+const manifest_check = manifestScope.workflow({
+id: "check",
+isEntrypoint: true,
+instructions: "Exercise detached TypeBox imports and decoding.",
+args: Type.Object({
     count: Type.Decode(Type.String({ default: "41" }), value => Number(value) + 1),
-    next: workflowRefSchema({ params: Type.Object({ count: Type.Integer() }) }),
-  }) },
-  finish: { isEntrypoint: false, params: result },
-  dynamic: { isEntrypoint: false, params: result },
-  done: { isEntrypoint: false, params: result },
-} });
-export default definePlugin(manifest, { workflows: {
-  check: { async execute(run, params) {
+    next: workflowRefSchema({ args: Type.Object({ count: Type.Integer() }) }),
+  }),
+async execute({ args: args, run: run }) {
     const expected = Type.Literal(42);
-    if (!Value.Check(expected, params.count) || !Compile(expected).Check(params.count) || !Check(expected, params.count)) throw new Error("Incorrect decoded count");
-    await run.state.set(manifest.states.count, params.count);
-    const count = await run.state.get(manifest.states.count);
-    return params.next({ count });
-  } },
-  finish: { execute: (_run, params) => manifest.workflows.dynamic(params) },
-  dynamic: { execute: (run, params) => run.next("native.done", params) },
-  done: { execute: (run, params) => run.complete({ data: params }) },
-} });
+    if (!Value.Check(expected, args.count) || !Compile(expected).Check(args.count) || !Check(expected, args.count)) throw new Error("Incorrect decoded count");
+    const state = await run.resources.ensure(sharedState);
+    await state.set(countField, args.count);
+    const count = await state.get(countField);
+    return args.next({ count });
+  }
+});
+const manifest_finish = manifestScope.workflow({
+id: "finish",
+isEntrypoint: false,
+args: result,
+execute: ({ args: args, run: _run }) => manifest_dynamic(args)
+});
+const manifest_dynamic = manifestScope.workflow({
+id: "dynamic",
+isEntrypoint: false,
+args: result,
+execute: ({ args: args, run: run }) => run.next("native.done", args)
+});
+const manifest_done = manifestScope.workflow({
+id: "done",
+isEntrypoint: false,
+args: result,
+execute: ({ args: args, run: run }) => run.complete({ data: args })
+});
+export default [manifest_check, manifest_finish, manifest_dynamic, manifest_done];
 `);
-	await writeFile(join(projectRoot, "norn.project.json"), JSON.stringify({ plugins: ["./plugin.ts", "./native.ts"] }));
-	const nativeLaunch = await invoke(["runs", "start", "native.check"], projectRoot, { params: { next: { workflow: "native.finish", forwardParams: { origin: "queued" } } } });
+	await writeFile(join(projectRoot, "norn.project.json"), JSON.stringify({ workflows: ["./plugin.ts", "./native.ts"] }));
+	const nativeLaunch = await invoke(["runs", "start", "native.check"], projectRoot, { args: { next: { workflow: "native.finish", forwardArgs: { origin: "queued" } } } });
 	const nativeResult = (await invoke(["runs", "wait", nativeLaunch.run.id], projectRoot)).run;
 	assert.equal(nativeResult.status, "completed", JSON.stringify(nativeResult));
 	assert.deepEqual(nativeResult.outcome?.metadata?.data, { count: 42, origin: "queued" });

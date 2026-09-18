@@ -65,31 +65,38 @@ test("real npm tarballs provide public imports, exact dependencies, offline docs
 	assert.ok(intro.includes(JSON.stringify(documentation.paths.index)));
 	await assert.rejects(access(cacheRoot), { code: "ENOENT" });
 	await writeFile(join(consumer, "consumer.ts"), `
-import { definePlugin, definePluginManifest, workflowRefSchema, NornFileCoordinator, type NornRun } from "@vimhead.dev/norn";
+import { workflow, workflowScope, workflowRefSchema, NornFileCoordinator, type NornRun } from "@vimhead.dev/norn";
 import { createNornClient } from "@vimhead.dev/norn-cli/client";
 import { Type } from "typebox";
 declare const run: NornRun;
 const files: NornFileCoordinator = run.resources.files;
-const manifest = definePluginManifest({ id: "consumer", states: { count: Type.Integer() }, workflows: {
-  test: { isEntrypoint: true, instructions: "Exercise package types.", params: Type.Object({
+const manifestScope = workflowScope({ id: "consumer", config: Type.Object({ label: Type.String() }) });
+const manifest_test = manifestScope.workflow({
+id: "test",
+isEntrypoint: true,
+instructions: "Exercise package types.",
+args: Type.Object({
     count: Type.Decode(Type.String(), text => Number(text)),
-    next: workflowRefSchema({ params: Type.Object({ report: Type.String() }) }),
-  }) },
-} });
-const plugin = definePlugin(manifest, { workflows: { test: { async execute(run, params) {
-  const count: number = params.count;
-  await run.state.set(manifest.states.count, count);
-  const saved: number = await run.state.get(manifest.states.count);
-  return params.next({ report: String(saved) });
-} } } });
-manifest.workflows.test({ count: "1", next: "consumer.test" });
+    next: workflowRefSchema({ args: Type.Object({ report: Type.String() }) }),
+  }),
+async execute({ args, scope, run }) {
+  const count: number = args.count;
+  const label: string = scope.config.label;
+  return args.next({ report: label + String(count) });
+}
+});
+const plugin = [manifest_test];
+manifest_test({ count: "1", next: "consumer.test" });
 run.next("consumer.test", { count: "1", next: "consumer.test" });
 // @ts-expect-error Dynamic calls accept IDs, not declarations.
-run.next(manifest.workflows.test, {});
+run.next(manifest_test, {});
 // @ts-expect-error Callers supply encoded inputs, not decoded values.
-manifest.workflows.test({ count: 1, next: "consumer.test" });
-// @ts-expect-error Direct state schemas retain their native value types.
-run.state.set(manifest.states.count, "1");
+manifest_test({ count: 1, next: "consumer.test" });
+workflow({ id: "standalone", isEntrypoint: false, args: Type.Object({}), execute(context) {
+  // @ts-expect-error Standalone workflows do not have a scope.
+  context.scope;
+  return context.run.complete();
+} });
 const client = createNornClient({ spawnCwd: process.cwd() });
 void [files, plugin, client];
 `);
@@ -101,19 +108,19 @@ void [files, plugin, client];
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
+import { workflow, workflowScope } from "@vimhead.dev/norn";
 import { createNornClient } from "@vimhead.dev/norn-cli/client";
 import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
-assert.equal(typeof definePlugin, "function");
-assert.equal(typeof definePluginManifest, "function");
+assert.equal(typeof workflow, "function");
+assert.equal(typeof workflowScope, "function");
 const client = createNornClient({ spawnCwd: join(process.cwd(), "workflow") });
-const started = await client.runs.start({ workflowId: "greeting.write", params: { name: "Packed" } });
+const started = await client.runs.start({ workflowId: "greeting.write", args: { name: "Packed" } });
 const finished = await client.runs.wait(started.id);
 assert.equal(finished.status, "completed", JSON.stringify(finished));
 assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Packed!\\n");
 const continuation = createNornClient({ spawnCwd: join(process.cwd(), "continuation") });
 const input = JSON.parse(await readFile(join(process.cwd(), "continuation/input.json"), "utf8"));
-const continued = await continuation.runs.start({ workflowId: "greetingProducer.write", params: input.params });
+const continued = await continuation.runs.start({ workflowId: "greetingProducer.write", args: input.args });
 const delivered = await continuation.runs.wait(continued.id);
 assert.equal(delivered.status, "completed", JSON.stringify(delivered));
 assert.equal(delivered.outcome.workflowId, "greetingConsumer.saveJson");

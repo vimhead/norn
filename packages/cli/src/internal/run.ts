@@ -23,7 +23,6 @@ type DefaultNornRunInput = {
 	readonly agentDir?: string;
 	readonly responseCollector: NornAgentResponseCollector;
 	readonly resources: NornRunResources;
-	readonly state: NornRun["state"];
 	readonly logger: NornRunLogger;
 	readonly artifacts: NornArtifacts;
 	readonly logs: NornRunLogs;
@@ -31,7 +30,6 @@ type DefaultNornRunInput = {
 
 export class NornRunContext implements NornProjectRun {
 	readonly resources: NornRunResources;
-	readonly state: NornRun["state"];
 	readonly artifacts: NornRun["artifacts"];
 	readonly logs: NornRun["logs"];
 	readonly commands: NornRun["commands"];
@@ -47,7 +45,6 @@ export class NornRunContext implements NornProjectRun {
 		this.projectRoot = input.projectRoot;
 		this.cwd = input.cwd;
 		this.resources = input.resources;
-		this.state = input.state;
 		this.artifacts = input.artifacts;
 		this.logs = {
 			read: (log) => this.input.logs.read(log),
@@ -107,8 +104,8 @@ export class NornRunContext implements NornProjectRun {
 		return this.resolveFromRoot(this.projectRoot, this.projectRoot, relativePath);
 	}
 
-	next(workflowId: string, params: unknown): ReturnType<NornRun["next"]> {
-		return createWorkflowTransition({ workflowId, params });
+	next(workflowId: string, args: unknown): ReturnType<NornRun["next"]> {
+		return createWorkflowTransition({ workflowId, args });
 	}
 
 	complete(metadata?: NornRunOutcomeMetadata): ReturnType<NornRun["complete"]> {

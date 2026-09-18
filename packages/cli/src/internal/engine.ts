@@ -1,6 +1,5 @@
 import {
 	type NornAnyWorkflowDeclaration,
-	type NornAnyWorkflowPluginManifest,
 	type NornDispose,
 	type NornInterruptedRunResult,
 	type NornRunCheckpoint,
@@ -8,9 +7,6 @@ import {
 	type NornRunNext,
 	type NornRunResult,
 	type NornRunStartOptions,
-	type NornWorkflowPlugin,
-	type NornWorkflowPluginImplementation,
-	type NornWorkflowPluginImplementationInput,
 } from "@vimhead.dev/norn";
 import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
 import { randomUUID } from "node:crypto";
@@ -24,12 +20,11 @@ import { clearRunResumeRequest, matchesRunResumeRequest, readOptionalRunResumeRe
 import { NornRunLogs } from "./logs.ts";
 import { NornRunLease } from "./run-lease.ts";
 import { NornRunLogger } from "./run-log.ts";
-import { initializeRunResources } from "./run-resources.ts";
-import { getRunInfo, mergeInterruptedWorkflowParams, NornRunStateStore, resolveRunRoot, type NornRunState } from "./run-state.ts";
+import { NornRunResources } from "../resources.ts";
+import { assertRunVersion, getRunInfo, mergeInterruptedWorkflowArgs, NornRunStateStore, resolveRunRoot, type NornRunState } from "./run-state.ts";
 import { NornRunStore, runCurrentRoot } from "./run-store.ts";
 import { NornRunContext } from "./run.ts";
-import { NornMemoryWorkflowState } from "./state-store.ts";
-import { decodePluginConfiguration, NornWorkflowRegistry, type NornRegisteredWorkflow, type NornWorkflowStepResult } from "./workflow-registry.ts";
+import { NornWorkflowRegistry, type NornRegisteredWorkflow, type NornWorkflowStepResult } from "./workflow-registry.ts";
 
 const RUNS_DIR_NAME = ".norn";
 const MANIFEST_FILE_NAME = "manifest.json";
@@ -62,14 +57,12 @@ type ActiveRun = {
 
 type WorkflowStep = {
 	readonly workflow: NornAnyWorkflowDeclaration;
-	readonly params: unknown;
+	readonly args: unknown;
 	readonly interruption?: NonNullable<NornRunState["current"]>["interruption"];
 };
 
 export class NornEngine {
 	private readonly registry = new NornWorkflowRegistry();
-	private readonly registrarState = new NornMemoryWorkflowState();
-	private readonly disposersByPlugin = new Map<string, NornDispose[]>();
 	private readonly responseCollector: NornAgentResponseCollector;
 	private readonly activeRuns = new Map<string, ActiveRun>();
 
@@ -77,19 +70,15 @@ export class NornEngine {
 		this.responseCollector = input.responseCollector ?? new NornAgentResponseCollector();
 	}
 
-	registerPlugin<TManifest extends NornAnyWorkflowPluginManifest>(plugin: NornWorkflowPlugin<TManifest>): NornDispose {
-		this.disposePlugin(plugin.manifest.id);
-		const implementation = this.resolvePluginImplementation(plugin.implementation);
-		const configuration = decodePluginConfiguration({ pluginId: plugin.manifest.id, schema: plugin.manifest.config, value: this.input.config?.[plugin.manifest.id] });
-		const disposers = Object.entries(plugin.manifest.workflows).map(([key, workflow]) => {
-			const workflowImplementation = implementation.workflows[key];
-			if (!workflowImplementation) throw new Error(`Missing implementation for workflow ${plugin.manifest.id}.${key}`);
-			return this.registry.register(workflow, workflowImplementation, { plugin: { id: plugin.manifest.id }, configuration });
-		});
-		this.disposersByPlugin.set(plugin.manifest.id, disposers);
-		return () => {
-			if (this.disposersByPlugin.get(plugin.manifest.id) === disposers) this.disposePlugin(plugin.manifest.id);
-		};
+	registerWorkflows(workflows: readonly NornAnyWorkflowDeclaration[]): NornDispose {
+		const disposers: NornDispose[] = [];
+		try {
+			for (const workflow of workflows) disposers.push(this.registry.register({ workflow, config: this.input.config ?? {}, source: undefined }));
+		} catch (error) {
+			for (const dispose of disposers.reverse()) dispose();
+			throw error;
+		}
+		return () => { for (const dispose of disposers) dispose(); };
 	}
 
 	listWorkflows() {
@@ -100,20 +89,12 @@ export class NornEngine {
 		return this.registry.launchableEntries();
 	}
 
-	private resolvePluginImplementation<TManifest extends NornAnyWorkflowPluginManifest>(
-		implementationInput: NornWorkflowPluginImplementationInput<TManifest>,
-	): NornWorkflowPluginImplementation<TManifest> {
-		return typeof implementationInput === "function"
-			? implementationInput({ cwd: this.input.cwd, state: this.registrarState })
-			: implementationInput;
-	}
-
 	async runWorkflow<TWorkflow extends NornAnyWorkflowDeclaration>(
 		workflow: TWorkflow,
-		params: unknown,
+		args: unknown,
 		options: NornRunStartOptions | undefined,
 	): Promise<NornRunResult> {
-		const session = await this.createRunSession(workflow, params, options);
+		const session = await this.createRunSession(workflow, args, options);
 		const current = session.state.currentState().current;
 		if (!current) throw new Error("New run is missing its initial workflow step");
 		return this.runScheduler(session, toWorkflowStep(workflow, current));
@@ -126,6 +107,7 @@ export class NornEngine {
 
 	async rollbackRun(path: string, checkpointId: string): Promise<NornRunInfo> {
 		const runRoot = await resolveRunRoot(this.input.cwd, path);
+		assertRunVersion((await getRunInfo(runRoot)).version);
 		const lease = await NornRunLease.acquire(runRoot);
 		try {
 			const pendingRequest = await readOptionalRunResumeRequest(runRoot);
@@ -142,21 +124,21 @@ export class NornEngine {
 		}
 	}
 
-	async resumeWorkflow(path: string, params?: unknown): Promise<NornRunResult> {
-		return this.resumeWorkflowExecution({ path, params, expectedRequest: undefined });
+	async resumeWorkflow(path: string, args?: unknown): Promise<NornRunResult> {
+		return this.resumeWorkflowExecution({ path, args, expectedRequest: undefined });
 	}
 
 	async resumeRequestedWorkflow(input: { readonly runRoot: string; readonly request: NornRunResumeRequest }): Promise<NornRunResult> {
-		return this.resumeWorkflowExecution({ path: input.runRoot, params: input.request.params, expectedRequest: input.request });
+		return this.resumeWorkflowExecution({ path: input.runRoot, args: input.request.args, expectedRequest: input.request });
 	}
 
-	private async resumeWorkflowExecution(input: { readonly path: string; readonly params: unknown; readonly expectedRequest: NornRunResumeRequest | undefined }): Promise<NornRunResult> {
-		const { params, expectedRequest } = input;
+	private async resumeWorkflowExecution(input: { readonly path: string; readonly args: unknown; readonly expectedRequest: NornRunResumeRequest | undefined }): Promise<NornRunResult> {
+		const { args, expectedRequest } = input;
 		const runRoot = await resolveRunRoot(this.input.cwd, input.path);
 		const initialStateStore = await NornRunStateStore.load(runRoot);
 		const initialState = initialStateStore.currentState();
-		if (initialState.status === "interrupted" && params === undefined) throw new Error(`Interrupted workflow resume requires params: ${runRoot}`);
-		if (initialState.status === "pendingResume" && params !== undefined) throw new Error(`Pending-resume workflows do not accept params: ${runRoot}`);
+		if (initialState.status === "interrupted" && args === undefined) throw new Error(`Interrupted workflow resume requires args: ${runRoot}`);
+		if (initialState.status === "pendingResume" && args !== undefined) throw new Error(`Pending-resume workflows do not accept args: ${runRoot}`);
 		if (initialState.status !== "interrupted" && initialState.status !== "pendingResume") throw new Error(`Run must be rolled back before resuming: ${runRoot}`);
 
 		const lease = await NornRunLease.acquire(runRoot);
@@ -172,9 +154,9 @@ export class NornEngine {
 			const workflow = this.registry.workflowById(current.workflowId);
 			if (!workflow) throw new Error(`Unknown workflow for resumed run: ${current.workflowId}`);
 			if (state.status === "interrupted") {
-				const rawParams = mergeInterruptedWorkflowParams(current.params, params, current.interruption?.fields);
-				Value.Decode(workflow.params, rawParams);
-				await session.state.replaceCurrentParams(rawParams);
+				const rawArgs = mergeInterruptedWorkflowArgs(current.args, args, current.interruption?.fields);
+				Value.Decode(workflow.args, rawArgs);
+				await session.state.replaceCurrentArgs(rawArgs);
 				await recordRunEvent(session, { type: "run.resumed", workflowId: workflow.id, cwd: session.run.cwd });
 				const resumedCurrent = session.state.currentState().current;
 				if (!resumedCurrent) throw new Error(`Run is not resumable: ${runRoot}`);
@@ -203,12 +185,12 @@ export class NornEngine {
 				throwIfRunAborted(session.activeRun);
 				const stepRuntime = session.run.forWorkflow(currentStep.workflow);
 				if (shouldPauseForGate(currentStep)) {
-					const description = await this.registry.describeGate(currentStep.workflow, stepRuntime, currentStep.params, session.state.currentState().configOverride);
+					const description = await this.registry.describeGate(currentStep.workflow, stepRuntime, currentStep.args, session.state.currentState().configOverride);
 					const interruption = { description, fields: currentStep.workflow.gate?.fields };
-					await session.state.interruptCurrent(currentStep.params, interruption);
+					await session.state.interruptCurrent(currentStep.args, interruption);
 					await recordRunEvent(session, { type: "run.interrupted", workflowId: currentStep.workflow.id });
 					await commitRunBoundary(session, `run interrupted: ${currentStep.workflow.id}`);
-					return interruptedLaunchResult({ id: stepRuntime.id, name: session.state.currentState().name, workspace: stepRuntime.workspace, cwd: stepRuntime.cwd }, currentStep.workflow, currentStep.params, interruption);
+					return interruptedLaunchResult({ id: stepRuntime.id, name: session.state.currentState().name, workspace: stepRuntime.workspace, cwd: stepRuntime.cwd }, currentStep.workflow, currentStep.args, interruption);
 				}
 				await session.state.startStep(toRunStateStep(currentStep));
 				const stepResult = await this.executeWorkflowStep(session, currentStep, stepRuntime);
@@ -251,7 +233,7 @@ export class NornEngine {
 		try {
 			await assertWorkspaceBoundary(session, run.workspace);
 			await recordRunEvent(session, { type: "workflow.started", workflowId: step.workflow.id });
-			const result = await this.registry.execute(step.workflow, run, step.params, session.state.currentState().configOverride);
+			const result = await this.registry.execute(step.workflow, run, step.args, session.state.currentState().configOverride);
 			await assertWorkspaceBoundary(session, run.workspace);
 			const durationMs = Date.now() - startedAtMs;
 			if (result.type === "complete") await recordRunEvent(session, { type: "workflow.completed", workflowId: result.workflow.id, durationMs, metadata: result.metadata });
@@ -274,14 +256,14 @@ export class NornEngine {
 		if (!workflow) throw new Error(`Unknown next workflow: ${next.workflowId}`);
 		return {
 			workflow,
-			params: next.params,
+			args: next.args,
 			interruption: this.input.gateMode === "pause" && workflow.gate ? { status: "pending" } : undefined,
 		};
 	}
 
 	private async createRunSession<TWorkflow extends NornAnyWorkflowDeclaration>(
 		workflow: TWorkflow,
-		params: unknown,
+		args: unknown,
 		options: NornRunStartOptions | undefined,
 	): Promise<RunSession> {
 		const id = options?.id ?? randomUUID();
@@ -314,7 +296,7 @@ export class NornEngine {
 				workspace,
 				configOverride: options?.configOverride,
 				current: {
-					workflowId: workflow.id, params, cwd, env: {},
+					workflowId: workflow.id, args, cwd, env: {},
 					interruption: this.input.gateMode === "pause" && workflow.gate ? { status: "pending" } : undefined,
 				},
 				startedAt,
@@ -364,7 +346,7 @@ export class NornEngine {
 		await mkdir(input.workspace, { recursive: true });
 		await mkdir(artifactsRoot, { recursive: true });
 		await mkdir(logsRoot, { recursive: true });
-		const { resources, state } = await initializeRunResources(dirname(input.currentRoot));
+		const resources = await NornRunResources.initialize(dirname(input.currentRoot));
 		return new NornRunContext({
 			id: input.id,
 			runRoot: input.currentRoot,
@@ -376,7 +358,6 @@ export class NornEngine {
 			agentDir: this.input.agentDir,
 			responseCollector: this.responseCollector,
 			resources,
-			state,
 			logger: input.logger,
 			artifacts: new NornArtifacts(artifactsRoot, resources.files),
 			logs: new NornRunLogs(logsRoot, resources.files),
@@ -416,11 +397,6 @@ export class NornEngine {
 		activeRun.finish();
 	}
 
-	private disposePlugin(pluginId: string): void {
-		const disposers = this.disposersByPlugin.get(pluginId) ?? [];
-		for (const dispose of [...disposers].reverse()) dispose();
-		this.disposersByPlugin.delete(pluginId);
-	}
 }
 
 function defaultRunRoot(cwd: string, id: string): string {
@@ -434,7 +410,7 @@ function workflowDefaultCwd(projectRoot: string, workspace: string, workflow: No
 function toWorkflowStep(workflow: NornAnyWorkflowDeclaration, step: NonNullable<NornRunState["current"]>): WorkflowStep {
 	return {
 		workflow,
-		params: step.params,
+		args: step.args,
 		interruption: step.interruption,
 	};
 }
@@ -442,7 +418,7 @@ function toWorkflowStep(workflow: NornAnyWorkflowDeclaration, step: NonNullable<
 function toRunStateStep(step: WorkflowStep): NonNullable<NornRunState["current"]> {
 	return {
 		workflowId: step.workflow.id,
-		params: step.params,
+		args: step.args,
 		cwd: "",
 		env: {},
 		interruption: step.interruption,
@@ -464,7 +440,7 @@ function isRunStopped(session: RunSession, error: unknown): boolean {
 	return error instanceof NornRunStoppedError || session.activeRun.controller.signal.reason instanceof NornRunStoppedError;
 }
 
-function interruptedLaunchResult(run: RunIdentity, workflow: NornAnyWorkflowDeclaration, params: unknown, interruption: { readonly description?: string; readonly fields?: readonly string[] }): NornInterruptedRunResult {
+function interruptedLaunchResult(run: RunIdentity, workflow: NornAnyWorkflowDeclaration, args: unknown, interruption: { readonly description?: string; readonly fields?: readonly string[] }): NornInterruptedRunResult {
 	if (!workflow.gate) throw new Error(`Workflow is not gated: ${workflow.id}`);
 	if (!interruption.description) throw new Error(`Interrupted workflow is missing description: ${workflow.id}`);
 	return {
@@ -474,7 +450,7 @@ function interruptedLaunchResult(run: RunIdentity, workflow: NornAnyWorkflowDecl
 		workspace: run.workspace,
 		cwd: run.cwd,
 		workflowId: workflow.id,
-		interruption: { workflowId: workflow.id, params, description: interruption.description, fields: interruption.fields },
+		interruption: { workflowId: workflow.id, args, description: interruption.description, fields: interruption.fields },
 	};
 }
 

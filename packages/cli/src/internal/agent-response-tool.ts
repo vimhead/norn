@@ -71,12 +71,12 @@ export class NornAgentResponseToolFactory {
 				label: Type.String({ description: "The exact workflow agent label provided in the prompt." }),
 				response: Type.Unknown({ description: "The structured response object requested by the workflow." }),
 			}),
-			async execute(_toolCallId, params) {
+			async execute(_toolCallId, args) {
 				try {
-					const captured = responseCollector.capture(params.runId, params.label, params.response);
+					const captured = responseCollector.capture(args.runId, args.label, args.response);
 					return {
 						content: [{ type: "text", text: `Recorded workflow agent response for ${captured.label}.` }],
-						details: { valid: true, runId: params.runId, label: captured.label, response: captured.response } as AgentResponseToolDetails,
+						details: { valid: true, runId: args.runId, label: captured.label, response: captured.response } as AgentResponseToolDetails,
 						terminate: true,
 					};
 				} catch (error) {

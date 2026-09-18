@@ -108,7 +108,7 @@ norn commands inspect runs.start
 norn help runs start
 ```
 
-Default workflow listing shows entrypoints; `--all` includes internal steps. Workflow inspection returns instructions, params JSON Schema, isolation, gate metadata and plugin source locations. [Loading diagnostics](projects.md#diagnose-registration) are part of the discovery envelope.
+Default workflow listing shows entrypoints; `--all` includes internal steps. Workflow inspection returns instructions, args JSON Schema, isolation, gate metadata, workflow/scope configuration schemas and keys, and registration source locations. [Loading diagnostics](projects.md#diagnose-registration) are part of the discovery envelope.
 
 Help is text; ordinary results are JSON. `runs logs` emits JSONL events.
 `norn pi [arguments...]` is a passthrough to bundled Pi, preserving Pi's native
@@ -121,7 +121,7 @@ Commands and schemas from the invoked executable are authoritative when a checko
 From inside the target project:
 
 ```bash
-printf '%s\n' '{"params":{"name":"Ada"}}' | norn runs start greeting.write
+printf '%s\n' '{"args":{"name":"Ada"}}' | norn runs start greeting.write
 norn runs wait <run>
 norn runs inspect <run>
 norn runs metrics <run>
@@ -131,7 +131,7 @@ Start returns `{ "run": ... }` with `id`, `name`, and `path`, after launching a 
 
 A completed capability's outputs are in `run.outcome.metadata`. Artifact refs resolve beneath `<run.path>/current/artifacts/`. The [minimal example](../examples/minimal-workflow/README.md) gives concrete output expectations.
 
-Start stdin accepts `params` and optional `config`, with config overrides keyed by plugin ID. Params are JSON, not CLI flags or TOON. For display, a JSON viewer can format a finite result; keep machine artifacts and JSONL events in their native format.
+Start stdin accepts `args` and optional `config`, with config overrides keyed independently by workflow ID or scope ID. Args are JSON, not CLI flags or TOON. For display, a JSON viewer can format a finite result; keep machine artifacts and JSONL events in their native format.
 
 | Decision | GOOD | BAD |
 |---|---|---|
@@ -167,7 +167,7 @@ import { createNornClient } from "@vimhead.dev/norn-cli/client";
 const client = createNornClient({ spawnCwd: "/absolute/path/to/project" });
 const started = await client.runs.start({
   workflowId: "greeting.write",
-  params: { name: "Ada" },
+  args: { name: "Ada" },
 });
 const finished = await client.runs.wait(started.id);
 if (finished.status !== "completed" || finished.health !== "healthy") {
@@ -178,6 +178,6 @@ console.log(finished.outcome?.metadata);
 
 The client defaults to its own package's `bin/norn.mjs`. Its optional `executablePath` is a script launched through `process.execPath`, not an arbitrary standalone binary or shell command. Other languages can invoke the CLI directly with cwd, JSON stdin, and parsed stdout.
 
-`workflows.list()` and `inspect()` use fresh CLI discovery. `workflows.entries()` and `client.state` use a cached in-process project load; [persistence](persistence.md#choose-what-survives) defines the `client.state` lifetime. A new client is needed to refresh that in-process catalogue after source edits.
+`workflows.list()` and `inspect()` use fresh discovery. `workflows.entries()` retains its loaded catalogue; create a new client to refresh those entries after source edits.
 
 Sources: [CLI declarations and handlers](../packages/cli/src/cli.ts), [client API](../packages/cli/src/client.ts).

@@ -19,11 +19,11 @@ async function createFixture(context: TestContext, status: "interrupted" | "pend
 	await mkdir(runRoot, { recursive: true });
 	const state = await NornRunStateStore.create(runRoot, {
 		id: "requested", name: "requested", entrypointWorkflowId: "test.step", workspace: join(runRoot, "current/workspace"),
-		current: { workflowId: "test.step", params: { answer: false }, cwd, env: {} }, startedAt: new Date().toISOString(),
+		current: { workflowId: "test.step", args: { answer: false }, cwd, env: {} }, startedAt: new Date().toISOString(),
 	});
 	if (status === "interrupted") await state.interruptCurrent({ answer: false }, { description: "Choose", fields: ["answer"] });
 	else await state.prepareForResumeAfterRollback();
-	const request: NornRunResumeRequest = { version: 1, type: "resume", id: "requested", params: status === "interrupted" ? { answer: true } : undefined, createdAt: new Date().toISOString() };
+	const request: NornRunResumeRequest = { version: 2, type: "resume", id: "requested", args: status === "interrupted" ? { answer: true } : undefined, createdAt: new Date().toISOString() };
 	return { cwd, runRoot, state, request };
 }
 
@@ -52,7 +52,7 @@ for (const status of ["interrupted", "pendingResume"] as const) {
 test("a second resume request cannot overwrite a queued decision", async (context) => {
 	const fixture = await createFixture(context, "interrupted");
 	await writeRunResumeRequest(fixture.runRoot, fixture.request);
-	await assert.rejects(writeRunResumeRequest(fixture.runRoot, { ...fixture.request, params: { answer: false } }), { code: "EEXIST" });
+	await assert.rejects(writeRunResumeRequest(fixture.runRoot, { ...fixture.request, args: { answer: false } }), { code: "EEXIST" });
 	assert.deepEqual(await readRunResumeRequest(fixture.runRoot), fixture.request);
 });
 
@@ -81,7 +81,7 @@ test("an old executor cannot clear a replacement request", async context => {
 
 test("executor plugin-loading errors release the queued resume request", { timeout: 10000 }, async context => {
 	const fixture = await createFixture(context, "interrupted");
-	await writeFile(join(fixture.cwd, "norn.project.json"), '{"version":1,"plugins":["./broken.ts"]}');
+	await writeFile(join(fixture.cwd, "norn.project.json"), '{"version":1,"workflows":["./broken.ts"]}');
 	await writeFile(join(fixture.cwd, "broken.ts"), 'throw new Error("injected plugin loading failure");');
 	await writeRunResumeRequest(fixture.runRoot, fixture.request);
 	const child = spawn(process.execPath, [cliPath, "execute-run", "requested"], { cwd: fixture.cwd, stdio: ["ignore", "pipe", "pipe"] });

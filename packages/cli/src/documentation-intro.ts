@@ -24,7 +24,7 @@ export function renderNornDocumentationIntro(input: {
 		"",
 		"Live CLI contracts (argument arrays appended to the runtime argv above):",
 		'- ["workflows", "list"] — currently registered entrypoints.',
-		'- ["workflows", "inspect", "<workflow-id>"] — current instructions, params schema, and source.',
+		'- ["workflows", "inspect", "<workflow-id>"] — current instructions, args schema, and source.',
 		'- ["help"] — command usage.',
 	].join("\n");
 }

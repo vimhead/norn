@@ -17,9 +17,9 @@ import { clearRunResumeRequest, readRunLaunchRequest, readRunResumeRequest, writ
 import { readRunMetrics } from "./internal/metrics.ts";
 import { getRunLeaseOwner, NornRunLease } from "./internal/run-lease.ts";
 import { generateRunName } from "./internal/run-names.ts";
-import { getRunInfo, listRuns, mergeInterruptedWorkflowParams, resolveRunRoot } from "./internal/run-state.ts";
+import { assertRunVersion, getRunInfo, listRuns, mergeInterruptedWorkflowArgs, resolveRunRoot } from "./internal/run-state.ts";
 import { NornRunStore } from "./internal/run-store.ts";
-import { discoverNornProject, findNornProject, inspectNornWorkflow, loadNornProject, NORN_PROJECT_FILE_NAME } from "./plugin-loader.ts";
+import { discoverNornProject, findNornProject, inspectNornWorkflow, loadNornProject, NORN_PROJECT_FILE_NAME } from "./workflow-loader.ts";
 
 const RUNS_ROOT = join(".norn", "runs");
 const RUN_WAIT_INTERVAL_MS = 1000;
@@ -110,9 +110,9 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "project.inspect",
 		path: ["project", "inspect"],
-		description: "Use when discovering the active Norn project, plugins, and workflow sources.",
+		description: "Use when discovering the active Norn project, configuration, and workflow sources.",
 		usage: "norn project inspect",
-		output: "JSON object with project metadata under project, isComplete, and plugin diagnostics. Incomplete discovery does not permit execution.",
+		output: "JSON object with project metadata under project, isComplete, and registration diagnostics. Incomplete discovery does not permit execution.",
 		examples: ["norn project inspect"],
 		execute: async (args) => {
 			assertNoExtraArgs("project inspect", args);
@@ -125,17 +125,17 @@ const COMMANDS: readonly CliCommand[] = [
 		description: "Use when selecting a Norn workflow for a user task; defaults to entrypoint workflows.",
 		usage: "norn workflows list [--entrypoints|--all]",
 		options: ["--entrypoints: list entrypoint workflows", "--all: include internal workflow steps"],
-		output: "JSON object with workflow summaries under workflows, isComplete, and plugin diagnostics. Successful discovery can be incomplete; start/resume remain strict.",
+		output: "JSON object with workflow summaries under workflows, isComplete, and registration diagnostics. Successful discovery can be incomplete; start/resume remain strict.",
 		examples: ["norn workflows list", "norn workflows list --all"],
 		execute: listWorkflows,
 	},
 	{
 		id: "workflows.inspect",
 		path: ["workflows", "inspect"],
-		description: "Use when reading a workflow's instructions, params schema, gate contract, and source plugin before starting or editing it.",
+		description: "Use when reading a workflow's instructions, args schema, gate contract, and registration source before starting or editing it.",
 		usage: "norn workflows inspect <workflow-id>",
 		arguments: ["workflow-id: fully qualified workflow id"],
-		output: "JSON object with workflow details, isComplete, and plugin diagnostics. workflow is null if unavailable in an incomplete catalog or its schema cannot be inspected; an unknown id in a complete catalog is an error.",
+		output: "JSON object with workflow details, isComplete, and registration diagnostics. workflow is null if unavailable in an incomplete catalog or its schema cannot be inspected; an unknown id in a complete catalog is an error.",
 		examples: ["norn workflows inspect example.plan"],
 		execute: async (args) => {
 			const workflowId = requiredArg("workflows inspect", args, 0, "workflow id");
@@ -146,12 +146,12 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.start",
 		path: ["runs", "start"],
-		description: "Use when starting a Norn workflow run after the workflow id and params are known.",
+		description: "Use when starting a Norn workflow run after the workflow id and args are known.",
 		usage: "norn runs start <workflow-id>",
 		arguments: ["workflow-id: fully qualified workflow id to start"],
-		stdin: "Optional JSON object: {\"params\":{...},\"config\":{\"pluginId\":{...}}}.",
+		stdin: "Optional JSON object: {\"args\":{...},\"config\":{\"workflowOrScopeId\":{...}}}.",
 		output: "JSON object with started run info under run.",
-		examples: ["printf '{\"params\":{\"task\":\"Add tests\"}}' | norn runs start example.plan"],
+		examples: ["printf '{\"args\":{\"task\":\"Add tests\"}}' | norn runs start example.plan"],
 		execute: async (args) => {
 			const workflowId = requiredArg("runs start", args, 0, "workflow id");
 			await startRun(workflowId, args.slice(1));
@@ -163,9 +163,9 @@ const COMMANDS: readonly CliCommand[] = [
 		description: "Use when resuming an interrupted gate or a checkpoint restored for retry.",
 		usage: "norn runs resume <run>",
 		arguments: ["run: run id, generated name, or run path"],
-		stdin: "Optional JSON object: {\"params\":{...}}. Interrupted runs require a patch containing only editable gate fields; pending-resume runs do not accept params.",
+		stdin: "Optional JSON object: {\"args\":{...}}. Interrupted runs require a patch containing only editable gate fields; pending-resume runs do not accept args.",
 		output: "JSON object with resumed run info under run.",
-		examples: ["printf '{\"params\":{\"decision\":\"accept\"}}' | norn runs resume quiet-river-lantern"],
+		examples: ["printf '{\"args\":{\"decision\":\"accept\"}}' | norn runs resume quiet-river-lantern"],
 		execute: async (args) => {
 			const run = requiredArg("runs resume", args, 0, "run");
 			await resumeRun(run, args.slice(1));
@@ -753,7 +753,7 @@ async function initProject(): Promise<void> {
 	const projectPath = resolve(projectRoot, NORN_PROJECT_FILE_NAME);
 	if (await isFile(projectPath)) throw new Error(`Norn project already exists: ${projectPath}`);
 	await mkdir(resolve(projectRoot, RUNS_ROOT), { recursive: true });
-	await writeFile(projectPath, `${JSON.stringify({ version: 1, plugins: [], includes: [], config: {} }, null, 2)}\n`, "utf8");
+	await writeFile(projectPath, `${JSON.stringify({ version: 1, workflows: [], includes: [], config: {} }, null, 2)}\n`, "utf8");
 	await ensureGitignoreExcludesRunState(projectRoot);
 	writeJson({ project: { path: projectPath, root: projectRoot, runsRoot: resolve(projectRoot, RUNS_ROOT) } });
 }
@@ -768,21 +768,21 @@ async function inspectProject(): Promise<void> {
 	writeJson({ project, isComplete, diagnostics });
 }
 
-async function startRun(workflowId: string, args: readonly string[]): Promise<void> {
-	assertNoStructuredInputArgs("runs start", args);
+async function startRun(workflowId: string, commandArgs: readonly string[]): Promise<void> {
+	assertNoStructuredInputArgs("runs start", commandArgs);
 	const project = await loadNornProject(process.cwd());
 	const workflow = project.registry.workflowById(workflowId);
 	if (!workflow) throw new Error(`Unknown workflow: ${workflowId}`);
 	const input = parseStartRunInput(await readStdinJson());
-	const params = input.params === undefined ? {} : input.params;
-	Value.Decode(workflow.params, params);
+	const args = input.args === undefined ? {} : input.args;
+	Value.Decode(workflow.args, args);
 	const configOverride = input.config;
 	const id = randomUUID();
 	const name = generateRunName(new Set((await listRuns(project.projectRoot)).map((run) => run.name)));
 	const runRoot = resolve(project.projectRoot, RUNS_ROOT, id);
 	await mkdir(runRoot, { recursive: true });
 	const createdAt = new Date().toISOString();
-	await writeRunLaunchRequest(runRoot, { version: 1, type: "run", id, name, workflowId, params, configOverride, createdAt });
+	await writeRunLaunchRequest(runRoot, { version: 2, type: "run", id, name, workflowId, args, configOverride, createdAt });
 	await startDetachedExecuteRun(id, project.projectRoot);
 	writeJson({ run: startedRunInfo({ id, name, workflow, runRoot, createdAt }) });
 }
@@ -796,8 +796,9 @@ async function resumeRun(run: string, args: readonly string[]): Promise<void> {
 	let request: NornRunResumeRequest;
 	try {
 		const runInfo = await getRunInfo(runRoot);
-		const params = await parseResumeParams(runInfo, input.params);
-		request = { version: 1, type: "resume", id: runInfo.id, requestId: randomUUID(), params, createdAt: new Date().toISOString() };
+		assertRunVersion(runInfo.version);
+		const args = await parseResumeArgs(runInfo, input.args);
+		request = { version: 2, type: "resume", id: runInfo.id, requestId: randomUUID(), args, createdAt: new Date().toISOString() };
 		await writeRunResumeRequest(runRoot, request);
 	} finally {
 		await lease.release();
@@ -811,18 +812,18 @@ async function resumeRun(run: string, args: readonly string[]): Promise<void> {
 	writeJson({ run: await getRunInfo(runRoot) });
 }
 
-async function parseResumeParams(runInfo: NornRunInfo, params: unknown): Promise<unknown> {
+async function parseResumeArgs(runInfo: NornRunInfo, args: unknown): Promise<unknown> {
 	if (runInfo.status === "interrupted") {
-		if (params === undefined) throw new Error(`Interrupted workflow resume requires params: ${runInfo.name}`);
+		if (args === undefined) throw new Error(`Interrupted workflow resume requires args: ${runInfo.name}`);
 		if (!runInfo.currentWorkflowId) throw new Error(`Run has no current workflow: ${runInfo.name}`);
 		const project = await loadNornProject(process.cwd());
 		const workflow = project.registry.workflowById(runInfo.currentWorkflowId);
 		if (!workflow) throw new Error(`Unknown workflow for resumed run: ${runInfo.currentWorkflowId}`);
-		Value.Decode(workflow.params, mergeInterruptedWorkflowParams(runInfo.interruption?.params, params, runInfo.interruption?.fields));
-		return params;
+		Value.Decode(workflow.args, mergeInterruptedWorkflowArgs(runInfo.interruption?.args, args, runInfo.interruption?.fields));
+		return args;
 	}
 	if (runInfo.status === "pendingResume") {
-		if (params !== undefined) throw new Error(`Pending-resume workflows do not accept params: ${runInfo.name}`);
+		if (args !== undefined) throw new Error(`Pending-resume workflows do not accept args: ${runInfo.name}`);
 		return undefined;
 	}
 	throw new Error(`Run must be rolled back before resuming: ${runInfo.name}`);
@@ -900,11 +901,11 @@ async function executeRun(runId: string): Promise<void> {
 	try {
 		const project = await loadNornProject(process.cwd());
 		const engine = new NornEngine({ cwd: project.projectRoot, signal: abortController.signal, gateMode: "pause", config: project.projectConfig });
-		for (const plugin of project.plugins) engine.registerPlugin(plugin);
+		engine.registerWorkflows(project.definitions);
 		if (request.type === "run") {
 			const workflow = project.registry.workflowById(request.workflowId);
 			if (!workflow) throw new Error(`Unknown workflow: ${request.workflowId}`);
-			await engine.runWorkflow(workflow, request.params, { id: request.id, name: request.name, configOverride: request.configOverride });
+			await engine.runWorkflow(workflow, request.args, { id: request.id, name: request.name, configOverride: request.configOverride });
 		} else {
 			await engine.resumeRequestedWorkflow({ runRoot, request });
 		}
@@ -1006,7 +1007,7 @@ function startedRunInfo(input: {
 	readonly createdAt: string;
 }): NornRunInfo {
 	return {
-		version: 1,
+		version: 2,
 		id: input.id,
 		name: input.name,
 		path: input.runRoot,
@@ -1058,18 +1059,18 @@ async function readStdin(): Promise<string> {
 	});
 }
 
-function parseStartRunInput(value: unknown): { readonly params?: unknown; readonly config?: unknown } {
+function parseStartRunInput(value: unknown): { readonly args?: unknown; readonly config?: unknown } {
 	if (value === undefined) return {};
 	const input = parseStructuredInputObject("runs start", value);
-	assertStructuredInputKeys("runs start", input, ["params", "config"]);
-	return { params: input.params, config: input.config };
+	assertStructuredInputKeys("runs start", input, ["args", "config"]);
+	return { args: input.args, config: input.config };
 }
 
-function parseResumeRunInput(value: unknown): { readonly params?: unknown } {
+function parseResumeRunInput(value: unknown): { readonly args?: unknown } {
 	if (value === undefined) return {};
 	const input = parseStructuredInputObject("runs resume", value);
-	assertStructuredInputKeys("runs resume", input, ["params"]);
-	return { params: input.params };
+	assertStructuredInputKeys("runs resume", input, ["args"]);
+	return { args: input.args };
 }
 
 function parseStructuredInputObject(command: string, value: unknown): Record<string, unknown> {

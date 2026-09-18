@@ -1,6 +1,6 @@
 # TypeBox schemas
 
-The [Norn SDK](../packages/sdk/src/api.ts) accepts native `typebox` 1.x schemas for workflow params, config, state and agent responses. This reference is checked against 1.3.33. [Project loading](projects.md#import-and-reload) describes runtime-provided imports and editor dependency resolution.
+The [Norn SDK](../packages/sdk/src/api.ts) accepts native `typebox` 1.x schemas for workflow args, workflow/scope config, and agent responses. This reference is checked against 1.3.33. [Project loading](projects.md#import-and-reload) describes runtime-provided imports and editor dependency resolution.
 
 ## TypeScript → TypeBox
 

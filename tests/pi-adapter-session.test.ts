@@ -1,3 +1,5 @@
+import { StateAdapter } from "../examples/shared-state/state-adapter.ts";
+import { sharedState, type SharedStateAccess } from "../examples/shared-state/shared-state.ts";
 import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { AgentSession, createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
@@ -12,13 +14,13 @@ import { Type } from "typebox";
 import { test, vi, type TestContext } from "vitest";
 
 import type { NornWorkflowCatalogInfo, NornWorkflowInspection } from "@vimhead.dev/norn";
-import { StateAdapter, type NornAgentResourceAdapter } from "@vimhead.dev/norn";
+import { type NornAgentResourceAdapter } from "@vimhead.dev/norn";
 import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
 import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-response-tool.ts";
 import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
 import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
 import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
-import { initializeRunResources } from "../packages/cli/src/internal/run-resources.ts";
+import { initializeSharedState } from "./helpers/shared-state.ts";
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const model: Model<"anthropic-messages"> = { id: "offline", name: "Offline test", provider: "offline-test", api: "anthropic-messages", baseUrl: "https://unused.invalid", reasoning: false, input: ["text"], contextWindow: 128000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 
@@ -145,16 +147,16 @@ test("Pi loads runtime-selected context before the first prompt and refreshes it
 	assert.ok(runtimeLine);
 	const invocation: [string, ...string[]] = JSON.parse(runtimeLine[1]);
 	const invoke = <Output>(args: readonly string[]): Output => JSON.parse(execFileSync(invocation[0], [...invocation.slice(1), ...args], { cwd: fixture.cwd, encoding: "utf8", timeout: 30_000 }));
-	await writeFile(join(fixture.cwd, "norn.project.json"), JSON.stringify({ version: 1, plugins: [] }));
+	await writeFile(join(fixture.cwd, "norn.project.json"), JSON.stringify({ version: 1, workflows: [] }));
 	assert.deepEqual(invoke<NornWorkflowCatalogInfo>(["workflows", "list"]).workflows, []);
-	const plugin = (await readFile(join(packageRoot, "examples/minimal-workflow/plugin.ts"), "utf8")).replace('id: "greeting"', 'id: "fresh"');
+	const plugin = (await readFile(join(packageRoot, "examples/minimal-workflow/plugin.ts"), "utf8")).replace('id: "greeting.write"', 'id: "fresh.write"');
 	await writeFile(join(fixture.cwd, "plugin.ts"), plugin);
-	await writeFile(join(fixture.cwd, "norn.project.json"), JSON.stringify({ version: 1, plugins: ["./plugin.ts"] }));
+	await writeFile(join(fixture.cwd, "norn.project.json"), JSON.stringify({ version: 1, workflows: ["./plugin.ts"] }));
 	assert.deepEqual(invoke<NornWorkflowCatalogInfo>(["workflows", "list"]).workflows.map(workflow => workflow.id), ["fresh.write"]);
 	const inspection = invoke<NornWorkflowInspection>(["workflows", "inspect", "fresh.write"]);
 	assert.ok(inspection.workflow);
 	assert.equal(inspection.workflow.id, "fresh.write");
-	assert.deepEqual(inspection.workflow.paramsSchema.required, ["name"]);
+	assert.deepEqual(inspection.workflow.argsSchema.required, ["name"]);
 	assert.ok(!first.includes("fresh.write"));
 
 	await session.prompt("Next ordinary task");
@@ -250,7 +252,7 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 
 test("native resource tools are explicit, persist across sessions, and clean up on disposal and startup failure", { timeout: 30000 }, async context => {
 	const fixture = await createFixture(context);
-	const { resources, state } = await initializeRunResources(fixture.root);
+	const { resources, state } = await initializeSharedState(fixture.root);
 	const field = { id: "count", schema: Type.Integer() };
 	const hidden = { id: "private", schema: Type.String() };
 	await state.set(hidden, "not attached");
@@ -294,7 +296,7 @@ test("native resource tools are explicit, persist across sessions, and clean up 
 	assert.equal(disposals, 1);
 	await runner.prompt({ label: "unattached", tools: [], prompt: "Return the result", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
 	assert.deepEqual(lastRequest(captured).tools, [AGENT_RESPONSE_TOOL_NAME]);
-	assert.equal(await (await initializeRunResources(fixture.root)).state.get(field), 7);
+	assert.equal(await (await initializeSharedState(fixture.root)).state.get(field), 7);
 	await runner.prompt({ label: "attached-one-shot", tools: [], resourceAdapters: [attachment, lifecycle], prompt: "Return the result", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
 	assert.ok(lastRequest(captured).tools.includes("norn_state_get"));
 	assert.equal(disposals, 2);

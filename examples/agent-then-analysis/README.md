@@ -91,13 +91,13 @@ repairing a consumer from regenerating invalid producer evidence.
 
 ## Change and reuse
 
-Change the analysis criteria in the copied plugin and start a new run, or repair
+Change the analysis criteria in the copied workflow and start a new run, or repair
 an inactive failed analysis from its saved boundary. New source does not replace
 code already loaded by a running executor. For a second source, supply another
-`{"params":{"source":"..."}}` through the unchanged draft entrypoint.
+`{"args":{"source":"..."}}` through the unchanged draft entrypoint.
 
-The result schemas, saved source, artifact reference, and analysis params are the
+The result schemas, saved source, artifact reference, and analysis args are the
 reusable boundary. Analysis deliberately receives no domain task state through
-plugin memory. [State and artifacts](../../docs/persistence.md) describes the
+module memory. [Persistence and artifacts](../../docs/persistence.md) describes the
 storage contract; [composition](../../docs/composition.md) extends fixed
 transitions to caller-selected continuations.

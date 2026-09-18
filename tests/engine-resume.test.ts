@@ -7,7 +7,7 @@ import { Type } from "typebox";
 import { AssertError } from "typebox/value";
 import { test, type TestContext } from "vitest";
 
-import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
+import { workflow, workflowScope } from "@vimhead.dev/norn";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
 import { getRunLeaseOwner } from "../packages/cli/src/internal/run-lease.ts";
 import { getRunInfo } from "../packages/cli/src/internal/run-state.ts";
@@ -17,34 +17,28 @@ async function createInterruptedRun(context: TestContext) {
 	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	const controller = new AbortController();
 	const engine = new NornEngine({ cwd, gateMode: "pause", signal: controller.signal });
-	const manifest = definePluginManifest({
-		id: "resumeTest",
-		workflows: {
-			start: { isEntrypoint: true, instructions: "Use to start a gated test run.", params: Type.Object({}) },
-			decision: {
-				isEntrypoint: false,
-				params: Type.Object({ decision: Type.Enum(["accept", "reject"]), evidence: Type.String() }),
-				gate: { enabled: true, fields: ["decision"] },
-			},
-		},
-	});
-	let executionCount = 0;
-	const plugin = definePlugin(manifest, {
-		workflows: {
-			start: {
-				execute: () => manifest.workflows.decision({ decision: "reject", evidence: "original" }),
-			},
-			decision: {
-				gate: { describe: () => "Accept or reject the evidence." },
-				execute: (run, params) => {
+	const manifestScope = workflowScope({ id: "resumeTest" });
+const manifest_start = manifestScope.workflow({
+id: "start",
+isEntrypoint: true,
+instructions: "Use to start a gated test run.",
+args: Type.Object({}),
+execute: () => manifest_decision({ decision: "reject", evidence: "original" })
+});
+const manifest_decision = manifestScope.workflow({
+id: "decision",
+isEntrypoint: false,
+args: Type.Object({ decision: Type.Enum(["accept", "reject"]), evidence: Type.String() }),
+gate: { enabled: true, fields: ["decision"] , describe: () => "Accept or reject the evidence." },
+execute: ({ args: args, run: run }) => {
 					executionCount++;
-					return run.complete({ data: params });
-				},
-			},
-		},
-	});
-	const unregister = engine.registerPlugin(plugin);
-	const interrupted = await engine.runWorkflow(manifest.workflows.start, {}, undefined);
+					return run.complete({ data: args });
+				}
+});
+	let executionCount = 0;
+	const plugin = [manifest_start, manifest_decision];
+	const unregister = engine.registerWorkflows(plugin);
+	const interrupted = await engine.runWorkflow(manifest_start, {}, undefined);
 	assert.equal(interrupted.status, "interrupted");
 	const runRoot = join(cwd, ".norn", "runs", interrupted.id);
 	const initialRunInfo = await getRunInfo(runRoot);
@@ -70,13 +64,13 @@ async function createInterruptedRun(context: TestContext) {
 	};
 }
 
-for (const { name, params, error } of [
-	{ name: "protected-field patch", params: { evidence: "changed" }, error: /non-gate fields/ },
-	{ name: "schema-invalid patch", params: { decision: "invalid" }, error: AssertError },
+for (const { name, args, error } of [
+	{ name: "protected-field patch", args: { evidence: "changed" }, error: /non-gate fields/ },
+	{ name: "schema-invalid patch", args: { decision: "invalid" }, error: AssertError },
 ]) {
 	test(`resume releases resources after a ${name} and accepts a corrected patch`, async (context) => {
 		const fixture = await createInterruptedRun(context);
-		await assert.rejects(fixture.engine.resumeWorkflow(fixture.runRoot, params), error);
+		await assert.rejects(fixture.engine.resumeWorkflow(fixture.runRoot, args), error);
 		await fixture.assertRejectedResumeReleasedResources();
 		await fixture.assertCorrectedResumeCompletes();
 	});
@@ -87,6 +81,6 @@ test("resume releases resources when the workflow is missing and succeeds after 
 	fixture.unregister();
 	await assert.rejects(fixture.engine.resumeWorkflow(fixture.runRoot, { decision: "accept" }), /Unknown workflow for resumed run/);
 	await fixture.assertRejectedResumeReleasedResources();
-	fixture.engine.registerPlugin(fixture.plugin);
+	fixture.engine.registerWorkflows(fixture.plugin);
 	await fixture.assertCorrectedResumeCompletes();
 });

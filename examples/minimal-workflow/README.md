@@ -10,11 +10,11 @@ First [select the matching Norn runtime](../../docs/cli.md#select-the-runtime).
 Copy this directory into a writable task directory and `cd` into the copy. Its
 entire capability consists of:
 
-- [plugin.ts](plugin.ts): manifest, params schema, and implementation.
-- [norn.project.json](norn.project.json): explicit plugin registration.
+- [plugin.ts](plugin.ts): complete callable workflow and argument schema.
+- [norn.project.json](norn.project.json): explicit workflow registration.
 
-For a project you already have, copy just the plugin and add its path to that
-project's `plugins` array rather than replacing the project configuration.
+For a project you already have, copy just the workflow module and add its path to that
+project's `workflows` array rather than replacing the project configuration.
 
 ## Inspect and run
 
@@ -22,7 +22,7 @@ project's `plugins` array rather than replacing the project configuration.
 norn project inspect
 norn workflows list
 norn workflows inspect greeting.write
-printf '%s\n' '{"params":{"name":"Ada"}}' | norn runs start greeting.write
+printf '%s\n' '{"args":{"name":"Ada"}}' | norn runs start greeting.write
 ```
 
 Discovery should report `isComplete: true`. Inspection describes the required
@@ -46,20 +46,20 @@ Read `.norn/runs/$RUN/current/artifacts/greeting.txt` to verify the saved conten
 In your copied `plugin.ts`, change:
 
 ```ts
-const greeting = `Hello, ${params.name}!`;
+const greeting = `Hello, ${args.name}!`;
 ```
 
 to:
 
 ```ts
-const greeting = `Welcome, ${params.name}!`;
+const greeting = `Welcome, ${args.name}!`;
 ```
 
 Run inspection and start again with the same input, then wait on the **new** run
 ID. The new outcome/artifact should say `Welcome, Ada!`; the first run still
 contains `Hello, Ada!`. No rebuild or Norn reload command is needed.
 
-Starting with `{"params":{"name":" "}}` should fail parameter validation rather
+Starting with `{"args":{"name":" "}}` should fail parameter validation rather
 than launch useful work. This tests the declaration, not only the happy-path
 implementation.
 

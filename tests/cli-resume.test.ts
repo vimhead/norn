@@ -24,25 +24,29 @@ async function cli<Output>({ cwd, args, input }: { cwd: string; args: readonly s
 test("detached CLI resumes wait for the new execution, including slow plugin loading", { timeout: 45000 }, async context => {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-cli-resume-test-"));
 	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
-	await writeFile(join(cwd, "norn.project.json"), '{"version":1,"plugins":["./plugin.ts"]}');
+	await writeFile(join(cwd, "norn.project.json"), '{"version":1,"workflows":["./plugin.ts"]}');
 	await writeFile(join(cwd, "plugin.ts"), `
-import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
+import { workflow, workflowScope } from "@vimhead.dev/norn";
 import { Type, type TSchema, type Static, type StaticEncode, type StaticDecode } from "typebox";
 import { Value } from "typebox/value";
 if (process.argv.includes("execute-run")) await new Promise(resolve => setTimeout(resolve, 1800));
-const manifest = definePluginManifest({ id: "cli", workflows: {
-	decide: { instructions: "Use to supply the test decision.", isEntrypoint: true, params: Type.Object({ answer: Type.Boolean() }), gate: { enabled: true, fields: ["answer"] } }
-} });
-export default definePlugin(manifest, { workflows: { decide: {
-	gate: { describe: () => "Choose" }, execute: (run, params) => run.complete({ data: params })
-} } });
+const manifestScope = workflowScope({ id: "cli" });
+const manifest_decide = manifestScope.workflow({
+id: "decide",
+instructions: "Use to supply the test decision.",
+isEntrypoint: true,
+args: Type.Object({ answer: Type.Boolean() }),
+gate: { enabled: true, fields: ["answer"] , describe: () => "Choose" },
+execute: ({ args: args, run: run }) => run.complete({ data: args })
+});
+export default [manifest_decide];
 `);
 	const executeRun = (args: readonly string[], input?: unknown) => cli<{ run: NornRunInfo }>({ cwd, args, input });
-	const started = await executeRun(["runs", "start", "cli.decide"], { params: { answer: false } });
+	const started = await executeRun(["runs", "start", "cli.decide"], { args: { answer: false } });
 	const runId = started.run.id;
 	assert.equal((await executeRun(["runs", "wait", runId])).run.status, "interrupted");
 	const { checkpoints } = await cli<{ checkpoints: NornRunCheckpoint[] }>({ cwd, args: ["runs", "checkpoints", runId] });
-	const resumed = await executeRun(["runs", "resume", runId], { params: { answer: true } });
+	const resumed = await executeRun(["runs", "resume", runId], { args: { answer: true } });
 	assert.equal(resumed.run.status, "running");
 	assert.equal((await executeRun(["runs", "wait", runId])).run.status, "completed");
 	assert.equal((await executeRun(["runs", "rollback", runId, checkpoints[0].id])).run.status, "pendingResume");

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { Type } from "typebox";
-import { initializeRunResources } from "../../packages/cli/src/internal/run-resources.ts";
+import { initializeSharedState } from "../helpers/shared-state.ts";
 
 const [root, mode, worker] = process.argv.slice(2);
 const files = createRunFileCoordinator(root);
@@ -23,7 +23,7 @@ if (mode === "hold") {
 		});
 	}
 } else if (mode === "state") {
-	const { state } = await initializeRunResources(root);
+	const { state } = await initializeSharedState(root);
 	for (let index = 0; index < 12; index++) {
 		await state.set({ id: `${worker}-${index}`, schema: Type.Number() }, index);
 	}
