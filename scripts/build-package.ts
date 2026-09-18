@@ -1,9 +1,8 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { readdir, rm } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { spawnSync } from "node:child_process";
+import { cp, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import ts from "typescript";
 
 const workspaceRoot = fileURLToPath(new URL("..", import.meta.url));
 const packageRoot = process.cwd();
@@ -38,36 +37,35 @@ await build({
 		},
 	}],
 });
-emitPackageDeclarations();
+await emitPackageDeclarations();
 
-function emitPackageDeclarations(): void {
-	const configPath = join(workspaceRoot, "tsconfig.json");
-	const config = ts.readConfigFile(configPath, ts.sys.readFile);
-	if (config.error) throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, "\n"));
-	const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, workspaceRoot);
-	const declarationRoot = join(workspaceRoot, "dist/declarations");
-	const packageDeclarationRoot = join(declarationRoot, relative(workspaceRoot, sourceRoot));
-	const program = ts.createProgram(sourcePaths, {
-		...parsed.options,
-		rootDir: workspaceRoot,
-		outDir: declarationRoot,
-		noEmit: false,
-		declaration: true,
-		emitDeclarationOnly: true,
-		rewriteRelativeImportExtensions: true,
-	});
-	const diagnostics = [...parsed.errors, ...ts.getPreEmitDiagnostics(program)];
-	if (diagnostics.length > 0) throw new Error(ts.formatDiagnosticsWithColorAndContext(diagnostics, {
-		getCanonicalFileName: path => path,
-		getCurrentDirectory: () => packageRoot,
-		getNewLine: () => "\n",
-	}));
-	const result = program.emit(undefined, (path, content) => {
-		const packagePath = relative(packageDeclarationRoot, path);
-		if (packagePath.startsWith(`..${sep}`)) return;
-		const outputPath = resolve(outputRoot, packagePath);
-		mkdirSync(dirname(outputPath), { recursive: true });
-		writeFileSync(outputPath, content);
-	});
-	if (result.emitSkipped) throw new Error(`Declaration emission failed: ${packageRoot}`);
+async function emitPackageDeclarations(): Promise<void> {
+	const stagingParent = join(workspaceRoot, "dist");
+	await mkdir(stagingParent, { recursive: true });
+	const stagingRoot = await mkdtemp(join(stagingParent, "declarations-"));
+	try {
+		const configPath = join(stagingRoot, "tsconfig.json");
+		const declarationRoot = join(stagingRoot, "output");
+		await writeFile(configPath, JSON.stringify({
+			extends: join(workspaceRoot, "tsconfig.json"),
+			compilerOptions: {
+				rootDir: workspaceRoot,
+				outDir: declarationRoot,
+				noEmit: false,
+				noEmitOnError: true,
+				declaration: true,
+				emitDeclarationOnly: true,
+				rewriteRelativeImportExtensions: true,
+			},
+			files: sourcePaths,
+			include: [],
+		}));
+		const compilerPath = join(dirname(fileURLToPath(import.meta.resolve("typescript/package.json"))), "bin/tsc");
+		const result = spawnSync(process.execPath, [compilerPath, "--project", configPath], { cwd: workspaceRoot, stdio: "inherit" });
+		if (result.error) throw result.error;
+		if (result.status !== 0) throw new Error(`Declaration emission failed: ${packageRoot} (exit ${result.status}, signal ${result.signal})`);
+		await cp(join(declarationRoot, relative(workspaceRoot, sourceRoot)), outputRoot, { recursive: true });
+	} finally {
+		await rm(stagingRoot, { recursive: true, force: true });
+	}
 }
