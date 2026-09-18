@@ -14,6 +14,10 @@ For a dynamically selected string ID, use `return run.next(workflowId, params)`.
 
 ## Caller-selected workflow reference
 
+The [caller-selected continuation example](../examples/caller-selected-continuation/README.md)
+runs a producer with either of two caller-selected consumers, forwarding caller
+context alongside the producer's results. It needs no model or credentials.
+
 A reusable capability can accept a workflow reference whose schema describes the values it contributes. The caller supplies the target and captures the remaining params:
 
 ```ts

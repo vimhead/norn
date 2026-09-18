@@ -87,6 +87,16 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const finished = (await invoke(["runs", "wait", launch.run.id], projectRoot)).run;
 	assert.equal(finished.status, "completed", JSON.stringify(finished));
 	assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Offline!\n");
+	const continuationRoot = join(root, "continuation-copy");
+	await cp(join(documentation.paths.examples, "caller-selected-continuation"), continuationRoot, { recursive: true });
+	const continuationInput = JSON.parse(await readFile(join(continuationRoot, "input.json"), "utf8"));
+	const continuationLaunch = await invoke(["runs", "start", "greetingProducer.write"], continuationRoot, continuationInput);
+	const delivered = (await invoke(["runs", "wait", continuationLaunch.run.id], continuationRoot)).run;
+	assert.equal(delivered.status, "completed", JSON.stringify(delivered));
+	assert.equal(delivered.outcome.workflowId, "greetingConsumer.saveJson");
+	assert.deepEqual(JSON.parse(await readFile(join(delivered.path, "current/artifacts/delivery.json"), "utf8")), {
+		batchId: "batch-17", summary: "Greeting prepared for Ada.", greeting: "Hello, Ada!",
+	});
 	await writeFile(join(projectRoot, "native.ts"), `
 import { definePlugin, definePluginManifest, workflowRefSchema } from "@vimhead.dev/norn";
 import { Type } from "typebox";

@@ -96,6 +96,7 @@ void [files, plugin, client];
 	await writeFile(join(consumer, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true, skipLibCheck: true }, include: ["consumer.ts"] }));
 	await execute(process.execPath, [join(workspaceRoot, "node_modules/typescript/bin/tsc"), "--project", join(consumer, "tsconfig.json")], { cwd: consumer, timeout: 30_000 });
 	await cp(join(documentation.paths.examples, "minimal-workflow"), join(consumer, "workflow"), { recursive: true });
+	await cp(join(documentation.paths.examples, "caller-selected-continuation"), join(consumer, "continuation"), { recursive: true });
 	const smoke = `
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -110,6 +111,15 @@ const started = await client.runs.start({ workflowId: "greeting.write", params: 
 const finished = await client.runs.wait(started.id);
 assert.equal(finished.status, "completed", JSON.stringify(finished));
 assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Packed!\\n");
+const continuation = createNornClient({ spawnCwd: join(process.cwd(), "continuation") });
+const input = JSON.parse(await readFile(join(process.cwd(), "continuation/input.json"), "utf8"));
+const continued = await continuation.runs.start({ workflowId: "greetingProducer.write", params: input.params });
+const delivered = await continuation.runs.wait(continued.id);
+assert.equal(delivered.status, "completed", JSON.stringify(delivered));
+assert.equal(delivered.outcome.workflowId, "greetingConsumer.saveJson");
+assert.deepEqual(JSON.parse(await readFile(join(delivered.path, "current/artifacts/delivery.json"), "utf8")), {
+  batchId: "batch-17", summary: "Greeting prepared for Ada.", greeting: "Hello, Ada!",
+});
 const loader = new DefaultResourceLoader({ cwd: process.cwd(), agentDir: ${JSON.stringify(join(root, "outer-agent"))}, settingsManager: SettingsManager.inMemory({ packages: [${JSON.stringify(adapterRoot)}] }) });
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);

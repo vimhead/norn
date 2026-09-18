@@ -14,7 +14,7 @@ Norn capabilities are ordinary TypeScript plugins: an agent can write one during
 | Initialize shared resources, attach state tools, or coordinate file mutations | [Resources and locking](resources.md) | [Explicit shared state](../examples/shared-state/README.md) |
 | Implement a custom resource and adapter to coordinate concurrent agents | [Resource contracts](resources.md) | [Example-local work queue](../examples/coordinating-multiple-agents/README.md) |
 | Retain evidence or choose a filesystem boundary | [State, artifacts, and workspaces](persistence.md) | [Norn agent → saved artifact → analysis](../examples/agent-then-analysis/README.md) |
-| Reuse a workflow with a caller-selected continuation | [Composition](composition.md) | [Worktree development loop](../examples/worktree-development-loop/README.md) — larger, optional |
+| Reuse a workflow with a caller-selected continuation | [Composition](composition.md) | [Caller-selected continuation](../examples/caller-selected-continuation/README.md) |
 | Repair a failed run without repeating earlier work | [Recovery and gates](recovery.md) | [Analysis-only repair](../examples/agent-then-analysis/README.md#repair-only-the-analysis-step) |
 
 [Public types](../packages/sdk/src/api.ts) define the Norn SDK's authoring interface. CLI discovery exposes the currently loaded project, not a documentation-time workflow catalogue. See [installation](../README.md#installation) for runtime setup.
