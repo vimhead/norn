@@ -1,5 +1,7 @@
 import type { CreateAgentSessionOptions, EventBus, PromptOptions } from "@earendil-works/pi-coding-agent";
-import { z } from "zod";
+import { Type, type Static, type StaticDecode, type StaticEncode, type TAny, type TCodec, type TSchema } from "typebox";
+import type { TLocalizedValidationError } from "typebox/error";
+import { inspectSchema, isPlainObject } from "./schema.ts";
 import type { NornResolvedSeerModeConfig } from "./seer/config.ts";
 
 const WORKFLOW_DECLARATION_KIND = "norn.workflow";
@@ -25,13 +27,13 @@ type NornWorkflowRefForwardParams = Record<string, unknown> & {
 	readonly [nornWorkflowRefForwardParamsBrand]: true;
 };
 
-export type NornWorkflowRef<ParamsSchema extends z.ZodType = z.ZodType, Id extends string = string, ForwardParams = unknown> = Id & {
-	readonly [nornWorkflowRefParamsBrand]: (params: z.input<ParamsSchema> & ForwardParams) => z.input<ParamsSchema> & ForwardParams;
+export type NornWorkflowRef<ParamsSchema extends TSchema = TSchema, Id extends string = string, ForwardParams = unknown> = Id & {
+	readonly [nornWorkflowRefParamsBrand]: (params: StaticEncode<ParamsSchema> & ForwardParams) => StaticEncode<ParamsSchema> & ForwardParams;
 };
 
 export type NornWorkflowDeclaration<
 	Id extends string = string,
-	ParamsSchema extends z.ZodType = z.ZodType,
+	ParamsSchema extends TSchema = TSchema,
 	IsolationMode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
 > = {
 	readonly kind: typeof WORKFLOW_DECLARATION_KIND;
@@ -43,41 +45,32 @@ export type NornWorkflowDeclaration<
 	readonly isolation: NornWorkflowIsolation<IsolationMode>;
 };
 
-export type NornAnyWorkflowDeclaration = NornWorkflowDeclaration<string, z.ZodType<any, any>>;
-export type NornWorkflowTarget<ParamsSchema extends z.ZodType = z.ZodType> = NornWorkflowDeclaration<string, ParamsSchema> | NornWorkflowRef<ParamsSchema>;
-export type NornWorkflowRefSchemaInput<ParamsSchema extends z.ZodType = z.ZodType> = string | {
-	readonly id: NornWorkflowRef<ParamsSchema>;
-	readonly workflow?: never;
-	readonly forwardParams?: never;
-};
-export type NornWorkflowRefSchemaOptions<ParamsSchema extends z.ZodType = z.ZodType> = {
+export type NornAnyWorkflowDeclaration = Omit<NornWorkflowDeclaration, "id"> & { readonly id: NornWorkflowRef<TAny> };
+export type NornWorkflowTarget<ParamsSchema extends TSchema = TSchema> = NornWorkflowDeclaration<string, ParamsSchema> | NornWorkflowRef<ParamsSchema>;
+export type NornAnyWorkflowTarget = NornAnyWorkflowDeclaration | NornWorkflowRef<TAny, string, any>;
+export type NornWorkflowRefSchemaOptions<ParamsSchema extends TSchema = TSchema> = {
 	readonly params?: ParamsSchema;
 };
-export type NornWorkflowRefInput<ParamsSchema extends z.ZodType> =
-	| NornWorkflowRefSchemaInput<ParamsSchema>
-	| {
-		readonly workflow: NornWorkflowRefSchemaInput<z.ZodType<any, any>>;
-		readonly forwardParams: Record<string, unknown>;
-	};
-export type NornWorkflowRefOutput<ParamsSchema extends z.ZodType> = {
+export type NornWorkflowRefInput = StaticEncode<typeof workflowReferenceInputSchema>;
+export type NornWorkflowRefOutput<ParamsSchema extends TSchema> = {
 	readonly workflow: NornWorkflowRef<ParamsSchema, string, NornWorkflowRefForwardParams>;
 	readonly forwardParams: NornWorkflowRefForwardParams;
 };
 
-export type NornWorkflowParamsInput<TWorkflow extends NornAnyWorkflowDeclaration> = z.input<TWorkflow["params"]>;
-export type NornWorkflowParams<TWorkflow extends NornAnyWorkflowDeclaration> = z.output<TWorkflow["params"]>;
-export type NornWorkflowTargetParamsInput<TWorkflow extends NornWorkflowTarget<any>> = TWorkflow extends NornWorkflowDeclaration<string, infer ParamsSchema>
-	? z.input<ParamsSchema>
+export type NornWorkflowParamsInput<TWorkflow extends NornAnyWorkflowDeclaration> = StaticEncode<TWorkflow["params"]>;
+export type NornWorkflowParams<TWorkflow extends NornAnyWorkflowDeclaration> = StaticDecode<TWorkflow["params"]>;
+export type NornWorkflowTargetParamsInput<TWorkflow extends NornAnyWorkflowTarget> = TWorkflow extends { readonly params: infer ParamsSchema extends TSchema }
+	? StaticEncode<ParamsSchema>
 	: TWorkflow extends NornWorkflowRef<infer ParamsSchema, string, infer ForwardParams>
-		? z.input<ParamsSchema> & ForwardParams
+		? StaticEncode<ParamsSchema> & ForwardParams
 		: never;
 
-export type NornWorkflowGate<ParamsSchema extends z.ZodType> = unknown extends z.input<ParamsSchema>
+export type NornWorkflowGate<ParamsSchema extends TSchema> = unknown extends StaticEncode<ParamsSchema>
 	? NornWorkflowAnyGate
-	: z.input<ParamsSchema> extends Record<string, unknown>
+	: StaticEncode<ParamsSchema> extends Record<string, unknown>
 		? {
 			readonly enabled: true;
-			readonly fields?: readonly Extract<keyof z.input<ParamsSchema>, string>[];
+			readonly fields?: readonly Extract<keyof StaticEncode<ParamsSchema>, string>[];
 		}
 		: {
 			readonly enabled: true;
@@ -90,7 +83,7 @@ type NornWorkflowInstructions =
 
 export type NornWorkflowDefinition<
 	Id extends string | undefined = string | undefined,
-	ParamsSchema extends z.ZodType = z.ZodType,
+	ParamsSchema extends TSchema = TSchema,
 	IsolationMode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
 > = {
 	readonly id?: Id;
@@ -101,26 +94,27 @@ export type NornWorkflowDefinition<
 
 export type NornAnyWorkflowDefinition = {
 	readonly id?: string;
-	readonly params: z.ZodType;
+	readonly params: TSchema;
 	readonly gate?: NornWorkflowAnyGate;
 	readonly isolation?: NornWorkflowIsolation;
 } & NornWorkflowInstructions;
 
-export type NornWorkflowStateDefinition<T = unknown, Id extends string = string> = {
+export type NornWorkflowStateDefinition<Schema extends TSchema = TSchema, Id extends string = string> = {
 	readonly id: Id;
 	readonly description?: string;
-	readonly schema: z.ZodType<T>;
+	readonly schema: Schema;
 };
 
-export type NornWorkflowStateDefinitionInput<T = unknown, Id extends string | undefined = string | undefined> = {
+export type NornWorkflowStateDefinitionInput<Schema extends TSchema = TSchema, Id extends string | undefined = string | undefined> = {
 	readonly id?: Id;
 	readonly description?: string;
-	readonly schema: z.ZodType<T>;
+	readonly schema: Schema;
 };
 
 export type NornWorkflowPluginWorkflows = Record<string, NornAnyWorkflowDefinition>;
 export type NornWorkflowPluginStateTree = { readonly [key: string]: NornWorkflowPluginStateTreeNode };
-export type NornWorkflowPluginStateTreeNode = z.ZodType | NornWorkflowStateDefinitionInput | NornWorkflowPluginStateTree;
+type NornStateSchema = TSchema & ({ readonly "~kind": string } | { readonly "~unsafe": unknown });
+export type NornWorkflowPluginStateTreeNode = NornStateSchema | NornWorkflowStateDefinitionInput | NornWorkflowPluginStateTree;
 
 type JoinPath<Head extends string, Parts extends readonly string[]> = Parts extends readonly []
 	? Head
@@ -128,13 +122,13 @@ type JoinPath<Head extends string, Parts extends readonly string[]> = Parts exte
 		? JoinPath<`${Head}.${First}`, Rest>
 		: string;
 
-type NornInvalidGateFields<TWorkflow> = TWorkflow extends { readonly params: infer ParamsSchema extends z.ZodType; readonly gate: { readonly fields: infer Fields extends readonly string[] } }
-	? Exclude<Fields[number], Extract<keyof z.input<ParamsSchema>, string>>
+type NornInvalidGateFields<TWorkflow> = TWorkflow extends { readonly params: infer ParamsSchema extends TSchema; readonly gate: { readonly fields: infer Fields extends readonly string[] } }
+	? Exclude<Fields[number], Extract<keyof StaticEncode<ParamsSchema>, string>>
 	: never;
 
 type NornValidatedWorkflowGate<TWorkflow> = [NornInvalidGateFields<TWorkflow>] extends [never]
 	? unknown
-	: { readonly gate: { readonly fields: readonly Extract<keyof z.input<TWorkflow extends { readonly params: infer ParamsSchema extends z.ZodType } ? ParamsSchema : z.ZodType>, string>[] } };
+	: { readonly gate: { readonly fields: readonly Extract<keyof StaticEncode<TWorkflow extends { readonly params: infer ParamsSchema extends TSchema } ? ParamsSchema : TSchema>, string>[] } };
 
 export type NornValidatedWorkflowGates<Workflows> = {
 	readonly [Key in keyof Workflows]: NornValidatedWorkflowGate<Workflows[Key]>;
@@ -144,7 +138,7 @@ export type NornQualifiedPluginWorkflow<
 	PluginId extends string,
 	WorkflowKey extends string,
 	TWorkflow extends NornAnyWorkflowDefinition,
-> = TWorkflow extends { readonly params: infer ParamsSchema extends z.ZodType }
+> = TWorkflow extends { readonly params: infer ParamsSchema extends TSchema }
 	? NornWorkflowDeclaration<
 		TWorkflow extends { readonly id: infer ExplicitId extends string } ? ExplicitId : `${PluginId}.${WorkflowKey}`,
 		ParamsSchema,
@@ -157,13 +151,10 @@ export type NornQualifiedPluginWorkflows<PluginId extends string, Workflows exte
 };
 
 export type NornQualifiedPluginStates<PluginId extends string, States, Path extends readonly string[] = []> = {
-	readonly [Key in keyof States]: States[Key] extends z.ZodType
-		? NornWorkflowStateDefinition<z.output<States[Key]>, JoinPath<PluginId, [...Path, Key & string]>>
-		: States[Key] extends NornWorkflowStateDefinitionInput<infer Value>
-			? NornWorkflowStateDefinition<
-				Value,
-				States[Key] extends { readonly id: infer ExplicitId extends string } ? ExplicitId : JoinPath<PluginId, [...Path, Key & string]>
-			>
+	readonly [Key in keyof States]: States[Key] extends NornStateSchema
+		? NornWorkflowStateDefinition<States[Key], JoinPath<PluginId, [...Path, Key & string]>>
+		: States[Key] extends NornWorkflowStateDefinitionInput<infer Schema extends NornStateSchema>
+			? NornWorkflowStateDefinition<Schema, States[Key] extends { readonly id: infer Id extends string } ? Id : JoinPath<PluginId, [...Path, Key & string]>>
 			: States[Key] extends NornWorkflowPluginStateTree
 				? NornQualifiedPluginStates<PluginId, States[Key], [...Path, Key & string]>
 				: never;
@@ -171,7 +162,7 @@ export type NornQualifiedPluginStates<PluginId extends string, States, Path exte
 
 export type NornWorkflowPluginManifest<
 	PluginId extends string = string,
-	ConfigSchema extends z.ZodType | undefined = z.ZodType | undefined,
+	ConfigSchema extends TSchema | undefined = TSchema | undefined,
 	Workflows extends Record<string, NornAnyWorkflowDeclaration> = Record<string, NornAnyWorkflowDeclaration>,
 	States = undefined,
 > = {
@@ -181,19 +172,19 @@ export type NornWorkflowPluginManifest<
 	readonly states: States;
 };
 
-export type NornAnyWorkflowPluginManifest = NornWorkflowPluginManifest<string, z.ZodType | undefined, Record<string, NornAnyWorkflowDeclaration>, unknown>;
+export type NornAnyWorkflowPluginManifest = NornWorkflowPluginManifest<string, TSchema | undefined, Record<string, NornAnyWorkflowDeclaration>, unknown>;
 
-export type NornWorkflowPluginConfigSchema<TManifest extends NornAnyWorkflowPluginManifest> = TManifest extends { readonly config?: infer ConfigSchema extends z.ZodType | undefined }
+export type NornWorkflowPluginConfigSchema<TManifest extends NornAnyWorkflowPluginManifest> = TManifest extends { readonly config?: infer ConfigSchema extends TSchema | undefined }
 	? ConfigSchema
 	: undefined;
 
-export type NornWorkflowPluginConfig<TManifest extends NornAnyWorkflowPluginManifest> = NonNullable<NornWorkflowPluginConfigSchema<TManifest>> extends z.ZodType
-	? z.output<NonNullable<NornWorkflowPluginConfigSchema<TManifest>>>
-	: undefined;
+export type NornWorkflowPluginConfig<TManifest extends NornAnyWorkflowPluginManifest> = NornWorkflowPluginConfigSchema<TManifest> extends undefined
+	? undefined
+	: StaticDecode<NonNullable<NornWorkflowPluginConfigSchema<TManifest>>>;
 
 export type NornDefinePluginManifestInput<
 	PluginId extends string,
-	ConfigSchema extends z.ZodType | undefined,
+	ConfigSchema extends TSchema | undefined,
 	Workflows extends NornWorkflowPluginWorkflows,
 	States extends NornWorkflowPluginStateTree | undefined,
 > = {
@@ -205,7 +196,7 @@ export type NornDefinePluginManifestInput<
 
 export function definePluginManifest<
 	const PluginId extends string,
-	const ConfigSchema extends z.ZodType | undefined = undefined,
+	const ConfigSchema extends TSchema | undefined = undefined,
 	const Workflows extends NornWorkflowPluginWorkflows = NornWorkflowPluginWorkflows,
 	const States extends NornWorkflowPluginStateTree | undefined = undefined,
 >(
@@ -387,12 +378,12 @@ export type NornRunCheckpoint = {
 };
 
 export type NornWorkflowStateReader = {
-	get<T>(state: NornWorkflowStateDefinition<T>): Promise<T>;
-	getOptional<T>(state: NornWorkflowStateDefinition<T>): Promise<T | undefined>;
+	get<Schema extends TSchema>(state: NornWorkflowStateDefinition<Schema>): Promise<Static<Schema>>;
+	getOptional<Schema extends TSchema>(state: NornWorkflowStateDefinition<Schema>): Promise<Static<Schema> | undefined>;
 };
 
 export type NornWorkflowState = NornWorkflowStateReader & {
-	set<T>(state: NornWorkflowStateDefinition<T>, value: T): Promise<void>;
+	set<Schema extends TSchema>(state: NornWorkflowStateDefinition<Schema>, value: NoInfer<Static<Schema>>): Promise<void>;
 };
 
 export type NornWorkflowPluginContext = {
@@ -434,45 +425,29 @@ export type NornCommandRunInput = {
 	readonly timeoutMs?: number;
 };
 
-export const artifactRefSchema = z.object({
-	path: z.string(),
+export const artifactRefSchema = Type.Object({
+	path: Type.String(),
 });
 
-export type NornArtifactRef = z.output<typeof artifactRefSchema>;
+export type NornArtifactRef = StaticDecode<typeof artifactRefSchema>;
 
-const emptyWorkflowRefParamsSchema = z.object({});
+const emptyWorkflowRefParamsSchema = Type.Object({});
+const workflowReferenceInputSchema = Type.Union([
+	Type.String({ minLength: 1 }),
+	Type.Object({ workflow: Type.String({ minLength: 1 }), forwardParams: Type.Record(Type.String(), Type.Unknown()) }),
+]);
 
-export function workflowRefSchema(): z.ZodType<
-	NornWorkflowRefOutput<typeof emptyWorkflowRefParamsSchema>,
-	NornWorkflowRefInput<typeof emptyWorkflowRefParamsSchema>
->;
-export function workflowRefSchema(options: {
-	readonly params?: undefined;
-}): z.ZodType<
-	NornWorkflowRefOutput<typeof emptyWorkflowRefParamsSchema>,
-	NornWorkflowRefInput<typeof emptyWorkflowRefParamsSchema>
->;
-export function workflowRefSchema<ParamsSchema extends z.ZodType>(options: NornWorkflowRefSchemaOptions<ParamsSchema>): z.ZodType<
-	NornWorkflowRefOutput<ParamsSchema>,
-	NornWorkflowRefInput<ParamsSchema>
->;
-export function workflowRefSchema(options?: NornWorkflowRefSchemaOptions): z.ZodType {
-	const contributedParams = options?.params ?? emptyWorkflowRefParamsSchema;
-	const targetSchema = z.union([
-		z.string().min(1),
-		z.object({ id: z.string().min(1) }),
-	]).transform((target) => typeof target === "string" ? target : target.id);
-	return z.union([
-		targetSchema,
-		z.object({ workflow: targetSchema, forwardParams: z.record(z.string(), z.unknown()) }),
-	]).transform((reference) => typeof reference === "string"
-		? { workflow: reference, forwardParams: {} }
-		: reference).meta({
-		"x-norn-workflow-ref": {
-			get contributedParamsSchema() {
-				return z.toJSONSchema(contributedParams, { io: "input" });
-			},
-		},
+class WorkflowContributionMetadata {
+	constructor(private readonly schema: TSchema) {}
+	toJSON() { return { contributedParamsSchema: inspectSchema(this.schema) }; }
+}
+
+export function workflowRefSchema(): TCodec<typeof workflowReferenceInputSchema, NornWorkflowRefOutput<typeof emptyWorkflowRefParamsSchema>>;
+export function workflowRefSchema<ParamsSchema extends TSchema = typeof emptyWorkflowRefParamsSchema>(options: NornWorkflowRefSchemaOptions<ParamsSchema>): TCodec<typeof workflowReferenceInputSchema, NornWorkflowRefOutput<ParamsSchema>>;
+export function workflowRefSchema(options?: NornWorkflowRefSchemaOptions) {
+	return Type.With(Type.Decode(workflowReferenceInputSchema, reference =>
+		(typeof reference === "string" ? { workflow: reference, forwardParams: {} } : reference) as NornWorkflowRefOutput<TSchema>), {
+		"x-norn-workflow-ref": new WorkflowContributionMetadata(options?.params ?? emptyWorkflowRefParamsSchema),
 	});
 }
 
@@ -508,14 +483,14 @@ export type NornAgentCreateSessionInput = {
 	readonly appendSystemPrompt?: readonly string[];
 };
 
-export type NornAgentPromptInput<ResponseSchema extends z.ZodType> = {
+export type NornAgentPromptInput<ResponseSchema extends TSchema> = {
 	readonly prompt: string;
 	readonly response: ResponseSchema;
 	readonly maxAttempts?: number;
 	readonly options?: PromptOptions;
 };
 
-export type NornAgentSinglePromptInput<ResponseSchema extends z.ZodType> = NornAgentCreateSessionInput & NornAgentPromptInput<ResponseSchema>;
+export type NornAgentSinglePromptInput<ResponseSchema extends TSchema> = NornAgentCreateSessionInput & NornAgentPromptInput<ResponseSchema>;
 
 export type NornAgentSessionEvents = EventBus;
 
@@ -600,10 +575,10 @@ export type NornAgentRunRawAttempt = {
 	readonly error?: string;
 };
 
-export type NornAgentRunResult<ResponseSchema extends z.ZodType> = {
+export type NornAgentRunResult<ResponseSchema extends TSchema> = {
 	readonly label: string;
 	readonly cwd: string;
-	readonly response: z.output<ResponseSchema>;
+	readonly response: StaticDecode<ResponseSchema>;
 	readonly usage: NornAgentUsage;
 	readonly raw: {
 		readonly text: string;
@@ -620,7 +595,7 @@ export type NornAgentSession = {
 	readonly label: string;
 	readonly cwd: string;
 	readonly events: NornAgentSessionEvents;
-	prompt<ResponseSchema extends z.ZodType>(input: NornAgentPromptInput<ResponseSchema>): Promise<z.output<ResponseSchema>>;
+	prompt<ResponseSchema extends TSchema>(input: NornAgentPromptInput<ResponseSchema>): Promise<StaticDecode<ResponseSchema>>;
 	dispose(): Promise<void>;
 };
 
@@ -636,7 +611,7 @@ type NornRunBase = {
 	workspace: string;
 	cwd: string;
 	path(relativePath: string): string;
-	next<TWorkflow extends NornWorkflowTarget<any>>(workflow: TWorkflow, params: NornWorkflowTargetParamsInput<TWorkflow>): NornRunNext;
+	next<TWorkflow extends NornAnyWorkflowTarget>(workflow: TWorkflow, params: NoInfer<NornWorkflowTargetParamsInput<TWorkflow>>): NornRunNext;
 	complete(metadata?: NornRunOutcomeMetadata): NornRunComplete;
 	fail(metadata: NornRunOutcomeMetadata & { readonly summary: string }): NornRunFail;
 	resources: import("./resources.ts").NornResources;
@@ -653,7 +628,7 @@ type NornRunBase = {
 	};
 	agents: {
 		createSession(input: NornAgentCreateSessionInput): Promise<NornAgentSession>;
-		prompt<ResponseSchema extends z.ZodType>(input: NornAgentSinglePromptInput<ResponseSchema>): Promise<z.output<ResponseSchema>>;
+		prompt<ResponseSchema extends TSchema>(input: NornAgentSinglePromptInput<ResponseSchema>): Promise<StaticDecode<ResponseSchema>>;
 	};
 };
 
@@ -690,7 +665,7 @@ export type NornPluginDiagnostic = {
 	readonly workflowId: string | null;
 	readonly stage: "import" | "declaration" | "config" | "implementation" | "duplicate" | "schema";
 	readonly message: string;
-	readonly issues: readonly { readonly path: readonly (string | number)[]; readonly code: string; readonly message: string }[];
+	readonly issues: readonly TLocalizedValidationError[];
 };
 
 export type NornProjectLoadStatus = {
@@ -755,12 +730,13 @@ function qualifyWorkflow<PluginId extends string, TWorkflow extends NornAnyWorkf
 	return { kind: WORKFLOW_DECLARATION_KIND, ...workflow, id, isolation: workflow.isolation ?? { mode: "runWorkspace" } } as unknown as NornQualifiedPluginWorkflow<PluginId, string, TWorkflow>;
 }
 
-function qualifyStateTree(pluginId: string, node: NornWorkflowPluginStateTreeNode | undefined, path: readonly string[], declaredIds: Set<string>): unknown {
-	if (!node) return undefined;
-	if (isZodSchema(node)) return { id: resolveDeclarationId(pluginId, path, undefined, "state", declaredIds), schema: node };
-	if (isWorkflowStateDefinitionInput(node)) {
+function qualifyStateTree(pluginId: string, node: unknown, path: readonly string[], declaredIds: Set<string>): unknown {
+	if (node === undefined) return undefined;
+	if (isTypeboxSchema(node)) return { id: resolveDeclarationId(pluginId, path, undefined, "state", declaredIds), schema: node };
+	if (path.length > 0 && isWorkflowStateDefinitionInput(node)) {
 		return { ...node, id: resolveDeclarationId(pluginId, path, node.id, "state", declaredIds) };
 	}
+	if (!isPlainObject(node)) throw new Error(`Invalid state declaration: ${[pluginId, ...path].join(".")}`);
 	return Object.fromEntries(Object.entries(node).map(([key, child]) => [key, qualifyStateTree(pluginId, child, [...path, key], declaredIds)]));
 }
 
@@ -778,14 +754,13 @@ export function isWorkflowDeclaration(value: unknown): value is NornAnyWorkflowD
 	);
 }
 
-function isWorkflowStateDefinitionInput(value: unknown): value is NornWorkflowStateDefinitionInput<unknown> {
-	if (!value || typeof value !== "object") return false;
-	const candidate = value as { id?: unknown; schema?: unknown };
-	return (candidate.id === undefined || typeof candidate.id === "string") && isZodSchema(candidate.schema);
+function isTypeboxSchema(value: unknown): value is NornStateSchema {
+	return Type.IsUnsafe(value) || Boolean(value && typeof value === "object" && "~kind" in value && typeof value["~kind"] === "string");
 }
 
-function isZodSchema(value: unknown): value is z.ZodType {
-	return Boolean(value && typeof value === "object" && typeof (value as { safeParse?: unknown }).safeParse === "function");
+function isWorkflowStateDefinitionInput(value: unknown): value is NornWorkflowStateDefinitionInput {
+	if (!isPlainObject(value)) return false;
+	return (value.id === undefined || typeof value.id === "string") && isTypeboxSchema(value.schema);
 }
 
 export function isWorkflowPlugin(value: unknown): value is NornWorkflowPlugin {

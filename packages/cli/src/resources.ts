@@ -1,18 +1,20 @@
+import type { NornResourceDefinition, NornResources } from "@vimhead.dev/norn";
+import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
+import { isNodeError } from "@vimhead.dev/norn-core/errors";
+import { createRunFileCoordinator, type NornFileCoordinator } from "@vimhead.dev/norn/files";
+import { jsonValueSchema } from "@vimhead.dev/norn/schema";
 import { mkdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { z } from "zod";
-import { createRunFileCoordinator, type NornFileCoordinator } from "@vimhead.dev/norn/files";
-import type { NornResourceDefinition, NornResources } from "@vimhead.dev/norn";
-import { isNodeError } from "@vimhead.dev/norn-core/errors";
-import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
+import { Type, type StaticDecode } from "typebox";
+import { Value } from "typebox/value";
 
-const definitionSchema = z.strictObject({ name: z.string(), kind: z.string().min(1), configuration: z.json() });
-const recordSchema = definitionSchema.extend({ isInitialized: z.boolean() });
+const definitionSchema = Type.Object({ name: Type.String(), kind: Type.String({ minLength: 1 }), configuration: jsonValueSchema }, { additionalProperties: false });
+const recordSchema = Type.Object({ ...definitionSchema.properties, isInitialized: Type.Boolean() }, { additionalProperties: false });
 
 export class NornRunResources implements NornResources {
 	readonly files: NornFileCoordinator;
-	private readonly entries = new Map<string, { readonly definition: z.output<typeof definitionSchema>; readonly value: Promise<unknown> }>();
+	private readonly entries = new Map<string, { readonly definition: StaticDecode<typeof definitionSchema>; readonly value: Promise<unknown> }>();
 
 	private constructor(private readonly runRoot: string) {
 		this.files = createRunFileCoordinator(runRoot);
@@ -26,7 +28,7 @@ export class NornRunResources implements NornResources {
 
 	async ensure<T>(definition: NornResourceDefinition<T>): Promise<T> {
 		if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(definition.name)) throw new Error(`Invalid resource name: ${definition.name}`);
-		const identity = definitionSchema.parse({ name: definition.name, kind: definition.kind, configuration: definition.configuration });
+		const identity = structuredClone(Value.Parse(definitionSchema, { name: definition.name, kind: definition.kind, configuration: definition.configuration }));
 		const existing = this.entries.get(definition.name);
 		if (existing) {
 			if (!isDeepStrictEqual(existing.definition, identity)) throw new Error(`Incompatible resource definition: ${definition.name}`);
@@ -43,13 +45,13 @@ export class NornRunResources implements NornResources {
 		}
 	}
 
-	private async initializeResource<T>(definition: NornResourceDefinition<T>, identity: z.output<typeof definitionSchema>): Promise<T> {
+	private async initializeResource<T>(definition: NornResourceDefinition<T>, identity: StaticDecode<typeof definitionSchema>): Promise<T> {
 		const directory = join(this.runRoot, "current", "resources", definition.name);
 		await mkdir(directory, { recursive: true });
 		return this.files.withExclusiveLock(join(directory, "definition.json"), async (path) => {
-			let stored: z.output<typeof recordSchema> | undefined;
+			let stored: StaticDecode<typeof recordSchema> | undefined;
 			try {
-				stored = recordSchema.parse(JSON.parse(await readFile(path, "utf8")));
+				stored = Value.Parse(recordSchema, JSON.parse(await readFile(path, "utf8")));
 			} catch (error) {
 				if (!isNodeError(error) || error.code !== "ENOENT") throw error;
 			}

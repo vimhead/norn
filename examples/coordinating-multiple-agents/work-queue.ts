@@ -1,23 +1,23 @@
+import type { NornFileCoordinator, NornResourceDefinition } from "@vimhead.dev/norn";
 import { randomUUID } from "node:crypto";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import type { NornFileCoordinator, NornResourceDefinition } from "@vimhead.dev/norn";
-import { z } from "zod";
+import { Type, type StaticDecode } from "typebox";
+import { Value } from "typebox/value";
 
-export const noteSchema = z.strictObject({ id: z.string().min(1).max(128), text: z.string().min(5).max(1000) });
-export const summarySchema = z.strictObject({ summary: z.string().min(1).max(240), quote: z.string().min(5).max(240) });
-type Note = z.output<typeof noteSchema>;
-export type Summary = z.output<typeof summarySchema>;
-const leaseSchema = z.strictObject({ owner: z.string().min(1).max(128), token: z.uuid(), expiresAt: z.number().int().nonnegative() });
-const recordSchema = z.discriminatedUnion("status", [
-	noteSchema.extend({ status: z.literal("available"), deliveries: z.number().int().nonnegative() }),
-	noteSchema.extend({ status: z.literal("leased"), deliveries: z.number().int().positive(), lease: leaseSchema }),
-	noteSchema.extend({ status: z.literal("acknowledged"), deliveries: z.number().int().positive(), lease: leaseSchema, result: summarySchema }),
+export const noteSchema = Type.Object({ id: Type.String({ minLength: 1, maxLength: 128 }), text: Type.String({ minLength: 5, maxLength: 1000 }) }, { additionalProperties: false });
+export const summarySchema = Type.Object({ summary: Type.String({ minLength: 1, maxLength: 240 }), quote: Type.String({ minLength: 5, maxLength: 240 }) }, { additionalProperties: false });
+type Note = StaticDecode<typeof noteSchema>;
+export type Summary = StaticDecode<typeof summarySchema>;
+const leaseSchema = Type.Object({ owner: Type.String({ minLength: 1, maxLength: 128 }), token: Type.String({ format: "uuid" }), expiresAt: Type.Integer({ minimum: 0 }) }, { additionalProperties: false });
+const recordSchema = Type.Union([
+	Type.Object({ ...noteSchema.properties, status: Type.Literal("available"), deliveries: Type.Integer({ minimum: 0 }) }, { additionalProperties: false }),
+	Type.Object({ ...noteSchema.properties, status: Type.Literal("leased"), deliveries: Type.Integer({ exclusiveMinimum: 0 }), lease: leaseSchema }, { additionalProperties: false }),
+	Type.Object({ ...noteSchema.properties, status: Type.Literal("acknowledged"), deliveries: Type.Integer({ exclusiveMinimum: 0 }), lease: leaseSchema, result: summarySchema }, { additionalProperties: false }),
 ]);
-const documentSchema = z.strictObject({ format: z.literal(1), items: z.array(recordSchema).max(12) })
-	.refine(document => new Set(document.items.map(item => item.id)).size === document.items.length, "Duplicate note IDs");
-type QueueDocument = z.output<typeof documentSchema>;
+const documentSchema = Type.Refine(Type.Object({ format: Type.Literal(1), items: Type.Array(recordSchema, { maxItems: 12 }) }, { additionalProperties: false }), document => new Set(document.items.map(item => item.id)).size === document.items.length, () => "Duplicate note IDs");
+type QueueDocument = StaticDecode<typeof documentSchema>;
 type ClaimedNote = Extract<QueueDocument["items"][number], { status: "leased" }>;
 type ClaimReceipt = { readonly id: string; readonly owner: string; readonly token: string; readonly signal: AbortSignal | undefined };
 
@@ -42,7 +42,7 @@ export class WorkQueue {
 	}
 
 	async enqueue(input: Note & { readonly signal: AbortSignal | undefined }): Promise<{ readonly isNew: boolean }> {
-		const note = noteSchema.parse({ id: input.id, text: input.text });
+		const note = Value.Parse(noteSchema, { id: input.id, text: input.text });
 		return this.mutate({ signal: input.signal, apply: document => {
 			const existing = document.items.find(item => item.id === note.id);
 			if (existing) {
@@ -56,7 +56,7 @@ export class WorkQueue {
 	}
 
 	async claim(input: { readonly owner: string; readonly signal: AbortSignal | undefined }) {
-		leaseSchema.shape.owner.parse(input.owner);
+		Value.Assert(leaseSchema.properties.owner, input.owner);
 		return this.mutate({ signal: input.signal, apply: (document, now) => {
 			const held = document.items.find(item => item.status === "leased" && item.lease.owner === input.owner && item.lease.expiresAt > now);
 			if (held?.status === "leased") return this.describeClaim(held);
@@ -73,7 +73,7 @@ export class WorkQueue {
 	}
 
 	async acknowledge(input: ClaimReceipt & { readonly result: Summary }): Promise<void> {
-		const result = summarySchema.parse(input.result);
+		const result = Value.Parse(summarySchema, input.result);
 		await this.mutate({ signal: input.signal, apply: (document, now) => {
 			const index = document.items.findIndex(item => item.id === input.id);
 			const item = document.items[index];
@@ -111,7 +111,7 @@ export class WorkQueue {
 	}
 
 	private async readDocument(path: string): Promise<QueueDocument> {
-		return documentSchema.parse(JSON.parse(await readFile(path, "utf8")));
+		return Value.Parse(documentSchema, JSON.parse(await readFile(path, "utf8")));
 	}
 
 	private async writeDocument(path: string, document: QueueDocument): Promise<void> {

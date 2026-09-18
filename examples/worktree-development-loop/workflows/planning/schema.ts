@@ -1,12 +1,12 @@
-import { z } from "zod";
+import { Type, type StaticDecode } from "typebox";
 
-export const planningParamsSchema = z.object({
-	task: z.string(),
+export const planningParamsSchema = Type.Object({
+	task: Type.String(),
 });
 
-export const planningAgentResponseSchema = z.object({
-	plan: z.string(),
-	summary: z.string(),
+export const planningAgentResponseSchema = Type.Object({
+	plan: Type.String(),
+	summary: Type.String(),
 });
 
-export type PlanningParams = z.output<typeof planningParamsSchema>;
+export type PlanningParams = StaticDecode<typeof planningParamsSchema>;

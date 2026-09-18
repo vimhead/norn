@@ -1,21 +1,22 @@
 import { artifactRefSchema, definePlugin, definePluginManifest } from "@vimhead.dev/norn";
-import { z } from "zod";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
-const draftSchema = z.object({
-	summary: z.string().min(1),
-	quotations: z.array(z.string().min(1).describe("Exact substring of the source, without added quotation marks, ellipses, or other formatting.")).min(1),
-	uncertainties: z.array(z.string().min(1)),
+const draftSchema = Type.Object({
+	summary: Type.String({ minLength: 1 }),
+	quotations: Type.Array(Type.String({ minLength: 1, description: "Exact substring of the source, without added quotation marks, ellipses, or other formatting." }), { minItems: 1 }),
+	uncertainties: Type.Array(Type.String({ minLength: 1 })),
 });
 
-const savedDraftSchema = z.object({
-	source: z.string().min(1),
+const savedDraftSchema = Type.Object({
+	source: Type.String({ minLength: 1 }),
 	draft: draftSchema,
 });
 
-const analysisSchema = z.object({
-	verdict: z.enum(["supported", "needs-revision"]),
-	reason: z.string().min(1),
-	issues: z.array(z.string().min(1)),
+const analysisSchema = Type.Object({
+	verdict: Type.Enum(["supported", "needs-revision"]),
+	reason: Type.String({ minLength: 1 }),
+	issues: Type.Array(Type.String({ minLength: 1 })),
 });
 
 export const manifest = definePluginManifest({
@@ -24,11 +25,11 @@ export const manifest = definePluginManifest({
 		draft: {
 			isEntrypoint: true,
 			instructions: "Summarize a supplied source, save the draft, and independently assess its support and omissions. Returns draft and analysis artifacts plus an assessment; needs-revision is a completed assessment, not an approved summary.",
-			params: z.object({ source: z.string().min(1) }),
+			params: Type.Object({ source: Type.String({ minLength: 1 }) }),
 		},
 		analyze: {
 			isEntrypoint: false,
-			params: z.object({ draftArtifact: artifactRefSchema }),
+			params: Type.Object({ draftArtifact: artifactRefSchema }),
 		},
 	},
 	states: {
@@ -59,7 +60,7 @@ export default definePlugin(manifest, {
 		},
 		analyze: {
 			async execute(run, params) {
-				const savedDraft = savedDraftSchema.parse(JSON.parse(await run.artifacts.read(params.draftArtifact)));
+				const savedDraft = Value.Parse(savedDraftSchema, JSON.parse(await run.artifacts.read(params.draftArtifact)));
 				const invalidQuotations = savedDraft.draft.quotations.filter(quotation => !savedDraft.source.includes(quotation));
 				if (invalidQuotations.length > 0) {
 					return run.fail({

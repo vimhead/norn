@@ -65,14 +65,30 @@ test("real npm tarballs provide public imports, exact dependencies, offline docs
 	assert.ok(intro.includes(JSON.stringify(documentation.paths.index)));
 	await assert.rejects(access(cacheRoot), { code: "ENOENT" });
 	await writeFile(join(consumer, "consumer.ts"), `
-import { definePluginManifest, NornFileCoordinator, type NornRun } from "@vimhead.dev/norn";
+import { definePlugin, definePluginManifest, workflowRefSchema, NornFileCoordinator, type NornRun } from "@vimhead.dev/norn";
 import { createNornClient } from "@vimhead.dev/norn-cli/client";
-import { z } from "zod";
+import { Type } from "typebox";
 declare const run: NornRun;
 const files: NornFileCoordinator = run.resources.files;
-const manifest = definePluginManifest({ id: "consumer", workflows: { test: { isEntrypoint: true, instructions: "Exercise package types.", params: z.object({}) } } });
+const manifest = definePluginManifest({ id: "consumer", states: { count: Type.Integer() }, workflows: {
+  test: { isEntrypoint: true, instructions: "Exercise package types.", params: Type.Object({
+    count: Type.Decode(Type.String(), text => Number(text)),
+    next: workflowRefSchema({ params: Type.Object({ report: Type.String() }) }),
+  }) },
+} });
+const plugin = definePlugin(manifest, { workflows: { test: { async execute(run, params) {
+  const count: number = params.count;
+  await run.state.set(manifest.states.count, count);
+  const saved: number = await run.state.get(manifest.states.count);
+  return run.next(params.next.workflow, { ...params.next.forwardParams, report: String(saved) });
+} } } });
+run.next(manifest.workflows.test, { count: "1", next: "consumer.test" });
+// @ts-expect-error Callers supply encoded inputs, not decoded values.
+run.next(manifest.workflows.test, { count: 1, next: "consumer.test" });
+// @ts-expect-error Direct state schemas retain their native value types.
+run.state.set(manifest.states.count, "1");
 const client = createNornClient({ spawnCwd: process.cwd() });
-void [files, manifest, client];
+void [files, plugin, client];
 `);
 	await writeFile(join(consumer, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true, skipLibCheck: true }, include: ["consumer.ts"] }));
 	await execute(process.execPath, [join(workspaceRoot, "node_modules/typescript/bin/tsc"), "--project", join(consumer, "tsconfig.json")], { cwd: consumer, timeout: 30_000 });

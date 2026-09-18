@@ -2,18 +2,18 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Type } from "typebox";
 import { test, type TestContext } from "vitest";
-import { z } from "zod";
 
 import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
-import { writeRunResumeRequest, readOptionalRunResumeRequest, type NornRunResumeRequest } from "../packages/cli/src/internal/launch-request.ts";
+import { readOptionalRunResumeRequest, writeRunResumeRequest, type NornRunResumeRequest } from "../packages/cli/src/internal/launch-request.ts";
 
 async function createFixture(context: TestContext, gateMode: "pause" | "auto" | undefined, isEntrypoint: boolean) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-gate-test-"));
 	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	const manifest = definePluginManifest({ id: "gates", workflows: {
-		decide: { instructions: "Use to supply the test decision.", isEntrypoint, params: z.object({ answer: z.boolean() }), gate: { enabled: true, fields: ["answer"] } },
+		decide: { instructions: "Use to supply the test decision.", isEntrypoint, params: Type.Object({ answer: Type.Boolean() }), gate: { enabled: true, fields: ["answer"] } },
 	} });
 	let executionCount = 0;
 	const engine = new NornEngine({ cwd, gateMode });

@@ -1,113 +1,104 @@
+import { artifactRefSchema, definePluginManifest, workflowRefSchema, type NornWorkflowRefSchemaOptions } from "@vimhead.dev/norn";
+import { inspectSchema } from "@vimhead.dev/norn/schema";
 import assert from "node:assert/strict";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { expect, test } from "vitest";
-import { z } from "zod";
-
-import { artifactRefSchema, definePluginManifest, workflowRefSchema } from "@vimhead.dev/norn";
 
 const target = definePluginManifest({
-	id: "refs", workflows: { finish: { isEntrypoint: false, params: z.object({ report: z.string() }) } },
+	id: "refs", workflows: { finish: { isEntrypoint: false, params: Type.Object({ report: Type.String() }) } },
 }).workflows.finish;
 
-for (const reference of ["refs.finish", { id: "refs.finish" }, target]) {
-	test(`workflow references normalize ${typeof reference === "string" ? "strings" : "kind" in reference ? "declarations" : "id objects"}`, () => {
-		const schema = workflowRefSchema({ params: z.object({ report: z.string() }) });
-		assert.deepEqual(schema.parse(reference), { workflow: "refs.finish", forwardParams: {} });
-		assert.deepEqual(schema.parse({ workflow: reference, forwardParams: { task: "retain" } }), {
+for (const reference of ["refs.finish", target.id]) {
+	test("workflow references decode IDs and explicit forwarding objects", () => {
+		const contributions = Type.Object({ report: Type.String() });
+		const options: NornWorkflowRefSchemaOptions<typeof contributions> = { params: contributions };
+		const schema = workflowRefSchema(options);
+		assert.deepEqual(Value.Decode(workflowRefSchema({}), reference), { workflow: "refs.finish", forwardParams: {} });
+		assert.deepEqual(Value.Decode(schema, reference), { workflow: "refs.finish", forwardParams: {} });
+		assert.deepEqual(Value.Decode(schema, { workflow: reference, forwardParams: { task: "retain" } }), {
 			workflow: "refs.finish", forwardParams: { task: "retain" },
 		});
 	});
 }
 
-test("required and nullable reference inputs remain required in JSON inspection", () => {
-	const schema = z.object({ next: workflowRefSchema().nullable() });
-	const inspected = z.toJSONSchema(schema, { io: "input" });
+test("nullable reference inputs retain their required property and input union", () => {
+	const schema = Type.Object({ next: Type.Union([workflowRefSchema(), Type.Null()]) });
+	const inspected = inspectSchema(schema);
 	assert.deepEqual(inspected.required, ["next"]);
-	assert.equal(schema.safeParse({}).success, false);
-	assert.equal(schema.safeParse({ next: null }).success, true);
-	assert.equal(schema.safeParse({ next: "refs.finish" }).success, true);
-	expect(inspected).toHaveProperty("properties.next.anyOf.0.anyOf.0.anyOf.0.type", "string");
+	assert.equal(Value.Check(schema, {}), false);
+	assert.equal(Value.Check(schema, { next: null }), true);
+	assert.equal(Value.Check(schema, { next: "refs.finish" }), true);
+	expect(inspected).toHaveProperty("properties.next.anyOf.0.anyOf.0.type", "string");
 	expect(inspected).toHaveProperty("properties.next.anyOf.0.anyOf.1.required", ["workflow", "forwardParams"]);
 });
 
-test("optional reference inputs are optional in both validation and inspection", () => {
-	const schema = z.object({ next: workflowRefSchema().optional() });
-	assert.deepEqual(schema.parse({}), {});
-	assert.equal(z.toJSONSchema(schema, { io: "input" }).required?.includes("next") ?? false, false);
+test("optional reference properties remain optional in validation and inspection", () => {
+	const schema = Type.Object({ next: Type.Optional(workflowRefSchema()) });
+	assert.deepEqual(Value.Decode(schema, {}), {});
+	assert.equal(inspectSchema(schema).required, undefined);
 });
 
-test("inspection advertises contributions alongside the unchanged reference and forward-params input schema", () => {
-	const contributions = z.object({
+test("inspection advertises input contributions alongside the reference and forwarding schemas", () => {
+	const contributions = Type.Object({
 		records: artifactRefSchema,
-		count: z.string().transform(Number),
-		label: z.string().default("collected"),
+		count: Type.Decode(Type.String(), Number),
+		label: Type.Optional(Type.String({ default: "collected" })),
 	});
-	const reference = workflowRefSchema({ params: contributions }).describe("Continue with the collected records");
-	const schema = z.object({ next: reference });
-	const inspected = z.toJSONSchema(schema, { io: "input" });
-	expect(inspected).toHaveProperty("properties.next.x-norn-workflow-ref.contributedParamsSchema", z.toJSONSchema(contributions, { io: "input" }));
+	const reference = Type.With(workflowRefSchema({ params: contributions }), { description: "Continue with the collected records" });
+	const schema = Type.Object({ next: reference });
+	const inspected = inspectSchema(schema);
+	expect(inspected).toHaveProperty("properties.next.x-norn-workflow-ref.contributedParamsSchema", inspectSchema(contributions));
 	expect(inspected).toHaveProperty("properties.next.description", "Continue with the collected records");
-	expect(inspected).toHaveProperty("properties.next.anyOf", z.toJSONSchema(workflowRefSchema(), { io: "input" }).anyOf);
-	expect(inspected).toHaveProperty("properties.next.anyOf.1.properties.forwardParams.type", "object");
-	expect(inspected).toHaveProperty("properties.next.anyOf.1.properties.forwardParams.additionalProperties", {});
-	expect(inspected).toHaveProperty("properties.next.anyOf.1.required", ["workflow", "forwardParams"]);
+	expect(inspected).toHaveProperty("properties.next.anyOf", inspectSchema(workflowRefSchema()).anyOf);
+	expect(inspected).toHaveProperty("properties.next.anyOf.1.properties.forwardParams.patternProperties", { "^.*$": {} });
 	expect(inspected).toHaveProperty("properties.next.x-norn-workflow-ref.contributedParamsSchema.required", ["records", "count"]);
 	expect(inspected).toHaveProperty("properties.next.x-norn-workflow-ref.contributedParamsSchema.properties.count.type", "string");
 	const forwardParams = { taskId: "task-42", nested: { labels: ["one", "two"], enabled: false, absent: null } };
 	const input = { next: { workflow: "refs.finish", forwardParams } };
-	assert.deepEqual(schema.parse(input), input);
+	assert.deepEqual(Value.Decode(schema, input), input);
 });
 
-test("references without declared contributions advertise an empty contribution schema", () => {
-	for (const reference of [workflowRefSchema(), workflowRefSchema({ params: undefined })]) {
-		expect(z.toJSONSchema(reference, { io: "input" })).toHaveProperty("x-norn-workflow-ref.contributedParamsSchema", z.toJSONSchema(z.object({}), { io: "input" }));
-		assert.deepEqual(reference.parse("refs.finish"), { workflow: "refs.finish", forwardParams: {} });
-	}
+test("references without contributions advertise an empty object schema", () => {
+	const reference = workflowRefSchema();
+	expect(inspectSchema(reference)).toHaveProperty("x-norn-workflow-ref.contributedParamsSchema", inspectSchema(Type.Object({})));
+	assert.deepEqual(Value.Decode(reference, "refs.finish"), { workflow: "refs.finish", forwardParams: {} });
 });
 
-test("optional, nullable and array references retain their contribution annotations", () => {
-	const reference = workflowRefSchema({ params: z.object({ report: z.string() }) });
-	const schema = z.object({ optional: reference.optional(), nullable: reference.nullable(), many: z.array(reference) });
-	const inspected = z.toJSONSchema(schema, { io: "input" });
-	const expected = z.toJSONSchema(z.object({ report: z.string() }), { io: "input" });
+test("optional, nullable and array references retain contribution annotations and codecs", () => {
+	const contributions = Type.Object({ report: Type.String() });
+	const reference = workflowRefSchema({ params: contributions });
+	const schema = Type.Object({ optional: Type.Optional(reference), nullable: Type.Union([reference, Type.Null()]), many: Type.Array(reference) });
+	const inspected = inspectSchema(schema);
 	for (const path of ["properties.optional", "properties.nullable.anyOf.0", "properties.many.items"]) {
-		expect(inspected).toHaveProperty(`${path}.x-norn-workflow-ref.contributedParamsSchema`, expected);
+		expect(inspected).toHaveProperty(`${path}.x-norn-workflow-ref.contributedParamsSchema`, inspectSchema(contributions));
 	}
 	assert.deepEqual(inspected.required, ["nullable", "many"]);
-	assert.deepEqual(schema.parse({ nullable: null, many: ["refs.finish"] }), { nullable: null, many: [{ workflow: "refs.finish", forwardParams: {} }] });
+	assert.deepEqual(Value.Decode(schema, { nullable: null, many: ["refs.finish"] }), { nullable: null, many: [{ workflow: "refs.finish", forwardParams: {} }] });
 });
 
-test("nested continuation schemas retain their own contribution and forwarding contracts", () => {
-	const finalContributions = z.object({ summary: z.string() });
-	const contributions = z.object({
-		records: artifactRefSchema,
-		next: workflowRefSchema({ params: finalContributions }),
-	});
-	const inspected = z.toJSONSchema(workflowRefSchema({ params: contributions }), { io: "input" });
-	const path = "x-norn-workflow-ref.contributedParamsSchema.properties.next";
-	expect(inspected).toHaveProperty(`${path}.x-norn-workflow-ref.contributedParamsSchema`, z.toJSONSchema(finalContributions, { io: "input" }));
-	expect(inspected).toHaveProperty(`${path}.anyOf.1.properties.forwardParams.type`, "object");
-	expect(inspected).toHaveProperty(`${path}.anyOf.1.properties.forwardParams.additionalProperties`, {});
+test("nested continuations retain their own contribution contracts", () => {
+	const finalContributions = Type.Object({ summary: Type.String() });
+	const contributions = Type.Object({ records: artifactRefSchema, next: workflowRefSchema({ params: finalContributions }) });
+	const inspected = inspectSchema(workflowRefSchema({ params: contributions }));
+	expect(inspected).toHaveProperty("x-norn-workflow-ref.contributedParamsSchema.properties.next.x-norn-workflow-ref.contributedParamsSchema", inspectSchema(finalContributions));
 });
 
-test("lazy recursive contribution schemas are resolved during inspection, not reference construction", () => {
-	type Contribution = { label: string; children: Contribution[] };
-	let contributions: z.ZodType<Contribution>;
-	const lazyContributions = z.lazy(() => contributions);
-	const reference = workflowRefSchema({ params: lazyContributions });
-	contributions = z.object({ label: z.string(), children: z.array(z.lazy(() => contributions)) });
-	const inspected = z.toJSONSchema(reference, { io: "input" });
-	expect(inspected).toHaveProperty("x-norn-workflow-ref.contributedParamsSchema", z.toJSONSchema(lazyContributions, { io: "input" }));
-	assert.deepEqual(reference.parse("refs.finish"), { workflow: "refs.finish", forwardParams: {} });
+test("recursive contributions use native TypeBox definitions", () => {
+	const contributions = Type.Cyclic({ Contribution: Type.Object({ label: Type.String(), children: Type.Array(Type.Ref("Contribution")) }) }, "Contribution");
+	const reference = workflowRefSchema({ params: contributions });
+	expect(inspectSchema(reference)).toHaveProperty("x-norn-workflow-ref.contributedParamsSchema", inspectSchema(contributions));
+	assert.deepEqual(Value.Decode(reference, "refs.finish"), { workflow: "refs.finish", forwardParams: {} });
 });
 
-test("an unrepresentable contribution schema does not change reference parsing", () => {
-	const reference = workflowRefSchema({ params: z.custom(() => true) });
-	assert.deepEqual(reference.parse("refs.finish"), { workflow: "refs.finish", forwardParams: {} });
-	assert.throws(() => z.toJSONSchema(reference, { io: "input" }));
+test("non-JSON contributions fail inspection without preventing reference construction", () => {
+	const reference = workflowRefSchema({ params: Type.BigInt() });
+	assert.deepEqual(Value.Decode(reference, "refs.finish"), { workflow: "refs.finish", forwardParams: {} });
+	assert.throws(() => inspectSchema(reference));
 });
 
-for (const input of [undefined, null, "", 3, {}, { id: "" }, { workflow: "refs.finish" }, { workflow: "", forwardParams: {} }, { workflow: "refs.finish", forwardParams: null }]) {
-	test(`invalid workflow reference is rejected: ${JSON.stringify(input)}`, () => {
-		assert.equal(workflowRefSchema().safeParse(input).success, false);
+for (const input of [undefined, null, "", 3, {}, { workflow: "refs.finish" }, { workflow: "", forwardParams: {} }, { workflow: "refs.finish", forwardParams: null }]) {
+	test(`reference input schema rejects invalid shape without coercion: ${JSON.stringify(input)}`, () => {
+		assert.equal(Value.Check(workflowRefSchema(), input), false);
 	});
 }

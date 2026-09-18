@@ -3,13 +3,14 @@ import { getEventListeners } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Type } from "typebox";
+import { AssertError } from "typebox/value";
 import { test, type TestContext } from "vitest";
-import { z } from "zod";
 
 import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
-import { getRunInfo } from "../packages/cli/src/internal/run-state.ts";
 import { getRunLeaseOwner } from "../packages/cli/src/internal/run-lease.ts";
+import { getRunInfo } from "../packages/cli/src/internal/run-state.ts";
 
 async function createInterruptedRun(context: TestContext) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-resume-test-"));
@@ -19,10 +20,10 @@ async function createInterruptedRun(context: TestContext) {
 	const manifest = definePluginManifest({
 		id: "resumeTest",
 		workflows: {
-			start: { isEntrypoint: true, instructions: "Use to start a gated test run.", params: z.object({}) },
+			start: { isEntrypoint: true, instructions: "Use to start a gated test run.", params: Type.Object({}) },
 			decision: {
 				isEntrypoint: false,
-				params: z.object({ decision: z.enum(["accept", "reject"]), evidence: z.string() }),
+				params: Type.Object({ decision: Type.Enum(["accept", "reject"]), evidence: Type.String() }),
 				gate: { enabled: true, fields: ["decision"] },
 			},
 		},
@@ -71,7 +72,7 @@ async function createInterruptedRun(context: TestContext) {
 
 for (const { name, params, error } of [
 	{ name: "protected-field patch", params: { evidence: "changed" }, error: /non-gate fields/ },
-	{ name: "schema-invalid patch", params: { decision: "invalid" }, error: /Invalid option/ },
+	{ name: "schema-invalid patch", params: { decision: "invalid" }, error: AssertError },
 ]) {
 	test(`resume releases resources after a ${name} and accepts a corrected patch`, async (context) => {
 		const fixture = await createInterruptedRun(context);

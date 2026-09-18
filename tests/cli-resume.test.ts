@@ -1,3 +1,4 @@
+import type { NornRunCheckpoint, NornRunInfo } from "@vimhead.dev/norn";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -5,7 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "vitest";
-import type { NornRunCheckpoint, NornRunInfo } from "@vimhead.dev/norn";
 
 const cliPath = fileURLToPath(new URL("../packages/cli/bin/norn.mjs", import.meta.url));
 
@@ -27,10 +27,11 @@ test("detached CLI resumes wait for the new execution, including slow plugin loa
 	await writeFile(join(cwd, "norn.project.json"), '{"version":1,"plugins":["./plugin.ts"]}');
 	await writeFile(join(cwd, "plugin.ts"), `
 import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
-import { z } from "zod";
+import { Type, type TSchema, type Static, type StaticEncode, type StaticDecode } from "typebox";
+import { Value } from "typebox/value";
 if (process.argv.includes("execute-run")) await new Promise(resolve => setTimeout(resolve, 1800));
 const manifest = definePluginManifest({ id: "cli", workflows: {
-	decide: { instructions: "Use to supply the test decision.", isEntrypoint: true, params: z.object({ answer: z.boolean() }), gate: { enabled: true, fields: ["answer"] } }
+	decide: { instructions: "Use to supply the test decision.", isEntrypoint: true, params: Type.Object({ answer: Type.Boolean() }), gate: { enabled: true, fields: ["answer"] } }
 } });
 export default definePlugin(manifest, { workflows: { decide: {
 	gate: { describe: () => "Choose" }, execute: (run, params) => run.complete({ data: params })

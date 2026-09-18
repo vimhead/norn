@@ -1,23 +1,23 @@
-import { z } from "zod";
 import { artifactRefSchema } from "@vimhead.dev/norn";
+import { Type, type StaticDecode } from "typebox";
 
-export const reviewDecisionSchema = z.enum(["accept", "revise", "blocked"]);
+export const reviewDecisionSchema = Type.Enum(["accept", "revise", "blocked"]);
 
-export const reviewParamsSchema = z.object({
-	task: z.string(),
-	iteration: z.number().int().min(1),
+export const reviewParamsSchema = Type.Object({
+	task: Type.String(),
+	iteration: Type.Integer({ minimum: 1 }),
 });
 
-export const reviewAgentResponseSchema = z.object({
+export const reviewAgentResponseSchema = Type.Object({
 	decision: reviewDecisionSchema,
-	summary: z.string(),
+	summary: Type.String(),
 });
 
-export const storedReviewSchema = z.object({
+export const storedReviewSchema = Type.Object({
 	decision: reviewDecisionSchema,
-	summary: z.string(),
+	summary: Type.String(),
 	reviewArtifact: artifactRefSchema,
 });
 
-export type ReviewParams = z.output<typeof reviewParamsSchema>;
-export type StoredReview = z.output<typeof storedReviewSchema>;
+export type ReviewParams = StaticDecode<typeof reviewParamsSchema>;
+export type StoredReview = StaticDecode<typeof storedReviewSchema>;

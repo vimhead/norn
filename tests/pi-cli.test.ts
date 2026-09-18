@@ -1,17 +1,17 @@
+import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { Type } from "typebox";
 import { test, vi, type TestContext } from "vitest";
-import { z } from "zod";
-import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
 import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-response-tool.ts";
+import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
 import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
 import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
-import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
 
 const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -96,7 +96,7 @@ test.for(["default", "override"] as const)("norn pi and SDK workers use their ow
 		logger: new NornRunLogger({ manifestPath: join(fixture.root, "manifest.json"), files, manifest: { id: "provider-worker", name: "provider-worker", workflowId: "test.worker", runRoot: fixture.root, workspace: fixture.root, initialCwd: fixture.root, startedAt: new Date().toISOString() } }),
 		responseCollector: new NornAgentResponseCollector(),
 	});
-	assert.deepEqual(await runner.prompt({ label: "worker", tools: [], prompt: "Return ok", response: z.object({ ok: z.boolean() }), maxAttempts: 1 }), { ok: true });
+	assert.deepEqual(await runner.prompt({ label: "worker", tools: [], prompt: "Return ok", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 }), { ok: true });
 	assert.equal(process.env.PI_CODING_AGENT_DIR, fixture.piAgentDir);
 	assert.equal(process.env.NORN_AGENT_DIR, fixture.env.NORN_AGENT_DIR);
 	await fixture.invoke(["pi", "remove", providerPath]);

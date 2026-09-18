@@ -84,6 +84,28 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const finished = (await invoke(["runs", "wait", launch.run.id], projectRoot)).run;
 	assert.equal(finished.status, "completed", JSON.stringify(finished));
 	assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Offline!\n");
+	await writeFile(join(projectRoot, "native.ts"), `
+import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import { Compile } from "typebox/compile";
+import { Check } from "typebox/schema";
+const manifest = definePluginManifest({ id: "native", states: { count: Type.Integer() }, workflows: {
+  check: { isEntrypoint: true, instructions: "Exercise detached TypeBox imports and decoding.", params: Type.Object({ count: Type.Decode(Type.String({ default: "41" }), value => Number(value) + 1) }) },
+} });
+export default definePlugin(manifest, { workflows: { check: { async execute(run, params) {
+  const expected = Type.Literal(42);
+  if (!Value.Check(expected, params.count) || !Compile(expected).Check(params.count) || !Check(expected, params.count)) throw new Error("Incorrect decoded count");
+  await run.state.set(manifest.states.count, params.count);
+  const count = await run.state.get(manifest.states.count);
+  return run.complete({ data: { count } });
+} } } });
+`);
+	await writeFile(join(projectRoot, "norn.project.json"), JSON.stringify({ plugins: ["./plugin.ts", "./native.ts"] }));
+	const nativeLaunch = await invoke(["runs", "start", "native.check"], projectRoot);
+	const nativeResult = (await invoke(["runs", "wait", nativeLaunch.run.id], projectRoot)).run;
+	assert.equal(nativeResult.status, "completed", JSON.stringify(nativeResult));
+	assert.deepEqual(nativeResult.outcome?.metadata?.data, { count: 42 });
 	await writeFile(documentation.paths.index, "modified");
 	await assert.rejects(invoke(["docs", "inspect"]), error => {
 		assert.match(readProcessStdout(error), /cache is incomplete or modified/);

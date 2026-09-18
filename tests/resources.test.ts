@@ -1,24 +1,23 @@
+import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { StateAdapter, definePlugin, definePluginManifest, type NornResources, type NornWorkflowState } from "@vimhead.dev/norn";
+import { NornFileCoordinator, createRunFileCoordinator } from "@vimhead.dev/norn/files";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmod, stat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { test, type TestContext } from "vitest";
-import { z } from "zod";
-import { NornMemoryWorkflowState } from "../packages/cli/src/internal/state-store.ts";
-import { NornFileCoordinator, createRunFileCoordinator } from "@vimhead.dev/norn/files";
-import { NornRunResources } from "../packages/cli/src/resources.ts";
-import { initializeRunResources } from "../packages/cli/src/internal/run-resources.ts";
-import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
-import { NornRunStore } from "../packages/cli/src/internal/run-store.ts";
-import { NornRunStateStore } from "../packages/cli/src/internal/run-state.ts";
-import { StateAdapter } from "@vimhead.dev/norn";
 import { NornArtifacts } from "../packages/cli/src/internal/artifacts.ts";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
-import { definePlugin, definePluginManifest, type NornWorkflowState, type NornResources } from "@vimhead.dev/norn";
+import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
+import { initializeRunResources } from "../packages/cli/src/internal/run-resources.ts";
+import { NornRunStateStore } from "../packages/cli/src/internal/run-state.ts";
+import { NornRunStore } from "../packages/cli/src/internal/run-store.ts";
+import { NornMemoryWorkflowState } from "../packages/cli/src/internal/state-store.ts";
+import { NornRunResources } from "../packages/cli/src/resources.ts";
 
 async function fixture(context: TestContext) {
 	const root = await mkdtemp(join(tmpdir(), "norn-resources-"));
@@ -58,8 +57,8 @@ test("independent state processes preserve every field and initialization never 
 	await Promise.all(Array.from({ length: 4 }, (_, index) => worker(root, "state", `${index}`).completed));
 	const { state } = await initializeRunResources(root);
 	assert.equal(Object.keys(JSON.parse(await readFile(state.stateFile, "utf8"))).length, 48);
-	assert.equal(await state.getOptional({ id: "missing", schema: z.string().default("not invented") }), undefined);
-	await assert.rejects(state.get({ id: "missing", schema: z.string() }), /Missing workflow state/);
+	assert.equal(await state.getOptional({ id: "missing", schema: Type.String({ default: "not invented" }) }), undefined);
+	await assert.rejects(state.get({ id: "missing", schema: Type.String() }), /Missing workflow state/);
 });
 
 test("locks coordinate canonical aliases, release after exceptions, and do not block unrelated files", async context => {
@@ -90,7 +89,7 @@ test("malformed ownership fails closed", async context => {
 test("state rejects invalid documents and failed writes do not poison subsequent operations", async context => {
 	const { root } = await fixture(context);
 	const { state } = await initializeRunResources(root);
-	const field = { id: "count", schema: z.number().int() };
+	const field = { id: "count", schema: Type.Integer() };
 	await assert.rejects(state.set(field, 1.5));
 	await state.set(field, 2);
 	assert.equal(await state.get(field), 2);
@@ -98,14 +97,14 @@ test("state rejects invalid documents and failed writes do not poison subsequent
 	await assert.rejects(state.set(field, 3), /Invalid workflow state document/);
 	assert.equal(await readFile(state.stateFile, "utf8"), "[]");
 	await writeFile(state.stateFile, "{}");
-	await state.set({ id: "__proto__", schema: z.string() }, "ordinary field");
-	assert.equal(await state.get({ id: "__proto__", schema: z.string() }), "ordinary field");
+	await state.set({ id: "__proto__", schema: Type.String() }, "ordinary field");
+	assert.equal(await state.get({ id: "__proto__", schema: Type.String() }), "ordinary field");
 });
 
 test("workflow and adapter writes share Pi file-mutation coordination", async context => {
 	const { root } = await fixture(context);
 	const { state } = await initializeRunResources(root);
-	const field = { id: "count", schema: z.number() };
+	const field = { id: "count", schema: Type.Number() };
 	await state.set(field, 0);
 	const binding = await StateAdapter({ state, fields: [{ field, access: "write" }] }).bind({ runId: "test", label: "writer" });
 	const writeTool = binding.tools.find(tool => tool.name === "norn_state_set")!;
@@ -133,7 +132,7 @@ test("workflow and adapter writes share Pi file-mutation coordination", async co
 
 test("StateAdapter delegates to the state interface without filesystem metadata", async () => {
 	const state = new NornMemoryWorkflowState();
-	const field = { id: "message", schema: z.string() };
+	const field = { id: "message", schema: Type.String() };
 	const binding = await StateAdapter({ state, fields: [{ field, access: "read-write" }] }).bind({ runId: "test", label: "memory" });
 	try {
 		const set = binding.tools.find(tool => tool.name === "norn_state_set")!;
@@ -181,7 +180,7 @@ test("checkpoint rollback restores resource data but never restores transient lo
 	const { root } = await fixture(context);
 	const store = await NornRunStore.initialize(root);
 	const { resources, state } = await initializeRunResources(root);
-	const field = { id: "phase", schema: z.string() };
+	const field = { id: "phase", schema: Type.String() };
 	await state.set(field, "before");
 	const checkpoint = await resources.files.withExclusiveLock(state.stateFile, async () => store.snapshotCurrent("saved"));
 	await state.set(field, "after");
@@ -194,8 +193,8 @@ test("checkpoint rollback restores resource data but never restores transient lo
 test("StateAdapter accepts public state, scopes tools, validates schemas and paginates large values", async context => {
 	const { root } = await fixture(context);
 	const state: NornWorkflowState = (await initializeRunResources(root)).state;
-	const visible = { id: "visible", schema: z.string() };
-	const hidden = { id: "hidden", schema: z.string() };
+	const visible = { id: "visible", schema: Type.String() };
+	const hidden = { id: "hidden", schema: Type.String() };
 	await state.set(hidden, "secret context");
 	await state.set(visible, "a".repeat(20000));
 	const binding = await StateAdapter({ state, fields: [{ field: visible, access: "read" }] }).bind({ runId: "test", label: "reader" });
@@ -219,7 +218,7 @@ test("reopening initialized state never substitutes empty data for a missing fil
 	const { root } = await fixture(context);
 	const { state } = await initializeRunResources(root);
 	await rm(state.stateFile);
-	await assert.rejects(state.getOptional({ id: "missing", schema: z.string() }), { code: "ENOENT" });
+	await assert.rejects(state.getOptional({ id: "missing", schema: Type.String() }), { code: "ENOENT" });
 	await assert.rejects(initializeRunResources(root), { code: "ENOENT" });
 	await assert.rejects(readFile(state.stateFile), { code: "ENOENT" });
 });
@@ -259,11 +258,11 @@ test("native workflow contexts share one state resource and resume reopens its p
 	const { root } = await fixture(context);
 	const manifest = definePluginManifest({
 		id: "resourceLifecycle",
-		states: { value: z.number() },
+		states: { value: Type.Number() },
 		workflows: {
-			start: { isEntrypoint: true, instructions: "Exercise resource lifecycle.", params: z.object({}) },
-			continue: { isEntrypoint: false, params: z.object({}) },
-			finish: { isEntrypoint: false, params: z.object({ decision: z.enum(["accept", "reject"]) }), gate: { enabled: true, fields: ["decision"] } },
+			start: { isEntrypoint: true, instructions: "Exercise resource lifecycle.", params: Type.Object({}) },
+			continue: { isEntrypoint: false, params: Type.Object({}) },
+			finish: { isEntrypoint: false, params: Type.Object({ decision: Type.Enum(["accept", "reject"]) }), gate: { enabled: true, fields: ["decision"] } },
 		},
 	});
 	let manager: NornResources | undefined;

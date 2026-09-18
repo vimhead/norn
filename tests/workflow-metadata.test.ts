@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
+import { Type } from "typebox";
 import { test } from "vitest";
-import { z } from "zod";
 
 import { definePluginManifest, type NornRun } from "@vimhead.dev/norn";
 import { NornWorkflowRegistry } from "../packages/cli/src/internal/workflow-registry.ts";
 
 function createWorkflow({ instructions, isEntrypoint = true, gate }: { instructions?: unknown; isEntrypoint?: boolean; gate?: { enabled: true } }) {
 	const workflow = definePluginManifest({ id: "metadata", workflows: {
-		step: { isEntrypoint: true, instructions: "Fixture instructions", params: z.object({}), gate },
+		step: { isEntrypoint: true, instructions: "Fixture instructions", params: Type.Object({}), gate },
 	} }).workflows.step;
 	Reflect.set(workflow, "isEntrypoint", isEntrypoint);
 	Reflect.set(workflow, "instructions", instructions);
@@ -52,9 +52,9 @@ test("internal steps may omit instructions but supplied instructions must be non
 
 test("discovery uses workflow IDs for identity and sorting and publishes caller instructions", () => {
 	const manifest = definePluginManifest({ id: "metadata", workflows: {
-		zebra: { isEntrypoint: true, instructions: "Alpha guidance for the last workflow.", params: z.object({}) },
-		middle: { isEntrypoint: false, params: z.object({}) },
-		alpha: { isEntrypoint: true, instructions: "Zebra guidance for the first workflow.", params: z.object({}) },
+		zebra: { isEntrypoint: true, instructions: "Alpha guidance for the last workflow.", params: Type.Object({}) },
+		middle: { isEntrypoint: false, params: Type.Object({}) },
+		alpha: { isEntrypoint: true, instructions: "Zebra guidance for the first workflow.", params: Type.Object({}) },
 	} });
 	const registry = new NornWorkflowRegistry();
 	for (const workflow of Object.values(manifest.workflows)) registry.register(workflow, { execute: run => run.complete() });

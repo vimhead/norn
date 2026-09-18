@@ -1,12 +1,12 @@
-import { z } from "zod";
 import { artifactRefSchema, type NornWorkflowPluginStateTree } from "@vimhead.dev/norn";
+import { Type } from "typebox";
 import { reviewDecisionSchema } from "./workflows/review/schema.ts";
 
 export const developmentLoopState = {
-	task: z.string(),
-	maxIterations: z.number().int().min(1).max(10),
-	currentIteration: z.number().int().min(1),
-	repositoryPath: z.string(),
+	task: Type.String(),
+	maxIterations: Type.Integer({ minimum: 1, maximum: 10 }),
+	currentIteration: Type.Integer({ minimum: 1 }),
+	repositoryPath: Type.String(),
 } as const satisfies NornWorkflowPluginStateTree;
 
 export const planningState = {
@@ -14,7 +14,7 @@ export const planningState = {
 } as const satisfies NornWorkflowPluginStateTree;
 
 export const implementationState = {
-	implementationSummary: z.string(),
+	implementationSummary: Type.String(),
 } as const satisfies NornWorkflowPluginStateTree;
 
 export const reviewState = {

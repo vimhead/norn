@@ -1,4 +1,24 @@
-import type { NornAnyWorkflowDeclaration } from "./api.ts";
+import { Type, type Static, type TSchema } from "typebox";
+import { Meta } from "typebox/schema";
+import { Value } from "typebox/value";
+import type { NornAnyWorkflowDeclaration, NornJsonSchema } from "./api.ts";
+
+export const jsonValueSchema = Type.Cyclic({
+	Json: Type.Union([
+		Type.Null(), Type.Boolean(), Type.Number(), Type.String(),
+		Type.Array(Type.Ref("Json")),
+		Type.Refine(Type.Record(Type.String(), Type.Ref("Json")), value => Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null),
+	]),
+}, "Json");
+
+export type NornJsonValue = Static<typeof jsonValueSchema>;
+
+export function inspectSchema(schema: TSchema): NornJsonSchema {
+	const inspected: unknown = JSON.parse(JSON.stringify(schema));
+	Value.Assert(Meta["https://json-schema.org/draft/2020-12/schema"], inspected);
+	if (!isPlainObject(inspected)) throw new Error("Norn inspection requires an object schema");
+	return inspected;
+}
 
 export function assertWorkflowMetadata(workflow: NornAnyWorkflowDeclaration): void {
 	if (workflow.instructions !== undefined && (typeof workflow.instructions !== "string" || workflow.instructions.trim().length === 0)) {
@@ -9,40 +29,22 @@ export function assertWorkflowMetadata(workflow: NornAnyWorkflowDeclaration): vo
 	}
 }
 
-export function unwrapSchema(schema: unknown): unknown {
-	let current = schema;
-	while (true) {
-		const def = schemaDef(current);
-		if (["optional", "nullable", "default", "catch", "readonly", "prefault"].includes(def.type ?? "") && def.innerType) {
-			current = def.innerType;
-			continue;
-		}
-		return current;
-	}
+export function unwrapSchema(schema: TSchema): TSchema {
+	if (!Type.IsUnion(schema)) return schema;
+	const members = schema.anyOf.filter(member => !Type.IsNull(member));
+	return members.length === 1 ? unwrapSchema(members[0]) : schema;
 }
 
-export function schemaShape(schema: unknown): Record<string, unknown> {
-	const shape = schemaDef(unwrapSchema(schema)).shape;
-	if (!shape) return {};
-	return typeof shape === "function" ? shape() as Record<string, unknown> : shape as Record<string, unknown>;
+export function schemaShape(schema: TSchema): Record<string, TSchema> {
+	const unwrapped = unwrapSchema(schema);
+	return Type.IsObject(unwrapped) ? unwrapped.properties : {};
 }
 
-export function schemaType(schema: unknown): string | undefined {
-	return schemaDef(unwrapSchema(schema)).type;
+export function schemaType(schema: TSchema): string | undefined {
+	const unwrapped = unwrapSchema(schema);
+	return "type" in unwrapped && typeof unwrapped.type === "string" ? unwrapped.type : undefined;
 }
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-type ZodDef = {
-	readonly type?: string;
-	readonly innerType?: unknown;
-	readonly shape?: unknown;
-};
-
-function schemaDef(schema: unknown): ZodDef {
-	if (!schema || typeof schema !== "object") return {};
-	const candidate = schema as { _def?: ZodDef; def?: ZodDef };
-	return candidate._def ?? candidate.def ?? {};
 }

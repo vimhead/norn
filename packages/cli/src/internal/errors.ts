@@ -1,4 +1,5 @@
 import type { NornPluginDiagnostic } from "@vimhead.dev/norn";
+import { AssertError } from "typebox/value";
 
 export class NornProjectLoadError extends Error {
 	readonly code = "NORN_PROJECT_INVALID";
@@ -22,18 +23,11 @@ export class NornRunStoppedError extends Error {
 	}
 }
 
-export function zodErrorMessage(error: unknown): string {
-	const issues = (error as { issues?: Array<{ path?: unknown[]; message?: string }> }).issues;
-	if (!Array.isArray(issues) || issues.length === 0) return errorMessage(error);
-	return issues
-		.slice(0, 3)
-		.map((issue) => {
-			const path = Array.isArray(issue.path) && issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
-			return `${path}${issue.message ?? "Invalid workflow response"}`;
-		})
-		.join("; ");
+export function schemaErrorMessage(error: AssertError): string {
+	return error.cause.errors.slice(0, 3).map(issue => `${issue.instancePath || "/"}: ${issue.message}`).join("; ");
 }
 
 export function errorMessage(error: unknown): string {
+	if (error instanceof AssertError) return schemaErrorMessage(error);
 	return error instanceof Error ? error.message : String(error);
 }

@@ -1,5 +1,5 @@
 import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
-import { z } from "zod";
+import { Type } from "typebox";
 
 export const manifest = definePluginManifest({
 	id: "greeting",
@@ -7,7 +7,7 @@ export const manifest = definePluginManifest({
 		write: {
 			isEntrypoint: true,
 			instructions: "Write a greeting artifact for the supplied name. Returns the greeting text and artifact reference; no agent or external service is used.",
-			params: z.object({ name: z.string().trim().min(1) }),
+			params: Type.Object({ name: Type.Decode(Type.String({ pattern: "\\S" }), value => value.trim()) }),
 		},
 	},
 });

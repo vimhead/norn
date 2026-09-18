@@ -16,16 +16,19 @@ A reusable capability can accept a continuation whose schema describes the value
 
 ```ts
 import { artifactRefSchema, workflowRefSchema } from "@vimhead.dev/norn";
-import { z } from "zod";
+import { Type } from "typebox";
 
-const paramsSchema = z.object({
-  task: z.string(),
-  next: workflowRefSchema({
-    params: z.object({
-      resultArtifact: artifactRefSchema,
-      summary: z.string(),
+const paramsSchema = Type.Object({
+  task: Type.String(),
+  next: Type.Union([
+    workflowRefSchema({
+      params: Type.Object({
+        resultArtifact: artifactRefSchema,
+        summary: Type.String(),
+      }),
     }),
-  }).nullable(),
+    Type.Null(),
+  ]),
 });
 ```
 
@@ -55,7 +58,7 @@ A caller supplies a registered target and its own context:
 }
 ```
 
-`importer.deliver` must accept `batchId`, `resultArtifact`, and `summary`. Code can supply a workflow declaration instead of the ID string. A bare ID or `{ id }` reference normalizes to empty `forwardParams`.
+`importer.deliver` must accept `batchId`, `resultArtifact`, and `summary`. Code supplies a declaration's `.id` as the reference's workflow string. A bare ID string decodes to a reference with empty `forwardParams`; an object reference supplies both `workflow` and `forwardParams`.
 
 `workflows inspect` exposes `x-norn-workflow-ref.contributedParamsSchema` at the reference's JSON Schema node. This is the producer's contribution contract, not extra fields required in the caller's reference payload. It does not automatically merge params, verify the target exists, or prove the target accepts the combination.
 

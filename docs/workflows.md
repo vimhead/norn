@@ -6,9 +6,9 @@ Start with the complete [minimal plugin](../examples/minimal-workflow/plugin.ts)
 
 ## Declaration and implementation
 
-`definePluginManifest` qualifies workflow keys as `pluginId.workflowKey`, binds Zod params, optional plugin config, and optional state declarations. `definePlugin` binds every declared key to an implementation. Entrypoints need nonempty caller-facing `instructions`; internal steps may omit them. `isEntrypoint` controls default catalogue visibility, not an authorization boundary: the CLI can start a known internal workflow ID directly.
+`definePluginManifest` qualifies workflow keys as `pluginId.workflowKey`, binds TypeBox params, optional plugin config, and optional state declarations. `definePlugin` binds every declared key to an implementation. Entrypoints need nonempty caller-facing `instructions`; internal steps may omit them. `isEntrypoint` controls default catalogue visibility, not an authorization boundary: the CLI can start a known internal workflow ID directly.
 
-`instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Params and plugin config are parsed before execution. Public contracts must support JSON Schema inspection; JSON params must survive persistence and later parsing.
+`instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Params and plugin config use native TypeBox decoding before execution; [schema operations](schemas.md#norn-boundaries) define conversion, defaults and input/output types. Public contracts must support JSON Schema inspection. Encoded JSON params are retained for recovery rather than replacing them with decoded values.
 
 The implementation's `execute(run, params, config)` returns one control result:
 

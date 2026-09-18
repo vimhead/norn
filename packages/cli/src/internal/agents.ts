@@ -1,27 +1,28 @@
 import {
 	SessionManager,
-	createAgentSessionServices,
 	createAgentSessionFromServices,
+	createAgentSessionServices,
 	createEventBus,
 	type AgentSession,
 	type CreateAgentSessionOptions,
 } from "@earendil-works/pi-coding-agent";
+import type { NornAgentCreateSessionInput, NornAgentPromptInput, NornAgentRunRawAttempt, NornAgentRunResult, NornAgentSession, NornAgentSessionEvents, NornAgentSinglePromptInput, NornAgentUsage } from "@vimhead.dev/norn";
+import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
+import { inspectSchema } from "@vimhead.dev/norn/schema";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { z } from "zod";
-import type { NornAgentCreateSessionInput, NornAgentPromptInput, NornAgentRunRawAttempt, NornAgentRunResult, NornAgentSessionEvents, NornAgentSession, NornAgentSinglePromptInput, NornAgentUsage } from "@vimhead.dev/norn";
-import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
+import { type StaticDecode, type TSchema } from "typebox";
+import { resolveNornAgentDirectory } from "./agent-directory.ts";
 import {
 	NornAgentResponseCollector,
 	NornAgentResponseToolFactory,
 	type NornCapturedAgentResponse,
 } from "./agent-response-tool.ts";
-import { resolveNornAgentDirectory } from "./agent-directory.ts";
 import { errorMessage } from "./errors.ts";
-import type { NornRunLogs } from "./logs.ts";
 import { safeFileName } from "./file-names.ts";
+import type { NornRunLogs } from "./logs.ts";
 import { NornSessionResourceBindings } from "./resource-bindings.ts";
 import type { NornRunLogger } from "./run-log.ts";
 import { agentUsageFromValue, emptyAgentUsage, totalAgentUsage } from "./usage.ts";
@@ -112,7 +113,7 @@ export class NornAgentRunner {
 		}
 	}
 
-	async prompt<ResponseSchema extends z.ZodType>(agentInput: NornAgentSinglePromptInput<ResponseSchema>): Promise<z.output<ResponseSchema>> {
+	async prompt<ResponseSchema extends TSchema>(agentInput: NornAgentSinglePromptInput<ResponseSchema>): Promise<StaticDecode<ResponseSchema>> {
 		const agent = await this.createSession(agentInput);
 		try {
 			return await agent.prompt(agentInput);
@@ -153,11 +154,11 @@ class CreatedNornAgentSession implements NornAgentSession {
 		this.events = input.events;
 	}
 
-	async prompt<ResponseSchema extends z.ZodType>(agentInput: NornAgentPromptInput<ResponseSchema>): Promise<z.output<ResponseSchema>> {
+	async prompt<ResponseSchema extends TSchema>(agentInput: NornAgentPromptInput<ResponseSchema>): Promise<StaticDecode<ResponseSchema>> {
 		return (await this.promptWithResult(agentInput)).response;
 	}
 
-	private async promptWithResult<ResponseSchema extends z.ZodType>(agentInput: NornAgentPromptInput<ResponseSchema>): Promise<NornAgentRunResult<ResponseSchema>> {
+	private async promptWithResult<ResponseSchema extends TSchema>(agentInput: NornAgentPromptInput<ResponseSchema>): Promise<NornAgentRunResult<ResponseSchema>> {
 		if (this.isDisposed) throw new Error(`Workflow agent session is disposed: ${this.label}`);
 		const maxAttempts = Math.max(1, Math.floor(agentInput.maxAttempts ?? DEFAULT_AGENT_ATTEMPTS));
 		const attempts: NornAgentRunRawAttempt[] = [];
@@ -174,7 +175,7 @@ class CreatedNornAgentSession implements NornAgentSession {
 
 				try {
 					if (!raw.responseToolCalled) throw new Error(`Agent did not call ${AGENT_RESPONSE_TOOL_NAME}`);
-					const response = agentInput.response.parse(raw.toolResponse);
+					const response = raw.toolResponse as StaticDecode<ResponseSchema>;
 					const usage = totalAgentUsage(attempts.map((candidate) => candidate.usage));
 					const result: NornAgentRunResult<ResponseSchema> = {
 						label: this.label,
@@ -233,7 +234,7 @@ class CreatedNornAgentSession implements NornAgentSession {
 		await this.input.logger.record({ type: "agent.disposed", label: this.label });
 	}
 
-	private async runAttempt<ResponseSchema extends z.ZodType>(
+	private async runAttempt<ResponseSchema extends TSchema>(
 		agentInput: NornAgentPromptInput<ResponseSchema>,
 		attempt: number,
 		previousError: string | undefined,
@@ -283,7 +284,7 @@ class CreatedNornAgentSession implements NornAgentSession {
 		};
 	}
 
-	private async promptForStructuredResponse<ResponseSchema extends z.ZodType>(
+	private async promptForStructuredResponse<ResponseSchema extends TSchema>(
 		agentInput: NornAgentPromptInput<ResponseSchema>,
 		responseRunId: string,
 		attempt: number,
@@ -318,7 +319,7 @@ function usageFromMessage(message: unknown): NornAgentUsage | undefined {
 
 function withResponseToolInstruction(
 	prompt: string,
-	responseSchema: z.ZodType,
+	responseSchema: TSchema,
 	label: string,
 	responseRunId: string,
 	attempt: number,
@@ -334,13 +335,13 @@ function withResponseToolInstruction(
 		`Pass label exactly as: ${label}`,
 		"Pass the structured workflow response in the tool's response argument.",
 		"The response argument must match this JSON Schema:",
-		JSON.stringify(z.toJSONSchema(responseSchema), null, 2),
+		JSON.stringify(inspectSchema(responseSchema), null, 2),
 		...(attempt > 1 && previousError ? ["", `Previous structured response attempt failed: ${previousError}`] : []),
 	].join("\n");
 }
 
 function withResponseToolFinalizationInstruction(
-	responseSchema: z.ZodType,
+	responseSchema: TSchema,
 	label: string,
 	responseRunId: string,
 	attempt: number,
@@ -354,7 +355,7 @@ function withResponseToolFinalizationInstruction(
 		`Pass label exactly as: ${label}`,
 		"Pass the structured workflow response in the tool's response argument, based on the work you already completed in this session.",
 		"The response argument must match this JSON Schema:",
-		JSON.stringify(z.toJSONSchema(responseSchema), null, 2),
+		JSON.stringify(inspectSchema(responseSchema), null, 2),
 		...(attempt > 1 && previousError ? ["", `Previous structured response attempt failed: ${previousError}`] : []),
 	].join("\n");
 }

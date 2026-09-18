@@ -6,7 +6,7 @@ The [Norn agent → saved artifact → analysis example](../examples/agent-then-
 
 ## One prompt or a retained session
 
-`run.agents.prompt({ label, prompt, response, ...sessionOptions })` creates a Pi session, prompts it, validates its response, and disposes it in `finally`. It returns the parsed response itself, not `{ response, raw }`.
+`run.agents.prompt({ label, prompt, response, ...sessionOptions })` creates a Pi session, prompts it, validates its response, and disposes it in `finally`. It returns the [decoded response](schemas.md#norn-boundaries) itself, not `{ response, raw }`. The response collector decodes it once; the session does not decode the captured result again.
 
 For follow-up turns in the same conversation:
 
@@ -34,7 +34,7 @@ try {
 }
 ```
 
-`task` and both Zod schemas are capability-specific inputs in this fragment. [Provider setup](providers.md) is a prerequisite for Norn agents; detached execution cannot conduct an interactive login.
+`task` and both TypeBox schemas are capability-specific inputs in this fragment. [Provider setup](providers.md) is a prerequisite for Norn agents; detached execution cannot conduct an interactive login.
 
 ## Response contract and evidence
 

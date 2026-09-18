@@ -1,5 +1,5 @@
-import type { z } from "zod";
 import type { NornFileCoordinator } from "./files.ts";
+import type { NornJsonValue } from "./schema.ts";
 
 export type NornResourceContext = {
 	readonly mode: "create" | "open";
@@ -10,7 +10,7 @@ export type NornResourceContext = {
 export type NornResourceDefinition<T> = {
 	readonly name: string;
 	readonly kind: string;
-	readonly configuration: z.infer<ReturnType<typeof z.json>>;
+	readonly configuration: NornJsonValue;
 	initialize(context: NornResourceContext): Promise<T>;
 };
 

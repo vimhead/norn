@@ -46,7 +46,7 @@ Best practices shown:
 
 - local workflow declarations are plain objects;
 - manifest keys derive fully qualified workflow ids;
-- state leaves are Zod schemas and derive ids from the state tree;
+- state leaves are TypeBox schemas and derive ids from the state tree;
 - `plugin.ts` binds implementations and dynamic gate descriptions;
 - workflows only route with `run.next(...)`;
 - runs finish explicitly with `run.complete(...)` or

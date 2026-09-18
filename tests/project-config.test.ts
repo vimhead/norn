@@ -1,15 +1,15 @@
+import type { NornRunInfo, NornWorkflowCatalogInfo } from "@vimhead.dev/norn";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test, type TestContext } from "vitest";
 import { promisify } from "node:util";
-import { findNornProject, loadNornProject } from "../packages/cli/src/plugin-loader.ts";
+import { AssertError } from "typebox/value";
+import { test, type TestContext } from "vitest";
 import { NornProjectLoadError } from "../packages/cli/src/internal/errors.ts";
-import type { NornRunInfo, NornWorkflowCatalogInfo } from "@vimhead.dev/norn";
-import { z } from "zod";
+import { findNornProject, loadNornProject } from "../packages/cli/src/plugin-loader.ts";
 import { readProcessStdout } from "./helpers/process.ts";
 const cliPath = fileURLToPath(new URL("../packages/cli/bin/norn.mjs", import.meta.url));
 const executeFile = promisify(execFile);
@@ -30,14 +30,14 @@ async function writePluginFixture({ projectRoot, relativePath, pluginId, revisio
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, `
 import { definePlugin, definePluginManifest } from "@vimhead.dev/norn";
-import { z } from "zod";
+import { Type } from "typebox";
 const manifest = definePluginManifest({
 	id: ${JSON.stringify(pluginId)},
-	config: z.object({
-		greeting: z.string().default("hello"),
-		options: z.object({ keep: z.string(), replace: z.string() }).optional(),
+	config: Type.Object({
+		greeting: Type.String({ default: "hello" }),
+		options: Type.Optional(Type.Object({ keep: Type.String(), replace: Type.String() })),
 	}),
-	workflows: { echo: { instructions: "Use to echo the provided value.", isEntrypoint: true, params: z.object({ value: z.string() }) } },
+	workflows: { echo: { instructions: "Use to echo the provided value.", isEntrypoint: true, params: Type.Object({ value: Type.String() }) } },
 });
 export default definePlugin(manifest, { workflows: {
 	echo: { execute: (run, params) => run.complete({ data: { value: params.value, revision: ${JSON.stringify(revision)} } }) },
@@ -127,7 +127,7 @@ for (const plugins of ["./plugin.ts", [42], [""]]) {
 	test(`invalid project plugins are rejected rather than discarded: ${JSON.stringify(plugins)}`, async context => {
 		const projectRoot = await createProjectFixture(context);
 		await writeJsonFixture({ path: join(projectRoot, "norn.project.json"), value: { plugins } });
-		await assert.rejects(findNornProject(projectRoot), error => error instanceof z.ZodError && error.issues.some(issue => issue.path[0] === "plugins"));
+		await assert.rejects(findNornProject(projectRoot), error => error instanceof AssertError && error.cause.errors.some(issue => issue.instancePath.startsWith("/plugins")));
 	});
 }
 
@@ -135,10 +135,10 @@ test("project-local plugin config is validated by its manifest", async context =
 	const projectRoot = await createProjectFixture(context);
 	await writePluginFixture({ projectRoot, relativePath: "plugin.ts", pluginId: "local" });
 	await writeJsonFixture({ path: join(projectRoot, "norn.project.json"), value: {
-		plugins: ["./plugin.ts"], config: { local: { greeting: 42 } },
+		plugins: ["./plugin.ts"], config: { local: { greeting: {} } },
 	} });
 	await assert.rejects(loadNornProject(projectRoot), error => error instanceof NornProjectLoadError
-		&& error.diagnostics.some(diagnostic => diagnostic.stage === "config" && diagnostic.issues.some(issue => issue.path[0] === "greeting")));
+		&& error.diagnostics.some(diagnostic => diagnostic.stage === "config" && diagnostic.issues.some(issue => issue.instancePath === "/greeting")));
 });
 
 test("duplicate plugin ids across project and reusable configs are rejected", async context => {

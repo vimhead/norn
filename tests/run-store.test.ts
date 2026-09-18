@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { syncBuiltinESMExports } from "node:module";
+import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { gzipSync } from "node:zlib";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { afterAll, test, vi, type TestContext } from "vitest";
 import { NornRunStore } from "../packages/cli/src/internal/run-store.ts";
-import { z } from "zod";
 
 type FileSystemFault = { operation: "writeFile" | "rename"; matches: (...args: unknown[]) => boolean; triggered: boolean };
 let activeFault: FileSystemFault | undefined;
@@ -58,12 +59,12 @@ function failOperation(context: TestContext, operation: FileSystemFault["operati
 	return () => assert.equal(fault.triggered, true, "the intended filesystem fault was exercised");
 }
 
-const snapshotSchema = z.looseObject({ entries: z.array(z.looseObject({ path: z.string(), type: z.string(), sha256: z.string().optional() })) });
+const snapshotSchema = Type.Object({ entries: Type.Array(Type.Object({ path: Type.String(), type: Type.String(), sha256: Type.Optional(Type.String()), target: Type.Optional(Type.String()) }, { additionalProperties: true })) }, { additionalProperties: true });
 
 for (const corruption of ["missing", "invalid gzip", "checksum mismatch"]) {
 	test(`${corruption} snapshot object leaves current files, history and ref intact`, async context => {
 		const fixture = await createFixture(context);
-		const snapshot = snapshotSchema.parse(JSON.parse(await fs.readFile(join(fixture.root, fixture.first.path), "utf8")));
+		const snapshot = Value.Parse(snapshotSchema, JSON.parse(await fs.readFile(join(fixture.root, fixture.first.path), "utf8")));
 		const entry = snapshot.entries.find(entry => entry.path === "evidence.txt");
 		assert.ok(entry?.sha256);
 		const objectPath = join(fixture.root, "store/objects/sha256", entry.sha256.slice(0, 2), entry.sha256.slice(2, 4), `${entry.sha256}.gz`);
@@ -141,7 +142,7 @@ test("snapshot symlink parents cannot redirect materialization outside staging",
 	const external = join(fixture.root, "external");
 	await fs.mkdir(external);
 	const snapshotPath = join(fixture.root, fixture.first.path);
-	const snapshot = snapshotSchema.parse(JSON.parse(await fs.readFile(snapshotPath, "utf8")));
+	const snapshot = Value.Parse(snapshotSchema, JSON.parse(await fs.readFile(snapshotPath, "utf8")));
 	const file = snapshot.entries.find(entry => entry.path === "evidence.txt");
 	assert.ok(file);
 	snapshot.entries.push({ path: "link", type: "symlink", target: external }, { ...file, path: "link/escaped.txt" });

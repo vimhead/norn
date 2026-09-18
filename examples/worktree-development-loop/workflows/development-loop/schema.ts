@@ -1,14 +1,14 @@
-import { z } from "zod";
+import { Type, type StaticDecode } from "typebox";
 
-export const developmentLoopConfigSchema = z.object({
-	repositoryRoot: z.string(),
+export const developmentLoopConfigSchema = Type.Object({
+	repositoryRoot: Type.String(),
 });
 
-export const developmentLoopParamsSchema = z.object({
-	task: z.string(),
-	baseRef: z.string().default("HEAD"),
-	maxIterations: z.number().int().min(1).max(10).default(3),
+export const developmentLoopParamsSchema = Type.Object({
+	task: Type.String(),
+	baseRef: Type.String({ default: "HEAD" }),
+	maxIterations: Type.Integer({ minimum: 1, maximum: 10, default: 3 }),
 });
 
-export type DevelopmentLoopConfig = z.output<typeof developmentLoopConfigSchema>;
-export type DevelopmentLoopParams = z.output<typeof developmentLoopParamsSchema>;
+export type DevelopmentLoopConfig = StaticDecode<typeof developmentLoopConfigSchema>;
+export type DevelopmentLoopParams = StaticDecode<typeof developmentLoopParamsSchema>;

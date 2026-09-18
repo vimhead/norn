@@ -1,12 +1,12 @@
-import { z } from "zod";
+import { Type, type StaticDecode } from "typebox";
 
-export const implementationParamsSchema = z.object({
-	task: z.string(),
-	iteration: z.number().int().min(1),
+export const implementationParamsSchema = Type.Object({
+	task: Type.String(),
+	iteration: Type.Integer({ minimum: 1 }),
 });
 
-export const implementationAgentResponseSchema = z.object({
-	summary: z.string(),
+export const implementationAgentResponseSchema = Type.Object({
+	summary: Type.String(),
 });
 
-export type ImplementationParams = z.output<typeof implementationParamsSchema>;
+export type ImplementationParams = StaticDecode<typeof implementationParamsSchema>;

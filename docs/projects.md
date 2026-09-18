@@ -45,7 +45,7 @@ This is a project-file field, not an OS sandbox. The current helper contract is 
 
 ## Import and reload
 
-Each registered module default-exports `definePlugin(manifest, implementation)`. Norn loads TypeScript through jiti without a local build, supplying runtime imports for `@vimhead.dev/norn`, its `/files`, `/schema`, and `/seer` subpaths, `zod`, and `typebox`. Other dependencies need normal package resolution from the plugin's location.
+Each registered module default-exports `definePlugin(manifest, implementation)`. Norn loads TypeScript through jiti without a local build, supplying runtime imports for `@vimhead.dev/norn`, its `/files`, `/schema`, and `/seer` subpaths, `typebox`, `typebox/value`, `typebox/compile`, and `typebox/schema`. Other dependencies need normal package resolution from the plugin's location.
 
 Runtime virtual imports do not configure TypeScript or an editor. A matching `@vimhead.dev/norn` installation provides the SDK types; the source checkout's examples are checked by its `tsconfig.json`. A successful runtime import alone is not a type check.
 

@@ -1,24 +1,25 @@
-import { spawn } from "node:child_process";
 import { main as runPi } from "@earendil-works/pi-coding-agent";
+import { type DeletedNornRunInfo, type NornAnyWorkflowDeclaration, type NornRunInfo } from "@vimhead.dev/norn";
+import { isNodeError } from "@vimhead.dev/norn-core/errors";
+import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { fileURLToPath } from "node:url";
-import { renderNornDocumentationIntro, resolveDocumentationCacheRoot, resolveNornDocumentation, type NornDocumentationSource } from "./documentation.ts";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { discoverNornProject, findNornProject, inspectNornWorkflow, loadNornProject, NORN_PROJECT_FILE_NAME } from "./plugin-loader.ts";
-import { type NornAnyWorkflowDeclaration, type DeletedNornRunInfo, type NornRunInfo } from "@vimhead.dev/norn";
+import { fileURLToPath } from "node:url";
+import { Value } from "typebox/value";
+import { NORN_BUILD_INFO, type NornBuildInfo, type NornGithubReleaseBinaryBuildInfo } from "./build-info.ts";
+import { renderNornDocumentationIntro, resolveDocumentationCacheRoot, resolveNornDocumentation, type NornDocumentationSource } from "./documentation.ts";
 import { NornEngine } from "./internal/engine.ts";
 import { errorMessage, NornProjectLoadError, NornRunStoppedError } from "./internal/errors.ts";
-import { isNodeError } from "@vimhead.dev/norn-core/errors";
 import { clearRunResumeRequest, readRunLaunchRequest, readRunResumeRequest, writeRunLaunchRequest, writeRunResumeRequest, type NornRunResumeRequest } from "./internal/launch-request.ts";
-import { generateRunName } from "./internal/run-names.ts";
-import { getRunLeaseOwner, NornRunLease } from "./internal/run-lease.ts";
-import { NornRunStore } from "./internal/run-store.ts";
 import { readRunMetrics } from "./internal/metrics.ts";
+import { getRunLeaseOwner, NornRunLease } from "./internal/run-lease.ts";
+import { generateRunName } from "./internal/run-names.ts";
 import { getRunInfo, listRuns, mergeInterruptedWorkflowParams, resolveRunRoot } from "./internal/run-state.ts";
-import { NORN_BUILD_INFO, type NornBuildInfo, type NornGithubReleaseBinaryBuildInfo } from "./build-info.ts";
+import { NornRunStore } from "./internal/run-store.ts";
+import { discoverNornProject, findNornProject, inspectNornWorkflow, loadNornProject, NORN_PROJECT_FILE_NAME } from "./plugin-loader.ts";
 
 const RUNS_ROOT = join(".norn", "runs");
 const RUN_WAIT_INTERVAL_MS = 1000;
@@ -792,7 +793,8 @@ async function startRun(workflowId: string, args: readonly string[]): Promise<vo
 	const workflow = project.registry.workflowById(workflowId);
 	if (!workflow) throw new Error(`Unknown workflow: ${workflowId}`);
 	const input = parseStartRunInput(await readStdinJson());
-	const params = workflow.params.parse(input.params ?? {});
+	const params = input.params === undefined ? {} : input.params;
+	Value.Decode(workflow.params, params);
 	const configOverride = input.config;
 	const id = randomUUID();
 	const name = generateRunName(new Set((await listRuns(project.projectRoot)).map((run) => run.name)));
@@ -835,7 +837,7 @@ async function parseResumeParams(runInfo: NornRunInfo, params: unknown): Promise
 		const project = await loadNornProject(process.cwd());
 		const workflow = project.registry.workflowById(runInfo.currentWorkflowId);
 		if (!workflow) throw new Error(`Unknown workflow for resumed run: ${runInfo.currentWorkflowId}`);
-		workflow.params.parse(mergeInterruptedWorkflowParams(runInfo.interruption?.params, params, runInfo.interruption?.fields));
+		Value.Decode(workflow.params, mergeInterruptedWorkflowParams(runInfo.interruption?.params, params, runInfo.interruption?.fields));
 		return params;
 	}
 	if (runInfo.status === "pendingResume") {

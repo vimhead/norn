@@ -1,24 +1,24 @@
-import assert from "node:assert/strict";
+import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
+import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
+import { AgentSession, createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
+import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Type } from "typebox";
 import { test, vi, type TestContext } from "vitest";
-import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
-import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
-import { AgentSession, createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
-import { z } from "zod";
 
-import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
-import { initializeRunResources } from "../packages/cli/src/internal/run-resources.ts";
-import { StateAdapter, type NornAgentResourceAdapter } from "@vimhead.dev/norn";
-import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
-import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
 import type { NornWorkflowCatalogInfo, NornWorkflowInspection } from "@vimhead.dev/norn";
+import { StateAdapter, type NornAgentResourceAdapter } from "@vimhead.dev/norn";
 import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
 import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-response-tool.ts";
+import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
+import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
+import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
+import { initializeRunResources } from "../packages/cli/src/internal/run-resources.ts";
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const model: Model<"anthropic-messages"> = { id: "offline", name: "Offline test", provider: "offline-test", api: "anthropic-messages", baseUrl: "https://unused.invalid", reasoning: false, input: ["text"], contextWindow: 128000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
 
@@ -225,7 +225,9 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 	const worker = await runner.createSession({ label: "restricted", tools: [], systemPrompt: "SOURCE-ONLY ASSESSOR" });
 	context.onTestFinished(() => worker.dispose());
 	await assert.rejects(readFile(calledPath), { code: "ENOENT" });
-	assert.deepEqual(await worker.prompt({ prompt: "Assess only this supplied source.", response: z.object({ ok: z.boolean() }), maxAttempts: 1 }), { ok: true });
+	assert.deepEqual(await worker.prompt({ prompt: "Assess only this supplied source.", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 }), { ok: true });
+	const decoded = await worker.prompt({ prompt: "Record the next assessment.", response: Type.Decode(Type.Object({ ok: Type.Boolean() }), result => result.ok ? "accepted" : "rejected"), maxAttempts: 1 });
+	assert.equal(decoded, "accepted");
 	assert.equal(sessions.length, 1);
 	const session = sessions[0];
 	assert.ok(session.resourceLoader.getExtensions().extensions.some(extension => extension.path.endsWith("pi-norn/dist/index.js")));
@@ -249,8 +251,8 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 test("native resource tools are explicit, persist across sessions, and clean up on disposal and startup failure", { timeout: 30000 }, async context => {
 	const fixture = await createFixture(context);
 	const { resources, state } = await initializeRunResources(fixture.root);
-	const field = { id: "count", schema: z.number().int() };
-	const hidden = { id: "private", schema: z.string() };
+	const field = { id: "count", schema: Type.Integer() };
+	const hidden = { id: "private", schema: Type.String() };
 	await state.set(hidden, "not attached");
 	const captured: CapturedRequest[] = [];
 	const nativeSessions: AgentSession[] = [];
@@ -282,7 +284,7 @@ test("native resource tools are explicit, persist across sessions, and clean up 
 	const attachment = StateAdapter({ state, fields: [{ field, access: "read-write" }] });
 	const worker = await runner.createSession({ label: "writer", tools: [], resourceAdapters: [attachment, lifecycle] });
 	context.onTestFinished(() => worker.dispose());
-	assert.deepEqual(await worker.prompt({ prompt: "Exercise attached state", response: z.object({ ok: z.boolean() }), maxAttempts: 1 }), { ok: true });
+	assert.deepEqual(await worker.prompt({ prompt: "Exercise attached state", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 }), { ok: true });
 	assert.deepEqual(new Set(captured[0].tools), new Set([AGENT_RESPONSE_TOOL_NAME, "norn_state_list", "norn_state_get", "norn_state_set"]));
 	assert.equal(await state.get(field), 7);
 	const results = nativeSessions[0].messages.filter(message => message.role === "toolResult");
@@ -290,10 +292,10 @@ test("native resource tools are explicit, persist across sessions, and clean up 
 	await worker.dispose();
 	await worker.dispose();
 	assert.equal(disposals, 1);
-	await runner.prompt({ label: "unattached", tools: [], prompt: "Return the result", response: z.object({ ok: z.boolean() }), maxAttempts: 1 });
+	await runner.prompt({ label: "unattached", tools: [], prompt: "Return the result", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
 	assert.deepEqual(lastRequest(captured).tools, [AGENT_RESPONSE_TOOL_NAME]);
 	assert.equal(await (await initializeRunResources(fixture.root)).state.get(field), 7);
-	await runner.prompt({ label: "attached-one-shot", tools: [], resourceAdapters: [attachment, lifecycle], prompt: "Return the result", response: z.object({ ok: z.boolean() }), maxAttempts: 1 });
+	await runner.prompt({ label: "attached-one-shot", tools: [], resourceAdapters: [attachment, lifecycle], prompt: "Return the result", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
 	assert.ok(lastRequest(captured).tools.includes("norn_state_get"));
 	assert.equal(disposals, 2);
 	await assert.rejects(runner.createSession({ label: "broken-start", resourceAdapters: [lifecycle], beforeSessionStart() { throw new Error("startup failure"); } }), /startup failure/);

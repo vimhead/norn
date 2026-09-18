@@ -1,10 +1,10 @@
+import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
+import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { z } from "zod";
-import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
+import { Type } from "typebox";
 import { initializeRunResources } from "../../packages/cli/src/internal/run-resources.ts";
-import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
 
 const [root, mode, worker] = process.argv.slice(2);
 const files = createRunFileCoordinator(root);
@@ -25,7 +25,7 @@ if (mode === "hold") {
 } else if (mode === "state") {
 	const { state } = await initializeRunResources(root);
 	for (let index = 0; index < 12; index++) {
-		await state.set({ id: `${worker}-${index}`, schema: z.number() }, index);
+		await state.set({ id: `${worker}-${index}`, schema: Type.Number() }, index);
 	}
 } else {
 	throw new Error(`Unknown lock worker mode: ${mode}`);

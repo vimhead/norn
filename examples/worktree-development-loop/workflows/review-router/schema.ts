@@ -1,12 +1,12 @@
-import { z } from "zod";
 import { artifactRefSchema } from "@vimhead.dev/norn";
+import { Type, type StaticDecode } from "typebox";
 import { reviewDecisionSchema } from "../review/schema.ts";
 
-export const reviewRouterParamsSchema = z.object({
-	iteration: z.number().int().min(1),
+export const reviewRouterParamsSchema = Type.Object({
+	iteration: Type.Integer({ minimum: 1 }),
 	decision: reviewDecisionSchema,
-	summary: z.string(),
+	summary: Type.String(),
 	automatedReviewArtifact: artifactRefSchema,
 });
 
-export type ReviewRouterParams = z.output<typeof reviewRouterParamsSchema>;
+export type ReviewRouterParams = StaticDecode<typeof reviewRouterParamsSchema>;

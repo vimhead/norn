@@ -1,39 +1,43 @@
-import { access, readFile, readdir } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve, sep } from "node:path";
-import { pathToFileURL } from "node:url";
-import { createJiti } from "jiti/static";
-import * as typeboxModule from "typebox";
-import { z } from "zod";
-import * as zodModule from "zod";
 import * as nornModule from "@vimhead.dev/norn";
+import { isWorkflowPlugin, type NornDispose, type NornPluginDiagnostic, type NornProjectInfo, type NornProjectInspection, type NornProjectPluginInfo, type NornWorkflowCatalogInfo, type NornWorkflowInspection, type NornWorkflowPlugin, type NornWorkflowPluginInfo } from "@vimhead.dev/norn";
+import { isNodeError } from "@vimhead.dev/norn-core/errors";
 import * as nornFilesModule from "@vimhead.dev/norn/files";
 import * as nornSchemaModule from "@vimhead.dev/norn/schema";
+import { inspectSchema } from "@vimhead.dev/norn/schema";
 import * as nornSeerModule from "@vimhead.dev/norn/seer";
-import { isWorkflowPlugin, type NornDispose, type NornPluginDiagnostic, type NornProjectInfo, type NornProjectInspection, type NornProjectPluginInfo, type NornWorkflowCatalogInfo, type NornWorkflowInspection, type NornWorkflowPlugin, type NornWorkflowPluginInfo } from "@vimhead.dev/norn";
-import { errorMessage, NornProjectLoadError } from "./internal/errors.ts";
-import { isNodeError } from "@vimhead.dev/norn-core/errors";
-import { NornMemoryWorkflowState } from "./internal/state-store.ts";
-import { NornWorkflowRegistry, type NornRegisteredWorkflow } from "./internal/workflow-registry.ts";
-import { schemaType, unwrapSchema } from "@vimhead.dev/norn/schema";
 import { resolveSeerModeConfig, type NornResolvedSeerModeConfig } from "@vimhead.dev/norn/seer";
+import { createJiti } from "jiti/static";
+import { access, readdir, readFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
+import * as typeboxModule from "typebox";
+import { Type, type StaticDecode } from "typebox";
+import * as typeboxCompileModule from "typebox/compile";
+import * as typeboxSchemaModule from "typebox/schema";
+import * as typeboxValueModule from "typebox/value";
+import { AssertError, Value } from "typebox/value";
+import { errorMessage, NornProjectLoadError } from "./internal/errors.ts";
+import { NornMemoryWorkflowState } from "./internal/state-store.ts";
+import { decodePluginConfiguration, NornWorkflowRegistry, type NornRegisteredWorkflow } from "./internal/workflow-registry.ts";
 
 export const NORN_PROJECT_FILE_NAME = "norn.project.json";
 
-const seerModeConfigSchema = z.object({
-	writableRoots: z.array(z.string().min(1)).min(1),
+const seerModeConfigSchema = Type.Object({
+	writableRoots: Type.Array(Type.String({ minLength: 1 }), { minItems: 1 }),
 });
-const nornConfigSchema = z.object({
-	plugins: z.array(z.string().min(1)).default([]),
-	includes: z.array(z.string().min(1)).default([]),
-	config: z.record(z.string(), z.unknown()).default({}),
+const nornConfigSchema = Type.Object({
+	plugins: Type.Array(Type.String({ minLength: 1 }), { default: [] }),
+	includes: Type.Array(Type.String({ minLength: 1 }), { default: [] }),
+	config: Type.Record(Type.String(), Type.Unknown(), { default: {} }),
 });
-const nornProjectConfigSchema = nornConfigSchema.extend({
-	version: z.literal(1).default(1),
-	seerMode: seerModeConfigSchema.optional(),
+const nornProjectConfigSchema = Type.Object({
+	...nornConfigSchema.properties,
+	version: Type.Literal(1, { default: 1 }),
+	seerMode: Type.Optional(seerModeConfigSchema),
 });
 
-type NornConfig = z.output<typeof nornConfigSchema> & { readonly seerMode?: never };
-type NornProjectConfig = z.output<typeof nornProjectConfigSchema>;
+type NornConfig = StaticDecode<typeof nornConfigSchema> & { readonly seerMode?: never };
+type NornProjectConfig = StaticDecode<typeof nornProjectConfigSchema>;
 
 type NornConfigFile = {
 	readonly path: string;
@@ -165,12 +169,12 @@ async function loadNornConfigTree(configFile: NornConfigFile, visitedPaths: Set<
 }
 
 async function readNornProjectConfigFile(path: string): Promise<NornProjectConfigFile> {
-	const config = nornProjectConfigSchema.parse(JSON.parse(await readFile(path, "utf8")));
+	const config = Value.Parse(nornProjectConfigSchema, Value.Default(nornProjectConfigSchema, JSON.parse(await readFile(path, "utf8"))));
 	return { path, root: dirname(path), config };
 }
 
 async function readNornConfigFile(path: string): Promise<NornConfigFile> {
-	const config = nornConfigSchema.parse(JSON.parse(await readFile(path, "utf8")));
+	const config = Value.Parse(nornConfigSchema, Value.Default(nornConfigSchema, JSON.parse(await readFile(path, "utf8"))));
 	return { path, root: dirname(path), config };
 }
 
@@ -275,12 +279,11 @@ function registerProjectPlugin(input: {
 	let stage: NornPluginDiagnostic["stage"] = "config";
 	try {
 		const configInput = input.project.projectConfig[plugin.manifest.id];
-		if (!plugin.manifest.config && configInput !== undefined) throw new Error(`Norn config provided for plugin without config schema: ${plugin.manifest.id}`);
-		const config = plugin.manifest.config ? plugin.manifest.config.parse(defaultConfigInput(plugin.manifest.config, configInput)) : undefined;
+		const configuration = decodePluginConfiguration({ pluginId: plugin.manifest.id, schema: plugin.manifest.config, value: configInput });
 		stage = "schema";
 		const info: NornProjectPluginInfo = {
 			id: plugin.manifest.id, path: source.pluginPath, configPath: source.configPath,
-			configSchema: plugin.manifest.config ? z.toJSONSchema(plugin.manifest.config, { io: "input" }) : null, config,
+			configSchema: plugin.manifest.config ? inspectSchema(plugin.manifest.config) : null, config: configuration?.value,
 		};
 		stage = "implementation";
 		const implementation = typeof plugin.implementation === "function" ? plugin.implementation({ cwd: input.project.cwd, state: input.state }) : plugin.implementation;
@@ -292,9 +295,9 @@ function registerProjectPlugin(input: {
 				stage = "duplicate";
 				if (input.registry.workflowById(workflow.id)) throw new Error(`Workflow already registered: ${workflow.id}`);
 				stage = "declaration";
-				unregister.push(input.registry.register(workflow, workflowImplementation, { plugin: workflowPluginInfo(info), configSchema: plugin.manifest.config, config }));
+				unregister.push(input.registry.register(workflow, workflowImplementation, { plugin: workflowPluginInfo(info), configuration }));
 			} catch (error) {
-				diagnostics.push(createPluginDiagnostic({ source, workflowId: workflow.id, stage: error instanceof z.ZodError ? "config" : stage, error }));
+				diagnostics.push(createPluginDiagnostic({ source, workflowId: workflow.id, stage, error }));
 			}
 		}
 		if (diagnostics.length === 0) return { loaded: { plugin, info }, diagnostics };
@@ -313,9 +316,7 @@ function createPluginDiagnostic(input: {
 }): NornPluginDiagnostic {
 	return {
 		...input.source, workflowId: input.workflowId, stage: input.stage, message: errorMessage(input.error),
-		issues: input.error instanceof z.ZodError ? input.error.issues.map(issue => ({
-			path: issue.path.map(part => typeof part === "symbol" ? String(part) : part), code: issue.code, message: issue.message,
-		})) : [],
+		issues: input.error instanceof AssertError ? input.error.cause.errors : [],
 	};
 }
 
@@ -330,7 +331,9 @@ function nornWorkflowVirtualModules(): Record<string, unknown> {
 		"@vimhead.dev/norn/schema": nornSchemaModule,
 		"@vimhead.dev/norn/seer": nornSeerModule,
 		typebox: typeboxModule,
-		zod: zodModule,
+		"typebox/value": typeboxValueModule,
+		"typebox/compile": typeboxCompileModule,
+		"typebox/schema": typeboxSchemaModule,
 	};
 }
 
@@ -371,11 +374,6 @@ function mergeProjectConfigObjects(base: Record<string, unknown>, override: Reco
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function defaultConfigInput(configSchema: z.ZodType, config: unknown): unknown {
-	if (config !== undefined) return config;
-	return schemaType(unwrapSchema(configSchema)) === "object" ? {} : undefined;
 }
 
 async function expandIncludePath(configRoot: string, includePath: string): Promise<string[]> {

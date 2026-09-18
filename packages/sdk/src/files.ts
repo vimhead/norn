@@ -1,18 +1,19 @@
+import { writeTextAtomically } from "@vimhead.dev/norn-core/atomic-files";
+import { isNodeError } from "@vimhead.dev/norn-core/errors";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, unlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { z } from "zod";
-import { isNodeError } from "@vimhead.dev/norn-core/errors";
-import { writeTextAtomically } from "@vimhead.dev/norn-core/atomic-files";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 
-const ownerSchema = z.strictObject({
-	token: z.uuid(),
-	pid: z.number().int().positive(),
-	host: z.string(),
-	target: z.string(),
-});
+const ownerSchema = Type.Object({
+	token: Type.String({ format: "uuid" }),
+	pid: Type.Integer({ exclusiveMinimum: 0 }),
+	host: Type.String(),
+	target: Type.String(),
+}, { additionalProperties: false });
 
 export class NornFileCoordinator {
 	private readonly lockRoot: string;
@@ -103,7 +104,7 @@ export class NornFileCoordinator {
 			if (entries.length === 0) return;
 			if (entries.length !== 1) throw new Error(`Invalid file lock ownership: ${input.lockPath}`);
 			const marker = entries[0];
-			const owner = ownerSchema.parse(JSON.parse(await readFile(join(input.lockPath, marker), "utf8")));
+			const owner = Value.Parse(ownerSchema, JSON.parse(await readFile(join(input.lockPath, marker), "utf8")));
 			if (marker !== `${owner.token}.json` || owner.target !== input.target || owner.host !== hostname()) {
 				throw new Error(`Incompatible file lock ownership: ${input.lockPath}`);
 			}

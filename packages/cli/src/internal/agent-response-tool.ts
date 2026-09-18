@@ -1,9 +1,9 @@
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import type { z } from "zod";
 import type { NornDispose } from "@vimhead.dev/norn";
 import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
-import { zodErrorMessage } from "./errors.ts";
+import { Type, type TSchema } from "typebox";
+import { Value } from "typebox/value";
+import { errorMessage } from "./errors.ts";
 
 export type NornCapturedAgentResponse = {
 	readonly called: boolean;
@@ -12,7 +12,7 @@ export type NornCapturedAgentResponse = {
 
 type PendingAgentResponse = {
 	readonly label: string;
-	readonly responseSchema: z.ZodType;
+	readonly responseSchema: TSchema;
 	called: boolean;
 	response?: unknown;
 };
@@ -28,7 +28,7 @@ type AgentResponseToolDetails = {
 export class NornAgentResponseCollector {
 	private readonly pending = new Map<string, PendingAgentResponse>();
 
-	begin(runId: string, label: string, responseSchema: z.ZodType): NornDispose {
+	begin(runId: string, label: string, responseSchema: TSchema): NornDispose {
 		this.pending.set(runId, { label, responseSchema, called: false });
 		return () => this.pending.delete(runId);
 	}
@@ -40,11 +40,10 @@ export class NornAgentResponseCollector {
 			throw new Error(`Workflow agent response label mismatch: expected ${pending.label}, received ${label}`);
 		}
 		if (pending.called) throw new Error(`Workflow agent response already recorded for ${runId}`);
-		const parsed = pending.responseSchema.safeParse(response);
-		if (!parsed.success) throw new Error(zodErrorMessage(parsed.error));
+		const decoded = Value.Decode(pending.responseSchema, response);
 		pending.called = true;
-		pending.response = parsed.data;
-		return { label: pending.label, response: parsed.data };
+		pending.response = decoded;
+		return { label: pending.label, response: decoded };
 	}
 
 	get(runId: string): NornCapturedAgentResponse {
@@ -81,7 +80,7 @@ export class NornAgentResponseToolFactory {
 						terminate: true,
 					};
 				} catch (error) {
-					return invalidAgentResponseToolResult(error instanceof Error ? error.message : String(error));
+					return invalidAgentResponseToolResult(errorMessage(error));
 				}
 			},
 		});

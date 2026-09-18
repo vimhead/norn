@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
 import { defineTool } from "@earendil-works/pi-coding-agent";
+import { createHash } from "node:crypto";
 import { Type } from "typebox";
-import { z } from "zod";
-import type { NornWorkflowState, NornWorkflowStateDefinition } from "./api.ts";
 import type { NornAgentResourceAdapter } from "./agent-resource-adapter.ts";
+import type { NornWorkflowState, NornWorkflowStateDefinition } from "./api.ts";
+import { inspectSchema } from "./schema.ts";
 
 export type NornStateFieldAccess = {
 	readonly field: NornWorkflowStateDefinition;
@@ -34,7 +34,7 @@ export function StateAdapter(input: { readonly state: NornWorkflowState; readonl
 						description: "List only attached workflow-state field IDs, permissions and value schemas. JSON is paginated; use nextOffset until null.",
 						parameters: Type.Object(pageParameters),
 						async execute(_id, params) {
-							return serializePage({ value: [...fields.values()].map(({ field, access }) => ({ id: field.id, access, schema: z.toJSONSchema(field.schema, { io: "input" }) })), ...params });
+							return serializePage({ value: [...fields.values()].map(({ field, access }) => ({ id: field.id, access, schema: inspectSchema(field.schema) })), ...params });
 						},
 					}),
 					defineTool({

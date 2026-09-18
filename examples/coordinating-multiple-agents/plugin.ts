@@ -1,12 +1,11 @@
 import { definePlugin, definePluginManifest, type NornAgentSession, type NornRun } from "@vimhead.dev/norn";
-import { z } from "zod";
+import { Type, type StaticDecode } from "typebox";
 import { QueueAdapter } from "./queue-adapter.ts";
 import { noteSchema, workQueueDefinition, type WorkQueue } from "./work-queue.ts";
 
-const notesSchema = z.array(noteSchema).min(2).max(12)
-	.refine(notes => new Set(notes.map(note => note.id)).size === notes.length, "Note IDs must be unique");
-const inputSchema = z.strictObject({ notes: notesSchema });
-const workerReportSchema = z.strictObject({ status: z.enum(["acknowledged", "idle", "blocked"]), detail: z.string().max(300) });
+const notesSchema = Type.Refine(Type.Array(noteSchema, { minItems: 2, maxItems: 12 }), notes => new Set(notes.map(note => note.id)).size === notes.length, () => "Note IDs must be unique");
+const inputSchema = Type.Object({ notes: notesSchema }, { additionalProperties: false });
+const workerReportSchema = Type.Object({ status: Type.Enum(["acknowledged", "idle", "blocked"]), detail: Type.String({ maxLength: 300 }) }, { additionalProperties: false });
 
 export const manifest = definePluginManifest({
 	id: "coordinatingAgents",
@@ -16,7 +15,7 @@ export const manifest = definePluginManifest({
 			instructions: "Summarize 2–12 supplied notes using two concurrent Norn agents and a shared leased work queue. Checkpoint completed rounds, verify every persisted result and exact source quotation, and return a summaries.json artifact. Requires configured Norn agent authentication; modifies only this run's resources, logs and artifacts.",
 			params: inputSchema,
 		},
-		work: { isEntrypoint: false, params: inputSchema.extend({ round: z.number().int().min(0).max(12) }) },
+		work: { isEntrypoint: false, params: Type.Object({ ...inputSchema.properties, round: Type.Integer({ minimum: 0, maximum: 12 }) }, { additionalProperties: false }) },
 		verify: { isEntrypoint: false, params: inputSchema },
 	},
 });
@@ -67,7 +66,7 @@ export default definePlugin(manifest, {
 
 async function processRound(input: { readonly run: NornRun; readonly queue: WorkQueue; readonly round: number }) {
 	const sessions: NornAgentSession[] = [];
-	const reports: z.output<typeof workerReportSchema>[] = [];
+	const reports: StaticDecode<typeof workerReportSchema>[] = [];
 	const errors: unknown[] = [];
 	try {
 		for (const worker of [1, 2]) {
