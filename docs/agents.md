@@ -6,7 +6,7 @@ The [Norn agent → saved artifact → analysis example](../examples/agent-then-
 
 ## One prompt or a retained session
 
-`run.agents.prompt({ label, prompt, response, ...sessionOptions })` creates a Pi session, prompts it, validates its response, and disposes it in `finally`. It returns the [decoded response](schemas.md#norn-boundaries) itself, not `{ response, raw }`. The response collector decodes it once; the session does not decode the captured result again.
+`run.agents.prompt({ label, prompt, response, ...sessionOptions })` creates a Pi session for one prompt and returns the value described by the response schema, including any codec transformations—not `{ response, raw }`. You do not need to dispose this one-prompt session. See [schema input/output types](schemas.md#codecs-and-inputoutput-types).
 
 For follow-up turns in the same conversation:
 

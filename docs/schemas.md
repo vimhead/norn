@@ -127,18 +127,15 @@ const text = Value.Encode(CountText, 42);
 
 `Value.Decode` is not a validation-only operation: in this version it clones, applies defaults, converts, cleans, validates, then runs decode callbacks. `Value.Check` and `Value.Assert` do not run codec callbacks. Callback behavior remains executable TypeBox code, not portable JSON Schema validation.
 
-## Norn boundaries
+## Using schemas in Norn
 
-| Boundary | Native operation and value type |
-|---|---|
-| Workflow params, plugin config, agent responses | `Value.Decode`: defaults, conversion, cleaning, validation and codec callbacks. Callers supply `StaticEncode`; implementations receive `StaticDecode`. |
-| Project/include files | `Value.Default` followed by `Value.Parse`: fill configuration defaults and validate without type coercion. |
-| State and persisted resource/lock records | `Value.Parse`: validate stored values without decoding. State values use `Static` (encoded types) and must be JSON data. |
-| Inspection and agent schema instructions | Serialized input schema, checked against the JSON Schema meta-schema. Runtime refinements and codecs remain executable functions, not portable JSON rules. |
+For workflow params and plugin config, callers supply the schema's input type (`StaticEncode`); `execute` receives its output type (`StaticDecode`). With `CountText` above, the caller supplies `"42"` and the workflow receives `42`. Agent prompts likewise return the response schema's output type.
 
-Default annotations do not make statically required inputs optional. `Type.Optional` controls that separately. TypeBox infers decoded callback return types; a codec can explicitly produce a required field from an optional input.
+Default annotations do not make statically required inputs optional. `Type.Optional` controls that separately. TypeBox infers decoded callback return types; a codec can produce a required field from an optional input.
 
-State leaves are TypeBox schemas directly, with nested objects providing grouping:
+Codec callbacks may be evaluated more than once for the same input. Use them for value conversion, such as `text => Number(text)`, not file writes or agent calls.
+
+State values use `Static` and must be JSON data. Declare their schemas directly, with nested objects providing grouping:
 
 ```ts
 import { definePluginManifest } from "@vimhead.dev/norn";
@@ -154,10 +151,8 @@ const manifest = definePluginManifest({
 });
 ```
 
-These declarations produce `manifest.states.count.id === "progress.count"` and `manifest.states.details.name.id === "progress.details.name"`. A leaf can instead use `{ id, description, schema }` for explicit metadata. [Persistence](persistence.md) owns state lifetime and storage.
+These declarations produce `manifest.states.count.id === "progress.count"` and `manifest.states.details.name.id === "progress.details.name"`. A leaf can instead use `{ id, description, schema }` for explicit metadata. See [state and artifacts](persistence.md) for reading and writing values.
 
-Gates, queued runs and recovery retain encoded params. This includes [workflow references](composition.md#caller-selected-workflow-reference): their decoded values are callable transition builders, while persisted input contains IDs and captured JSON params. Reference invocation validates encoded contributions with `Value.Assert`, without executing contribution codecs.
-
-Config overrides merge with encoded config before decoding; they do not re-decode previously transformed results. Codecs may run at validation, gate-description and execution boundaries, each against encoded input.
+For caller-selected next steps, use [`workflowRefSchema`](composition.md#caller-selected-workflow-reference). That guide shows the reference supplied by the caller and the function available to the workflow.
 
 Further API reference: [TypeBox documentation](https://sinclairzx81.github.io/typebox/).

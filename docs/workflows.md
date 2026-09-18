@@ -8,14 +8,14 @@ Start with the complete [minimal plugin](../examples/minimal-workflow/plugin.ts)
 
 `definePluginManifest` qualifies workflow keys as `pluginId.workflowKey`, binds TypeBox params, optional plugin config, and optional state declarations. `definePlugin` binds every declared key to an implementation. Entrypoints need nonempty caller-facing `instructions`; internal steps may omit them. `isEntrypoint` controls default catalogue visibility, not an authorization boundary: the CLI can start a known internal workflow ID directly.
 
-`instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Params and plugin config use native TypeBox decoding before execution; [schema operations](schemas.md#norn-boundaries) define conversion, defaults and input/output types. Public contracts must support JSON Schema inspection. Encoded JSON params are retained for recovery rather than replacing them with decoded values.
+`instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare params and config with [TypeBox schemas](schemas.md#using-schemas-in-norn). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
 
 The implementation's `execute(run, params, config)` returns one control result:
 
 | Control | Meaning |
 |---|---|
-| `target(params)` / `params.next(contribution)` | Construct a typed transition using a declaration or decoded workflow reference. See [composition](composition.md). |
-| `run.next(workflowId, params)` | Construct a transition to a dynamically selected string ID; its input is checked at execution. |
+| `target(params)` / `params.next(contribution)` | Select a known workflow or a caller-supplied next step. See [composition](composition.md). |
+| `run.next(workflowId, params)` | Select a workflow by string ID; its input is checked at execution. |
 | `run.complete(metadata)` | Complete the whole run, optionally exposing `summary`, `artifacts`, `logs`, and `data`. |
 | `run.fail({ summary, ...metadata })` | Record failure with an actionable explanation and optional evidence. |
 

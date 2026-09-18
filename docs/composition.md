@@ -6,11 +6,11 @@
 return manifest.workflows.analyze({ draftArtifact });
 ```
 
-Qualified workflow declarations are callable and retain `.id`, `.params`, instructions, gates and isolation metadata. Calling one constructs a control result from its complete **encoded** input. Returning that result lets the scheduler persist the transition and execute the target in the **same run**, with that target's isolation mode. Calling or awaiting a declaration does not execute its implementation inline or return its eventual result.
+Return a workflow call to select the next step in the same run. Supply its complete input; TypeScript checks it against the declaration's params schema. The target must be registered in the loaded project.
 
-The caller and target share run state and artifacts, not local variables or agent conversations. All targets must be registered in the loaded project. The target decodes the assembled params before execution; a returned `complete` completes the entire run.
+This transfers control rather than calling a subroutine: awaiting the declaration does not execute the target or return its eventual result. Steps share run state and artifacts, not local variables or agent conversations. `run.complete` completes the whole run.
 
-For a dynamically selected string ID, use `run.next(workflowId, params)`. It constructs the same result, but parameter checking belongs to the selected target at runtime. `run.next` accepts IDs, not declarations or decoded reference functions.
+For a dynamically selected string ID, use `return run.next(workflowId, params)`. The selected target checks its input at runtime. `run.next` accepts IDs, not declarations or reference functions.
 
 ## Caller-selected workflow reference
 
@@ -34,7 +34,7 @@ const paramsSchema = Type.Object({
 });
 ```
 
-A caller supplies encoded JSON:
+A caller supplies the target and its own parameters:
 
 ```json
 {
@@ -50,7 +50,7 @@ A caller supplies encoded JSON:
 
 Code uses a declaration's `.id` in the reference payload, not the declaration itself. A bare ID string is shorthand for an object reference with empty `forwardParams`.
 
-Native TypeBox decoding turns `next` into a function capturing that target and caller input. After producing its result, the implementation returns:
+Inside the workflow, `params.next` is a function. Supply only the result fields declared above:
 
 ```ts
 return params.next
@@ -58,13 +58,13 @@ return params.next
   : run.complete({ summary, artifacts: { result: resultArtifact } });
 ```
 
-The reference checks the contribution with `Value.Assert`, shallow-merges captured params followed by contributed fields, and constructs the same control result as a declaration call. Contributed fields win collisions; captured input is not mutated. Contribution schemas can describe object-valued records, unions, intersections and codecs as well as `Type.Object`. Arguments use the schema's encoded direction; contribution decode callbacks do not run during invocation. Scalars and arrays cannot be contributions to this flat object merge.
+`importer.deliver` receives `batchId` from the caller plus `resultArtifact` and `summary` from the producer. Its params schema must accept all three. Produced fields replace caller fields with the same name; nested objects are replaced, not deep-merged.
 
-`importer.deliver` must accept the assembled `batchId`, `resultArtifact` and `summary`. A valid contribution does not prove that the target exists or accepts the caller's captured input. The scheduler resolves the target and applies its actual input contract.
+Contributions must be JSON objects matching the declared input type. Object-valued records, unions, intersections and codecs are supported. With codecs, supply `StaticEncode` values, just as for a direct workflow call—not transformed `StaticDecode` values.
 
-`workflows inspect` exposes `x-norn-workflow-ref.contributedParamsSchema` at the reference's JSON Schema node. This is the producer's contribution contract, not extra fields required in the caller's reference payload. Inspection validates embedded contribution schemas, including nested reference annotations.
+`workflows inspect` shows the contribution contract under `x-norn-workflow-ref.contributedParamsSchema`. Use it alongside the target's params schema to check that the combined input fits.
 
-The decoded function is an execution-local value. Queued runs, gates and checkpoints retain the encoded reference; recovery decodes it again. Workflow input persisted by Norn must remain JSON data, not decoded reference functions.
+When passing a reference as input to another workflow, supply its JSON form shown above, not the function received in `params.next`.
 
 ## Multiple outcomes and direct targets
 
@@ -87,7 +87,7 @@ These are alternative transitions, not fan-out. `success` and `failure` are not 
 
 | Decision | GOOD | BAD |
 |---|---|---|
-| IF the caller selects the next step, THEN invoke its decoded reference with the declared contribution. ELSE call a known declaration or use a dynamic ID. | `params.next({ resultArtifact })` | Manually reconstruct captured forwarding input. |
+| IF the caller selects the next step, THEN invoke its reference with the declared contribution. ELSE call a known declaration or use a dynamic ID. | `params.next({ resultArtifact })` | Manually reconstruct captured forwarding input. |
 | IF additional caller work follows the result, THEN represent it as the supplied reference. ELSE complete the run. | `assess → caller.deliver` | Expect execution to return to the line following a workflow call. |
 | IF a target schema changes, THEN exercise the assembled input contract. ELSE preserve its existing input contract. | Verify the target accepts captured context and contributed results. | Treat contribution metadata as end-to-end compatibility proof. |
 
