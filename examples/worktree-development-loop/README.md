@@ -9,7 +9,7 @@ is a single-step starting point.
 It registers an entrypoint workflow named **Workspace development loop**. The
 workflow:
 
-1. clones the configured repository into `run.workspace/repo`;
+1. clones the configured repository into `paths.run/repo`;
 2. passes the repository path and retained artifact references through workflow arguments;
 3. passes explicit cwd values to agents and commands;
 4. plans once, then loops through implementation and automated review;

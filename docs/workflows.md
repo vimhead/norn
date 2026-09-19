@@ -29,13 +29,14 @@ Supply `id`, `args`, `isEntrypoint`, and `execute` explicitly. Standalone IDs ar
 
 `instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare args and config with [TypeBox schemas](schemas.md). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
 
-`execute(context)` receives inferred `args`, `config`, `scope`, and `run`:
+`execute(context)` receives inferred `args`, `config`, `scope`, `paths`, and `run`. Gate descriptions receive the same context:
 
 | Property | Value |
 |---|---|
 | `args` | Decoded invocation arguments |
 | `config` | Decoded workflow-local configuration, or `undefined` without a schema |
 | `scope` | `{ id, config }` for scoped workflows; the property is absent for standalone workflows |
+| `paths` | Absolute `project` and `run` directories; see [filesystem boundaries](persistence.md#filesystem-boundaries) |
 | `run` | Run control, agents, commands, artifacts, and resources |
 
 It returns one control result:
@@ -116,12 +117,12 @@ const repeat = workflow({
 
 ## Commands
 
-`run.commands.run` accepts a shell string or an executable/argument tuple, records stdout/stderr logs, and returns exit status and bounded output tails:
+`run.commands.run` requires an absolute `cwd`, accepts a shell string or an executable/argument tuple, records stdout/stderr logs, and returns exit status and bounded output tails:
 
 ```ts
 const verification = await run.commands.run({
   label: "verify",
-  cwd: run.cwd,
+  cwd: paths.project,
   command: ["npm", "test"],
   timeoutMs: 120_000,
 });
@@ -134,7 +135,7 @@ if (verification.exitCode !== 0) {
 return run.complete({ summary: "Verification passed." });
 ```
 
-This fragment requires a working tree with dependencies at `run.cwd`; Norn's default workspace is initially empty. [Workspace setup](persistence.md#filesystem-boundaries) is explicit.
+This fragment checks the project in place. To check a prepared copy instead, supply its absolute directory as `cwd`; see [workspace setup](persistence.md#filesystem-boundaries).
 
 | Decision | GOOD | BAD |
 |---|---|---|

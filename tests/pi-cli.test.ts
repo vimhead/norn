@@ -91,12 +91,12 @@ test.for(["default", "override"] as const)("norn pi and SDK workers use their ow
 	vi.stubEnv("PI_CODING_AGENT_DIR", fixture.piAgentDir);
 	const files = createRunFileCoordinator(fixture.root);
 	const runner = new NornAgentRunner({
-		id: "provider-worker", runRoot: fixture.root, boundaryRoot: fixture.root, boundaryName: "test", cwd: fixture.root,
+		id: "provider-worker", runRoot: fixture.root,
 		logs: new NornRunLogs(join(fixture.root, "logs"), files),
 		logger: new NornRunLogger({ manifestPath: join(fixture.root, "manifest.json"), files, manifest: { id: "provider-worker", name: "provider-worker", workflowId: "test.worker", runRoot: fixture.root, workspace: fixture.root, initialCwd: fixture.root, startedAt: new Date().toISOString() } }),
 		responseCollector: new NornAgentResponseCollector(),
 	});
-	assert.deepEqual(await runner.prompt({ label: "worker", tools: [], prompt: "Return ok", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 }), { ok: true });
+	assert.deepEqual(await runner.prompt({ label: "worker", cwd: fixture.root, tools: [], prompt: "Return ok", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 }), { ok: true });
 	assert.equal(process.env.PI_CODING_AGENT_DIR, fixture.piAgentDir);
 	assert.equal(process.env.NORN_AGENT_DIR, fixture.env.NORN_AGENT_DIR);
 	await fixture.invoke(["pi", "remove", providerPath]);

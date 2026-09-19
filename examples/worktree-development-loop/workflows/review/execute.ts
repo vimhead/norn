@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { reviewRouterWorkflow } from "../review-router/execute.ts";
 import type { WorkflowResult } from "@vimhead.dev/norn";
 import { developmentLoopScope } from "../../scope.ts";
@@ -10,8 +11,8 @@ export const reviewWorkflow = developmentLoopScope.workflow({
 	isEntrypoint: false,
 	instructions: "Review the current repository boundary changes.",
 	args: reviewArgsSchema,
-	async execute({ args, run }): Promise<WorkflowResult> {
-		const repositoryPath = args.repositoryPath;
+	async execute({ args, paths, run }): Promise<WorkflowResult> {
+		const repositoryPath = resolve(paths.run, args.repositoryPath);
 		const planArtifact = args.planArtifact;
 		const implementationSummary = args.implementationSummary;
 		const plan = await run.artifacts.read(planArtifact);

@@ -15,7 +15,6 @@ test("callable declarations retain metadata and construct transitions without ex
 	assert.equal(isWorkflowDeclaration(target), true);
 	assert.equal(isWorkflowDeclaration(() => undefined), false);
 	assert.equal(Value.Check(target.args, { report: "done" }), true);
-	assert.deepEqual(target.isolation, { mode: "runWorkspace" });
 	assert.deepEqual(target({ report: "done" }), { type: "next", workflowId: target.id, args: { report: "done" } });
 });
 

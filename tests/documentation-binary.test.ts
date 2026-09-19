@@ -141,15 +141,17 @@ const manifest_done = manifestScope.workflow({
 id: "done",
 isEntrypoint: false,
 args: result,
-execute: ({ args: args, run: run }) => run.complete({ data: args })
+execute: ({ args, paths, run }) => run.complete({ data: { ...args, paths, cwd: process.cwd() } })
 });
 export default [manifest_check, manifest_finish, manifest_dynamic, manifest_done];
 `);
 	await writeFile(join(projectRoot, "norn.project.json"), JSON.stringify({ workflows: ["./plugin.ts", "./native.ts"] }));
-	const nativeLaunch = await invoke(["runs", "start", "native.check"], projectRoot, { args: { next: { workflow: "native.finish", forwardArgs: { origin: "queued" } } } });
+	const nestedDirectory = join(projectRoot, "nested");
+	await mkdir(nestedDirectory);
+	const nativeLaunch = await invoke(["runs", "start", "native.check"], nestedDirectory, { args: { next: { workflow: "native.finish", forwardArgs: { origin: "queued" } } } });
 	const nativeResult = (await invoke(["runs", "wait", nativeLaunch.run.id], projectRoot)).run;
 	assert.equal(nativeResult.status, "completed", JSON.stringify(nativeResult));
-	assert.deepEqual(nativeResult.outcome?.metadata?.data, { count: 42, origin: "queued" });
+	assert.deepEqual(nativeResult.outcome?.metadata?.data, { count: 42, origin: "queued", paths: { project: await realpath(projectRoot), run: join(nativeResult.path, "current/workspace") }, cwd: join(nativeResult.path, "worker") });
 	await writeFile(documentation.paths.index, "modified");
 	await assert.rejects(invoke(["docs", "inspect"]), error => {
 		assert.match(readProcessStdout(error), /cache is incomplete or modified/);

@@ -23,13 +23,13 @@ export const work = scope.workflow({
 	id: "work",
 	isEntrypoint: false,
 	args: Type.Object({ ...inputSchema.properties, round: Type.Integer({ minimum: 0, maximum: 12 }) }, { additionalProperties: false }),
-	async execute({ args, run }): Promise<WorkflowResult> {
+	async execute({ args, paths, run }): Promise<WorkflowResult> {
 		const queue = await run.resources.ensure(workQueueDefinition);
 		const before = await queue.inspect();
 		if (before.items.length !== args.notes.length) return run.fail({ summary: "Queue inventory differs from the supplied notes." });
 		if (before.acknowledged === args.notes.length) return verify({ notes: args.notes });
 		if (before.leased > 0 || args.round >= args.notes.length) return run.fail({ summary: "Unfinished claims or exhausted rounds; inspect queue and agent logs before recovery." });
-		const reports = await processRound({ run, queue, round: args.round });
+		const reports = await processRound({ run, cwd: paths.run, queue, round: args.round });
 		await run.artifacts.write(`rounds/${args.round}.json`, JSON.stringify(reports, null, 2));
 		const after = await queue.inspect();
 		if (reports.some(report => report.status === "blocked") || after.leased > 0 || after.acknowledged <= before.acknowledged) {
@@ -60,7 +60,7 @@ export const verify = scope.workflow({
 
 export default [start, work, verify];
 
-async function processRound(input: { readonly run: NornRun; readonly queue: WorkQueue; readonly round: number; }) {
+async function processRound(input: { readonly run: NornRun; readonly cwd: string; readonly queue: WorkQueue; readonly round: number; }) {
 	const sessions: NornAgentSession[] = [];
 	const reports: StaticDecode<typeof workerReportSchema>[] = [];
 	const errors: unknown[] = [];
@@ -68,6 +68,7 @@ async function processRound(input: { readonly run: NornRun; readonly queue: Work
 		for (const worker of [1, 2]) {
 			sessions.push(await input.run.agents.createSession({
 				label: `round-${input.round}-worker-${worker}`,
+				cwd: input.cwd,
 				tools: [],
 				resourceAdapters: [QueueAdapter({ queue: input.queue })],
 				systemPrompt: [

@@ -13,6 +13,7 @@ import { workQueueDefinition } from "./work-queue.ts";
 const queue = await run.resources.ensure(workQueueDefinition);
 const agentSession = await run.agents.createSession({
   label: "summary-1",
+  cwd: paths.run,
   tools: [],
   resourceAdapters: [QueueAdapter({ queue })],
 });

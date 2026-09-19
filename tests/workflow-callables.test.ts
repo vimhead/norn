@@ -47,9 +47,8 @@ execute: ({ args: args, run: run }) => run.complete({ data: { route: "failure", 
 const declarations_custom = declarationsScope.workflow({
 id: "custom",
 isEntrypoint: false,
-isolation: { mode: "project" },
 args: Type.Object({ reason: Type.String() }),
-execute: ({ args: args, run: run }) => run.complete({ data: { route: "custom", projectContext: run.cwd === run.projectRoot, ...args } })
+execute: ({ args, run }) => run.complete({ data: { route: "custom", ...args } })
 });
 const declarations_sink = declarationsScope.workflow({
 id: "sink",
@@ -78,7 +77,7 @@ async function fixture(context: TestContext, gateMode: "auto" | "pause") {
 for (const [outcome, expected] of [
 	["success", { route: "success", batchId: "success-batch", count: 3 }],
 	["failure", { route: "failure", batchId: "failure-batch", reason: "rejected" }],
-	["custom", { route: "custom", projectContext: true, reason: "manual review" }],
+	["custom", { route: "custom", reason: "manual review" }],
 	["dynamic", { route: "success", batchId: "dynamic", count: 4 }],
 ] as const) {
 	test(`${outcome} routing uses the existing scheduler and target contract`, async context => {

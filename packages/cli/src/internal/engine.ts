@@ -7,11 +7,12 @@ import {
 	type NornRunNext,
 	type NornRunResult,
 	type NornRunStartOptions,
+	type NornWorkflowPaths,
 } from "@vimhead.dev/norn";
 import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { Value } from "typebox/value";
 import { NornAgentResponseCollector } from "./agent-response-tool.ts";
 import { NornArtifacts } from "./artifacts.ts";
@@ -40,7 +41,9 @@ export type NornEngineInput = {
 
 type RunSession = {
 	readonly runRoot: string;
+	readonly cwd: string;
 	readonly run: NornRunContext;
+	readonly paths: NornWorkflowPaths;
 	readonly state: NornRunStateStore;
 	readonly lease: NornRunLease;
 	readonly runStore: NornRunStore;
@@ -157,14 +160,14 @@ export class NornEngine {
 				const rawArgs = mergeInterruptedWorkflowArgs(current.args, args, current.interruption?.fields);
 				Value.Decode(workflow.args, rawArgs);
 				await session.state.replaceCurrentArgs(rawArgs);
-				await recordRunEvent(session, { type: "run.resumed", workflowId: workflow.id, cwd: session.run.cwd });
+				await recordRunEvent(session, { type: "run.resumed", workflowId: workflow.id, cwd: session.cwd });
 				const resumedCurrent = session.state.currentState().current;
 				if (!resumedCurrent) throw new Error(`Run is not resumable: ${runRoot}`);
 				isLeaseOwnedByScheduler = true;
 				return this.runScheduler(session, toWorkflowStep(workflow, resumedCurrent));
 			}
 			if (state.status !== "pendingResume") throw new Error(`Run must be rolled back before resuming: ${runRoot}`);
-			await recordRunEvent(session, { type: "run.resumed", workflowId: workflow.id, cwd: session.run.cwd });
+			await recordRunEvent(session, { type: "run.resumed", workflowId: workflow.id, cwd: session.cwd });
 			isLeaseOwnedByScheduler = true;
 			return this.runScheduler(session, toWorkflowStep(workflow, current));
 		} finally {
@@ -183,28 +186,27 @@ export class NornEngine {
 		try {
 			for (let step = 1; step <= 1_000; step++) {
 				throwIfRunAborted(session.activeRun);
-				const stepRuntime = session.run.forWorkflow(currentStep.workflow);
 				if (shouldPauseForGate(currentStep)) {
-					const description = await this.registry.describeGate(currentStep.workflow, stepRuntime, currentStep.args, session.state.currentState().configOverride);
+					const description = await this.registry.describeGate({ workflow: currentStep.workflow, run: session.run, paths: session.paths, args: currentStep.args, configOverride: session.state.currentState().configOverride });
 					const interruption = { description, fields: currentStep.workflow.gate?.fields };
 					await session.state.interruptCurrent(currentStep.args, interruption);
 					await recordRunEvent(session, { type: "run.interrupted", workflowId: currentStep.workflow.id });
 					await commitRunBoundary(session, `run interrupted: ${currentStep.workflow.id}`);
-					return interruptedLaunchResult({ id: stepRuntime.id, name: session.state.currentState().name, workspace: stepRuntime.workspace, cwd: stepRuntime.cwd }, currentStep.workflow, currentStep.args, interruption);
+					return interruptedLaunchResult({ id: session.run.id, name: session.state.currentState().name, workspace: session.paths.run, cwd: session.cwd }, currentStep.workflow, currentStep.args, interruption);
 				}
 				await session.state.startStep(toRunStateStep(currentStep));
-				const stepResult = await this.executeWorkflowStep(session, currentStep, stepRuntime);
+				const stepResult = await this.executeWorkflowStep(session, currentStep);
 				throwIfRunAborted(session.activeRun);
 				if (stepResult.type === "complete") {
 					await session.state.completeRun(stepResult.workflow.id, stepResult.metadata);
 					await recordRunEvent(session, { type: "run.completed", workflowId: stepResult.workflow.id, metadata: stepResult.metadata });
 					await commitRunBoundary(session, `run completed: ${stepResult.workflow.id}`);
-					return { status: "completed", id: stepRuntime.id, name: session.state.currentState().name, workspace: stepRuntime.workspace, cwd: stepRuntime.cwd, workflowId: stepResult.workflow.id, metadata: stepResult.metadata };
+					return { status: "completed", id: session.run.id, name: session.state.currentState().name, workspace: session.paths.run, cwd: session.cwd, workflowId: stepResult.workflow.id, metadata: stepResult.metadata };
 				}
 				if (stepResult.type === "fail") {
 					await session.state.failRun(stepResult.workflow.id, stepResult.metadata);
 					await recordRunEvent(session, { type: "run.failed", workflowId: stepResult.workflow.id, metadata: stepResult.metadata });
-					return { status: "failed", id: stepRuntime.id, name: session.state.currentState().name, workspace: stepRuntime.workspace, cwd: stepRuntime.cwd, workflowId: stepResult.workflow.id, metadata: stepResult.metadata };
+					return { status: "failed", id: session.run.id, name: session.state.currentState().name, workspace: session.paths.run, cwd: session.cwd, workflowId: stepResult.workflow.id, metadata: stepResult.metadata };
 				}
 				const nextStep = this.nextWorkflowStep(stepResult);
 				await session.state.completeWithNext(currentStep.workflow.id, toRunStateStep(nextStep));
@@ -217,7 +219,7 @@ export class NornEngine {
 			if (isRunStopped(session, error)) {
 				await session.state.stopCurrent();
 				await recordRunEvent(session, { type: "run.stopped", workflowId: currentStep.workflow.id });
-				return { status: "stopped", id: session.run.id, name: session.state.currentState().name, workspace: session.run.workspace, cwd: session.run.cwd, workflowId: currentStep.workflow.id };
+				return { status: "stopped", id: session.run.id, name: session.state.currentState().name, workspace: session.paths.run, cwd: session.cwd, workflowId: currentStep.workflow.id };
 			}
 			await session.state.failCurrent(errorMessage(error));
 			await recordRunEvent(session, { type: "run.failed", workflowId: currentStep.workflow.id, error: errorMessage(error) });
@@ -228,13 +230,13 @@ export class NornEngine {
 		}
 	}
 
-	private async executeWorkflowStep(session: RunSession, step: WorkflowStep, run: NornRunContext): Promise<NornWorkflowStepResult> {
+	private async executeWorkflowStep(session: RunSession, step: WorkflowStep): Promise<NornWorkflowStepResult> {
 		const startedAtMs = Date.now();
 		try {
-			await assertWorkspaceBoundary(session, run.workspace);
+			await assertWorkspaceBoundary(session, session.paths.run);
 			await recordRunEvent(session, { type: "workflow.started", workflowId: step.workflow.id });
-			const result = await this.registry.execute(step.workflow, run, step.args, session.state.currentState().configOverride);
-			await assertWorkspaceBoundary(session, run.workspace);
+			const result = await this.registry.execute({ workflow: step.workflow, run: session.run, paths: session.paths, args: step.args, configOverride: session.state.currentState().configOverride });
+			await assertWorkspaceBoundary(session, session.paths.run);
 			const durationMs = Date.now() - startedAtMs;
 			if (result.type === "complete") await recordRunEvent(session, { type: "workflow.completed", workflowId: result.workflow.id, durationMs, metadata: result.metadata });
 			else if (result.type === "fail") await recordRunEvent(session, { type: "workflow.failed", workflowId: result.workflow.id, durationMs, metadata: result.metadata });
@@ -271,7 +273,8 @@ export class NornEngine {
 		const runRoot = defaultRunRoot(this.input.cwd, id);
 		const currentRoot = runCurrentRoot(runRoot);
 		const workspace = join(currentRoot, "workspace");
-		const cwd = workflowDefaultCwd(this.input.cwd, workspace, workflow);
+		const paths: NornWorkflowPaths = { project: resolve(this.input.cwd), run: workspace };
+		const cwd = process.cwd();
 		const startedAt = new Date().toISOString();
 		await mkdir(runRoot, { recursive: true });
 		const lease = await NornRunLease.acquire(runRoot);
@@ -288,7 +291,7 @@ export class NornEngine {
 				initialCwd: cwd,
 				startedAt,
 			} });
-			const run = await this.buildRun({ id, currentRoot, workspace, cwd, isolationMode: workflow.isolation.mode, signal: activeRun.controller.signal, logger });
+			const run = await this.buildRun({ id, currentRoot, paths, signal: activeRun.controller.signal, logger });
 			const state = await NornRunStateStore.create(runRoot, {
 				id,
 				name,
@@ -301,7 +304,7 @@ export class NornEngine {
 				},
 				startedAt,
 			});
-			const session = { runRoot, run, state, lease, runStore, logger, activeRun };
+			const session = { runRoot, cwd, run, paths, state, lease, runStore, logger, activeRun };
 			await logger.record({ type: "run.started", workflowId: workflow.id, cwd, workspace });
 			await commitRunBoundary(session, `run started: ${workflow.id}`);
 			return session;
@@ -321,11 +324,9 @@ export class NornEngine {
 			const runStore = await NornRunStore.open(runRoot);
 			const currentRoot = runCurrentRoot(runRoot);
 			const logger = await NornRunLogger.load(join(currentRoot, MANIFEST_FILE_NAME), createRunFileCoordinator(runRoot));
-			const workflow = currentState.current ? this.registry.workflowById(currentState.current.workflowId) : undefined;
-			const isolationMode = workflow?.isolation.mode ?? "runWorkspace";
-			const cwd = workflowDefaultCwd(this.input.cwd, currentState.workspace, workflow);
-			const run = await this.buildRun({ id: currentState.id, currentRoot, workspace: currentState.workspace, cwd, isolationMode, signal: activeRun.controller.signal, logger });
-			return { runRoot, run, state, lease, runStore, logger, activeRun };
+			const paths: NornWorkflowPaths = { project: resolve(this.input.cwd), run: join(currentRoot, "workspace") };
+			const run = await this.buildRun({ id: currentState.id, currentRoot, paths, signal: activeRun.controller.signal, logger });
+			return { runRoot, cwd: process.cwd(), run, paths, state, lease, runStore, logger, activeRun };
 		} catch (error) {
 			this.failActiveRun(runRoot, activeRun);
 			throw error;
@@ -335,25 +336,19 @@ export class NornEngine {
 	private async buildRun(input: {
 		readonly id: string;
 		readonly currentRoot: string;
-		readonly workspace: string;
-		readonly cwd: string;
-		readonly isolationMode: "runWorkspace" | "project";
+		readonly paths: NornWorkflowPaths;
 		readonly signal: AbortSignal;
 		readonly logger: NornRunLogger;
 	}): Promise<NornRunContext> {
 		const artifactsRoot = join(input.currentRoot, "artifacts");
 		const logsRoot = join(input.currentRoot, "logs");
-		await mkdir(input.workspace, { recursive: true });
+		await mkdir(input.paths.run, { recursive: true });
 		await mkdir(artifactsRoot, { recursive: true });
 		await mkdir(logsRoot, { recursive: true });
 		const resources = await NornRunResources.initialize(dirname(input.currentRoot));
 		return new NornRunContext({
 			id: input.id,
 			runRoot: input.currentRoot,
-			workspace: input.workspace,
-			projectRoot: this.input.cwd,
-			cwd: input.cwd,
-			isolationMode: input.isolationMode,
 			signal: input.signal,
 			agentDir: this.input.agentDir,
 			responseCollector: this.responseCollector,
@@ -400,11 +395,7 @@ export class NornEngine {
 }
 
 function defaultRunRoot(cwd: string, id: string): string {
-	return join(cwd, RUNS_DIR_NAME, "runs", id);
-}
-
-function workflowDefaultCwd(projectRoot: string, workspace: string, workflow: NornAnyWorkflowDeclaration | undefined): string {
-	return workflow?.isolation.mode === "project" ? projectRoot : workspace;
+	return join(resolve(cwd), RUNS_DIR_NAME, "runs", id);
 }
 
 function toWorkflowStep(workflow: NornAnyWorkflowDeclaration, step: NonNullable<NornRunState["current"]>): WorkflowStep {

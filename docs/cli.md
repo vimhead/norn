@@ -108,7 +108,7 @@ norn commands inspect runs.start
 norn help runs start
 ```
 
-Default workflow listing shows entrypoints; `--all` includes internal steps. Workflow inspection returns instructions, args JSON Schema, isolation, gate metadata, workflow/scope configuration schemas and keys, and registration source locations. [Loading diagnostics](projects.md#diagnose-registration) are part of the discovery envelope.
+Default workflow listing shows entrypoints; `--all` includes internal steps. Workflow inspection returns instructions, args JSON Schema, gate metadata, workflow/scope configuration schemas and keys, and registration source locations. [Loading diagnostics](projects.md#diagnose-registration) are part of the discovery envelope.
 
 Help is text; ordinary results are JSON. `runs logs` emits JSONL events.
 `norn pi [arguments...]` is a passthrough to bundled Pi, preserving Pi's native

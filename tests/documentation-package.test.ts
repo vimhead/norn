@@ -79,7 +79,9 @@ args: Type.Object({
     count: Type.Decode(Type.String(), text => Number(text)),
     next: workflowRefSchema({ args: Type.Object({ report: Type.String() }) }),
   }),
-async execute({ args, scope, run }) {
+async execute({ args, scope, paths, run }) {
+  const project: string = paths.project;
+  const workspace: string = paths.run;
   const count: number = args.count;
   const label: string = scope.config.label;
   return args.next({ report: label + String(count) });
@@ -95,6 +97,12 @@ manifest_test({ count: 1, next: "consumer.test" });
 workflow({ id: "standalone", isEntrypoint: false, args: Type.Object({}), execute(context) {
   // @ts-expect-error Standalone workflows do not have a scope.
   context.scope;
+  const project: string = context.paths.project;
+  const workspace: string = context.paths.run;
+  // @ts-expect-error Commands require cwd.
+  context.run.commands.run({ label: "check", command: ["pwd"] });
+  // @ts-expect-error Agent sessions require cwd.
+  context.run.agents.createSession({ label: "check" });
   return context.run.complete();
 } });
 const client = createNornClient({ spawnCwd: process.cwd() });

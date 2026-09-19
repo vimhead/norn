@@ -38,16 +38,20 @@ locks/             transient resource/file coordination; not snapshotted
 store/             snapshot manifests and content-addressed objects
 ```
 
-| Workflow isolation | Default `run.cwd` / `run.path(...)` | Additional access |
-|---|---|---|
-| `runWorkspace` (default) | `current/workspace/` | An initially empty directory, not a checkout or copy of the project. |
-| `project` | Project root | Typed `run.projectRoot` and `run.projectPath(...)`. |
+Every workflow and gate description receives `paths`:
 
-`run.workspace` remains the per-run workspace in both modes. Command/agent cwd selection and path helpers reject lexical escapes from the selected root. These checks do not sandbox Node code, shell commands, tool file arguments, symlinks, network access, or loaded extensions.
+| Path | Directory | Checkpoint and rollback behavior |
+|---|---|---|
+| `paths.project` | Absolute root of the loaded project | Project edits are excluded. |
+| `paths.run` | Absolute, initially empty run workspace | Workspace files are saved in checkpoints and restored on rollback. |
+
+Use ordinary path utilities to address files or subdirectories. The workspace is not a checkout or copy of the project. Commands and agents require an explicit absolute `cwd`, such as `paths.project`, `paths.run`, or a prepared subdirectory.
+
+The dedicated run worker uses an empty, read-only cwd to guard against accidental relative writes to the project. This is not a security sandbox: enforcement depends on filesystem permissions and process privileges. Explicit project paths and other external locations remain accessible.
 
 | Decision | GOOD | BAD |
 |---|---|---|
-| IF work needs existing project files, THEN declare project isolation or explicitly prepare a copy/worktree inside the run workspace. ELSE use the empty per-run workspace. | A project-mode verifier checks the actual project; an editing workflow prepares its own worktree. | Run `npm test` in an empty workspace and assume the repository is present. |
+| IF work needs existing project files, THEN use `paths.project` or explicitly prepare a copy/worktree inside `paths.run`. ELSE use the empty run workspace. | A verifier chooses `cwd: paths.project`; an editing workflow prepares its own worktree. | Run `npm test` in an empty workspace and assume the repository is present. |
 | IF rollback must undo a change, THEN keep it in snapshotted run files or separately manage the external effect. ELSE do not promise rollback of that change. | Reconcile a project-root edit or remote delivery explicitly. | Assume snapshots restore project workflow source, remote APIs, or symlink targets. |
 
 Snapshots cover `current/`, preserve symlinks as links rather than copying targets, and do not include project-root source. [Recovery](recovery.md) defines when snapshots are taken and how to select a retry boundary.

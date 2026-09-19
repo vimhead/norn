@@ -1,6 +1,5 @@
-import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
-import type { NornAnyWorkflowDeclaration, NornProjectRun, NornRunOutcomeMetadata, NornWorkflowIsolationMode, NornRun } from "@vimhead.dev/norn";
+import type { NornRunOutcomeMetadata, NornRun } from "@vimhead.dev/norn";
 import { createWorkflowTransition } from "@vimhead.dev/norn-core/workflow-transition";
 import type { NornAgentResponseCollector } from "./agent-response-tool.ts";
 import type { NornArtifacts } from "./artifacts.ts";
@@ -13,10 +12,6 @@ import type { NornRunResources } from "../resources.ts";
 type DefaultNornRunInput = {
 	readonly id: string;
 	readonly runRoot: string;
-	readonly projectRoot: string;
-	readonly workspace: string;
-	readonly cwd: string;
-	readonly isolationMode: NornWorkflowIsolationMode;
 	readonly signal?: AbortSignal;
 	readonly model?: CreateAgentSessionOptions["model"];
 	readonly thinkingLevel?: CreateAgentSessionOptions["thinkingLevel"];
@@ -28,22 +23,16 @@ type DefaultNornRunInput = {
 	readonly logs: NornRunLogs;
 };
 
-export class NornRunContext implements NornProjectRun {
+export class NornRunContext implements NornRun {
 	readonly resources: NornRunResources;
 	readonly artifacts: NornRun["artifacts"];
 	readonly logs: NornRun["logs"];
 	readonly commands: NornRun["commands"];
 	readonly agents: NornRun["agents"];
 	readonly id: string;
-	readonly workspace: string;
-	readonly projectRoot: string;
-	readonly cwd: string;
 
 	constructor(private readonly input: DefaultNornRunInput) {
 		this.id = input.id;
-		this.workspace = input.workspace;
-		this.projectRoot = input.projectRoot;
-		this.cwd = input.cwd;
 		this.resources = input.resources;
 		this.artifacts = input.artifacts;
 		this.logs = {
@@ -52,9 +41,6 @@ export class NornRunContext implements NornProjectRun {
 		this.commands = {
 			run: (commandInput) =>
 				new NornCommandRunner({
-					boundaryRoot: this.boundaryRoot,
-					boundaryName: this.input.isolationMode,
-					cwd: this.cwd,
 					signal: this.input.signal,
 					logs: this.input.logs,
 					logger: this.input.logger,
@@ -66,26 +52,10 @@ export class NornRunContext implements NornProjectRun {
 		};
 	}
 
-	forWorkflow(workflow: NornAnyWorkflowDeclaration): NornRunContext {
-		const isolationMode = workflow.isolation.mode;
-		return new NornRunContext({
-			...this.input,
-			isolationMode,
-			cwd: isolationMode === "project" ? this.projectRoot : this.workspace,
-		});
-	}
-
-	private get boundaryRoot(): string {
-		return this.input.isolationMode === "project" ? this.projectRoot : this.workspace;
-	}
-
 	private createAgentRunner(): NornAgentRunner {
 		return new NornAgentRunner({
 			id: this.id,
 			runRoot: this.input.runRoot,
-			boundaryRoot: this.boundaryRoot,
-			boundaryName: this.input.isolationMode,
-			cwd: this.cwd,
 			signal: this.input.signal,
 			model: this.input.model,
 			thinkingLevel: this.input.thinkingLevel,
@@ -94,14 +64,6 @@ export class NornRunContext implements NornProjectRun {
 			logger: this.input.logger,
 			responseCollector: this.input.responseCollector,
 		});
-	}
-
-	path(relativePath: string): string {
-		return this.resolveFromRoot(this.cwd, this.boundaryRoot, relativePath);
-	}
-
-	projectPath(relativePath: string): string {
-		return this.resolveFromRoot(this.projectRoot, this.projectRoot, relativePath);
 	}
 
 	next(workflowId: string, args: unknown): ReturnType<NornRun["next"]> {
@@ -114,14 +76,5 @@ export class NornRunContext implements NornProjectRun {
 
 	fail(metadata: NornRunOutcomeMetadata & { readonly summary: string }): ReturnType<NornRun["fail"]> {
 		return { type: "fail", metadata };
-	}
-
-	private resolveFromRoot(root: string, boundaryRoot: string, path: string): string {
-		const resolvedPath = isAbsolute(path) ? path : resolve(root, path);
-		const pathFromBoundary = relative(boundaryRoot, resolvedPath);
-		if (pathFromBoundary === ".." || pathFromBoundary.startsWith(`..${sep}`) || isAbsolute(pathFromBoundary)) {
-			throw new Error(`Workflow path escapes ${this.input.isolationMode} isolation: ${path}`);
-		}
-		return resolvedPath;
 	}
 }

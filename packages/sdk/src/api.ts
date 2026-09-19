@@ -15,16 +15,17 @@ export type NornWorkflowAnyGate = {
 	readonly fields?: readonly string[];
 };
 
-export type NornWorkflowIsolationMode = "runWorkspace" | "project";
+export type NornWorkflowPaths = {
+	/** Absolute project root. Excluded from run checkpoints and rollback. */
+	readonly project: string;
 
-export type NornWorkflowIsolation<Mode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode> = {
-	readonly mode: Mode;
+	/** Absolute, initially empty workspace. Saved in run checkpoints and restored on rollback. */
+	readonly run: string;
 };
 
 export type NornWorkflowDeclaration<
 	Id extends string = string,
 	ArgsSchema extends TSchema = TSchema,
-	IsolationMode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
 	ConfigSchema extends TSchema | undefined = TSchema | undefined,
 	Scope extends NornWorkflowScopeInfo | undefined = NornWorkflowScopeInfo | undefined,
 > = {
@@ -35,12 +36,11 @@ export type NornWorkflowDeclaration<
 	readonly instructions?: string;
 	readonly args: ArgsSchema;
 	readonly gate?: NornWorkflowGate<ArgsSchema> & {
-		describe?(context: NornWorkflowContext<ArgsSchema, IsolationMode, ConfigSchema, Scope>): MaybePromise<string>;
+		describe?(context: NornWorkflowContext<ArgsSchema, ConfigSchema, Scope>): MaybePromise<string>;
 	};
-	readonly isolation: NornWorkflowIsolation<IsolationMode>;
 	readonly config?: ConfigSchema;
 	readonly scope: Scope;
-	execute(context: NornWorkflowContext<ArgsSchema, IsolationMode, ConfigSchema, Scope>): MaybePromise<WorkflowResult>;
+	execute(context: NornWorkflowContext<ArgsSchema, ConfigSchema, Scope>): MaybePromise<WorkflowResult>;
 };
 
 export type NornAnyWorkflowDeclaration = Pick<NornWorkflowDeclaration, keyof NornWorkflowDeclaration> & ((args: never) => NornRunNext);
@@ -69,18 +69,17 @@ type NornWorkflowInstructions =
 	| { readonly isEntrypoint: true; readonly instructions: string }
 	| { readonly isEntrypoint: false; readonly instructions?: string };
 
-type RunForIsolation<Mode extends NornWorkflowIsolationMode> = Mode extends "project" ? NornProjectRun : NornRun;
 type WorkflowConfig<Schema extends TSchema | undefined> = Schema extends TSchema ? StaticDecode<Schema> : undefined;
 
 export type NornWorkflowContext<
 	ArgsSchema extends TSchema = TSchema,
-	Mode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
 	ConfigSchema extends TSchema | undefined = TSchema | undefined,
 	Scope extends NornWorkflowScopeInfo | undefined = NornWorkflowScopeInfo | undefined,
 > = {
 	readonly args: StaticDecode<ArgsSchema>;
 	readonly config: WorkflowConfig<ConfigSchema>;
-	readonly run: RunForIsolation<Mode>;
+	readonly paths: NornWorkflowPaths;
+	readonly run: NornRun;
 } & (Scope extends NornWorkflowScopeInfo ? {
 	readonly scope: { readonly id: Scope["id"]; readonly config: WorkflowConfig<Scope["config"]> };
 } : {});
@@ -88,18 +87,16 @@ export type NornWorkflowContext<
 export type NornWorkflowDefinition<
 	Id extends string = string,
 	ArgsSchema extends TSchema = TSchema,
-	IsolationMode extends NornWorkflowIsolationMode = NornWorkflowIsolationMode,
 	ConfigSchema extends TSchema | undefined = undefined,
 	Scope extends NornWorkflowScopeInfo | undefined = undefined,
 > = {
 	readonly id: Id;
 	readonly args: ArgsSchema;
 	readonly config?: ConfigSchema;
-	readonly isolation?: NornWorkflowIsolation<IsolationMode>;
 	readonly gate?: NornWorkflowGate<ArgsSchema> & {
-		describe?(context: NornWorkflowContext<ArgsSchema, IsolationMode, ConfigSchema, Scope>): MaybePromise<string>;
+		describe?(context: NornWorkflowContext<ArgsSchema, ConfigSchema, Scope>): MaybePromise<string>;
 	};
-	execute(context: NornWorkflowContext<ArgsSchema, IsolationMode, ConfigSchema, Scope>): MaybePromise<WorkflowResult>;
+	execute(context: NornWorkflowContext<ArgsSchema, ConfigSchema, Scope>): MaybePromise<WorkflowResult>;
 } & NornWorkflowInstructions;
 
 export type NornWorkflowScopeInfo = {
@@ -110,31 +107,29 @@ export type NornWorkflowScopeInfo = {
 export type NornWorkflowScope<Id extends string, ConfigSchema extends TSchema | undefined> = {
 	readonly id: Id;
 	readonly config: ConfigSchema;
-	workflow<const LocalId extends string, ArgsSchema extends TSchema, const Mode extends NornWorkflowIsolationMode = "runWorkspace", LocalConfig extends TSchema | undefined = undefined>(
-		definition: NornWorkflowDefinition<LocalId, ArgsSchema, Mode, LocalConfig, { readonly id: Id; readonly config: ConfigSchema }>,
-	): NornWorkflowDeclaration<`${Id}.${LocalId}`, ArgsSchema, Mode, LocalConfig, { readonly id: Id; readonly config: ConfigSchema }>;
+	workflow<const LocalId extends string, ArgsSchema extends TSchema, LocalConfig extends TSchema | undefined = undefined>(
+		definition: NornWorkflowDefinition<LocalId, ArgsSchema, LocalConfig, { readonly id: Id; readonly config: ConfigSchema }>,
+	): NornWorkflowDeclaration<`${Id}.${LocalId}`, ArgsSchema, LocalConfig, { readonly id: Id; readonly config: ConfigSchema }>;
 };
 
 export function workflow<
 	const Id extends string,
 	ArgsSchema extends TSchema,
-	const Mode extends NornWorkflowIsolationMode = "runWorkspace",
 	ConfigSchema extends TSchema | undefined = undefined,
->(definition: NornWorkflowDefinition<Id, ArgsSchema, Mode, ConfigSchema>): NornWorkflowDeclaration<Id, ArgsSchema, Mode, ConfigSchema, undefined> {
+>(definition: NornWorkflowDefinition<Id, ArgsSchema, ConfigSchema>): NornWorkflowDeclaration<Id, ArgsSchema, ConfigSchema, undefined> {
 	return createWorkflow({ definition, scope: undefined });
 }
 
-function createWorkflow<Id extends string, ArgsSchema extends TSchema, Mode extends NornWorkflowIsolationMode, ConfigSchema extends TSchema | undefined, Scope extends NornWorkflowScopeInfo | undefined>(
-	input: { readonly definition: NornWorkflowDefinition<Id, ArgsSchema, Mode, ConfigSchema, Scope>; readonly scope: Scope },
-): NornWorkflowDeclaration<Id, ArgsSchema, Mode, ConfigSchema, Scope> {
+function createWorkflow<Id extends string, ArgsSchema extends TSchema, ConfigSchema extends TSchema | undefined, Scope extends NornWorkflowScopeInfo | undefined>(
+	input: { readonly definition: NornWorkflowDefinition<Id, ArgsSchema, ConfigSchema, Scope>; readonly scope: Scope },
+): NornWorkflowDeclaration<Id, ArgsSchema, ConfigSchema, Scope> {
 	const { definition, scope } = input;
 	assertDeclarationId(definition.id);
 	const callable = (args: StaticEncode<ArgsSchema>): NornRunNext => createWorkflowTransition({ workflowId: definition.id, args });
 	const result = Object.assign(callable, definition, {
 		kind: WORKFLOW_DECLARATION_KIND,
 		scope,
-		isolation: definition.isolation ?? { mode: "runWorkspace" },
-	}) as NornWorkflowDeclaration<Id, ArgsSchema, Mode, ConfigSchema, Scope>;
+	}) as NornWorkflowDeclaration<Id, ArgsSchema, ConfigSchema, Scope>;
 	if (!isWorkflowDeclaration(result)) throw new Error(`Invalid workflow definition: ${definition.id}`);
 	assertWorkflowMetadata(result);
 	return result;
@@ -179,10 +174,6 @@ export type NornRunFail = {
 };
 
 export type WorkflowResult = NornRunNext | NornRunComplete | NornRunFail;
-
-export type NornRunFor<TWorkflow extends NornAnyWorkflowDeclaration> = TWorkflow extends { readonly isolation: { readonly mode: "project" } }
-	? NornProjectRun
-	: NornRun;
 
 export type NornRunStartOptions = {
 	readonly id?: string;
@@ -298,7 +289,7 @@ export type NornRunCheckpoint = {
 export type NornCommandRunInput = {
 	readonly label: string;
 	readonly command: string | readonly [string, ...string[]];
-	readonly cwd?: string;
+	readonly cwd: string;
 	readonly env?: Record<string, string>;
 	readonly timeoutMs?: number;
 };
@@ -352,7 +343,7 @@ export type NornAgentBeforeSessionStartContext = {
 export type NornAgentCreateSessionInput = {
 	readonly resourceAdapters?: readonly import("./agent-resource-adapter.ts").NornAgentResourceAdapter[];
 	readonly label: string;
-	readonly cwd?: string;
+	readonly cwd: string;
 	readonly tools?: string[];
 	readonly beforeSessionStart?: (context: NornAgentBeforeSessionStartContext) => MaybePromise<void>;
 	readonly model?: CreateAgentSessionOptions["model"];
@@ -477,18 +468,8 @@ export type NornAgentSession = {
 	dispose(): Promise<void>;
 };
 
-export type NornRun = NornRunBase;
-
-export type NornProjectRun = NornRunBase & {
-	projectRoot: string;
-	projectPath(relativePath: string): string;
-};
-
-type NornRunBase = {
+export type NornRun = {
 	id: string;
-	workspace: string;
-	cwd: string;
-	path(relativePath: string): string;
 	next(workflowId: string, args: unknown): NornRunNext;
 	complete(metadata?: NornRunOutcomeMetadata): NornRunComplete;
 	fail(metadata: NornRunOutcomeMetadata & { readonly summary: string }): NornRunFail;
@@ -525,7 +506,6 @@ export type NornRegisteredWorkflowInfo = {
 	readonly id: string;
 	readonly instructions?: string;
 	readonly isEntrypoint: boolean;
-	readonly isolation: NornWorkflowIsolation;
 	readonly scope?: { readonly id: string };
 	readonly source?: NornWorkflowSource;
 	readonly configKey: string;
@@ -589,7 +569,7 @@ function assertDeclarationId(id: string): void {
 
 export function isWorkflowDeclaration(value: unknown): value is NornAnyWorkflowDeclaration {
 	if (typeof value !== "function") return false;
-	const candidate = value as { kind?: unknown; id?: unknown; instructions?: unknown; isEntrypoint?: unknown; args?: unknown; execute?: unknown; isolation?: { mode?: unknown } };
+	const candidate = value as { kind?: unknown; id?: unknown; instructions?: unknown; isEntrypoint?: unknown; args?: unknown; execute?: unknown };
 	return (
 		candidate.kind === WORKFLOW_DECLARATION_KIND &&
 		typeof candidate.id === "string" &&
@@ -597,8 +577,7 @@ export function isWorkflowDeclaration(value: unknown): value is NornAnyWorkflowD
 		(candidate.instructions === undefined || typeof candidate.instructions === "string") &&
 		typeof candidate.isEntrypoint === "boolean" &&
 		Boolean(candidate.args) &&
-		typeof candidate.execute === "function" &&
-		(candidate.isolation?.mode === "runWorkspace" || candidate.isolation?.mode === "project")
+		typeof candidate.execute === "function"
 	);
 }
 

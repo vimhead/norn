@@ -6,9 +6,10 @@ export const summarize = workflow({
 	isEntrypoint: true,
 	instructions: "Summarize supplied text and save the result.",
 	args: Type.Object({ text: Type.String() }),
-	async execute({ args, run }) {
+	async execute({ args, paths, run }) {
 		const summary = await run.agents.prompt({
 			label: "summarize",
+			cwd: paths.run,
 			tools: [],
 			prompt: `Summarize this text in one sentence:\n${args.text}`,
 			response: Type.Object({ text: Type.String() }),

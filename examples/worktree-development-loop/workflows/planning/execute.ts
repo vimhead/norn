@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { implementationWorkflow } from "../implementation/execute.ts";
 import type { WorkflowResult } from "@vimhead.dev/norn";
 import { developmentLoopScope } from "../../scope.ts";
@@ -9,8 +10,8 @@ export const planningWorkflow = developmentLoopScope.workflow({
 	isEntrypoint: false,
 	instructions: "Create an implementation plan for a repository task.",
 	args: planningArgsSchema,
-	async execute({ args, run }): Promise<WorkflowResult> {
-		const repositoryPath = args.repositoryPath;
+	async execute({ args, paths, run }): Promise<WorkflowResult> {
+		const repositoryPath = resolve(paths.run, args.repositoryPath);
 		const planning = await run.agents.prompt({
 			label: "planning",
 			cwd: repositoryPath,

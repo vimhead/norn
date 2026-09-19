@@ -54,16 +54,21 @@ function verifyAuthoringTypes(run: NornRun, reference: StaticDecode<typeof conti
 	workflow({ id: "standalone", isEntrypoint: false, args: Type.Object({}), execute(context) {
 		// @ts-expect-error Standalone contexts do not have a scope property.
 		context.scope;
-		// @ts-expect-error Workspace contexts do not expose project paths.
-		context.run.projectPath("file");
+		expectTypeOf(context.paths.project).toEqualTypeOf<string>();
+		expectTypeOf(context.paths.run).toEqualTypeOf<string>();
+		// @ts-expect-error Commands require an explicit working directory.
+		context.run.commands.run({ label: "check", command: ["pwd"] });
+		// @ts-expect-error Agent sessions require an explicit working directory.
+		context.run.agents.createSession({ label: "check" });
 		return context.run.complete();
 	} });
 	const scope = workflowScope({ id: "empty" });
-	scope.workflow({ id: "project", isEntrypoint: false, args: Type.Object({}), isolation: { mode: "project" }, execute({ config, scope, run }) {
+	scope.workflow({ id: "project", isEntrypoint: false, args: Type.Object({}), execute({ config, scope, paths, run }) {
 		expectTypeOf(config).toEqualTypeOf<undefined>();
 		expectTypeOf(scope.config).toEqualTypeOf<undefined>();
 		expectTypeOf(scope.id).toEqualTypeOf<"empty">();
-		run.projectPath("file");
+		expectTypeOf(paths.project).toEqualTypeOf<string>();
+		expectTypeOf(paths.run).toEqualTypeOf<string>();
 		return run.complete();
 	} });
 }

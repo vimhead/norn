@@ -12,11 +12,11 @@ export const copy = copyScope.workflow({
 	isEntrypoint: true,
 	instructions: "A Norn agent reads explicitly shared source and writes a copy, then a separate workflow verifies exact equality from persisted resource data.",
 	args: Type.Object({ source: Type.String({ minLength: 1, maxLength: 500 }) }),
-	async execute({ args, run }) {
+	async execute({ args, paths, run }) {
 		const state = await run.resources.ensure(sharedState);
 		await state.set(sourceField, args.source);
 		await run.agents.prompt({
-			label: "copy", tools: [],
+			label: "copy", cwd: paths.run, tools: [],
 			resourceAdapters: [StateAdapter({ state, fields: [
 				{ field: sourceField, access: "read" },
 				{ field: copyField, access: "write" },

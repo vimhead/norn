@@ -12,7 +12,8 @@ import { inspectSchema } from "@vimhead.dev/norn/schema";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { resolve } from "node:path";
+import { requireAbsoluteWorkingDirectory } from "./working-directory.ts";
 import { type StaticDecode, type TSchema } from "typebox";
 import { resolveNornAgentDirectory } from "./agent-directory.ts";
 import {
@@ -33,9 +34,6 @@ const DEFAULT_AGENT_TOOL_ALLOWLIST = ["read", "bash", "edit", "write", AGENT_RES
 type NornAgentRunnerInput = {
 	readonly id: string;
 	readonly runRoot: string;
-	readonly boundaryRoot: string;
-	readonly boundaryName: string;
-	readonly cwd: string;
 	readonly signal?: AbortSignal;
 	readonly model?: CreateAgentSessionOptions["model"];
 	readonly thinkingLevel?: CreateAgentSessionOptions["thinkingLevel"];
@@ -61,7 +59,7 @@ export class NornAgentRunner {
 	}
 
 	async createSession(agentInput: NornAgentCreateSessionInput): Promise<NornAgentSession> {
-		const cwd = agentInput.cwd ? this.resolveFromCwd(agentInput.cwd) : this.input.cwd;
+		const cwd = requireAbsoluteWorkingDirectory(agentInput.cwd);
 		const sessionDir = resolve(this.input.runRoot, "sessions");
 		await mkdir(sessionDir, { recursive: true });
 
@@ -120,15 +118,6 @@ export class NornAgentRunner {
 		} finally {
 			await agent.dispose();
 		}
-	}
-
-	private resolveFromCwd(path: string): string {
-		const resolvedPath = isAbsolute(path) ? path : resolve(this.input.cwd, path);
-		const pathFromBoundary = relative(this.input.boundaryRoot, resolvedPath);
-		if (pathFromBoundary === ".." || pathFromBoundary.startsWith(`..${sep}`) || isAbsolute(pathFromBoundary)) {
-			throw new Error(`Agent cwd escapes ${this.input.boundaryName} isolation: ${path}`);
-		}
-		return resolvedPath;
 	}
 }
 

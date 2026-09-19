@@ -1,4 +1,4 @@
-import { isWorkflowComplete, isWorkflowDeclaration, isWorkflowFail, isWorkflowNext, type NornAnyWorkflowDeclaration, type NornDispose, type NornInspectedWorkflowInfo, type NornRegisteredWorkflowInfo, type NornRunComplete, type NornRunFail, type NornRunFor, type NornRunNext, type NornWorkflowContext, type NornWorkflowGateInfo, type NornWorkflowSource, type NornWorkflowScopeInfo, type NornProjectConfigurationInfo } from "@vimhead.dev/norn";
+import { isWorkflowComplete, isWorkflowDeclaration, isWorkflowFail, isWorkflowNext, type NornAnyWorkflowDeclaration, type NornDispose, type NornInspectedWorkflowInfo, type NornRegisteredWorkflowInfo, type NornRunComplete, type NornRunFail, type NornRun, type NornRunNext, type NornWorkflowPaths, type NornWorkflowContext, type NornWorkflowGateInfo, type NornWorkflowSource, type NornWorkflowScopeInfo, type NornProjectConfigurationInfo } from "@vimhead.dev/norn";
 import { assertWorkflowMetadata, inspectSchema, isPlainObject, schemaShape, schemaType, unwrapSchema } from "@vimhead.dev/norn/schema";
 import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -41,6 +41,15 @@ export type NornWorkflowStepResult =
 	| NornRunNext
 	| { readonly type: "complete"; readonly workflow: NornAnyWorkflowDeclaration; readonly metadata?: NornRunComplete["metadata"] }
 	| { readonly type: "fail"; readonly workflow: NornAnyWorkflowDeclaration; readonly metadata: NornRunFail["metadata"] };
+
+type NornExecutionContextInput = {
+	readonly run: NornRun;
+	readonly paths: NornWorkflowPaths;
+	readonly args: unknown;
+	readonly configOverride: unknown;
+};
+
+type NornWorkflowExecutionInput = NornExecutionContextInput & { readonly workflow: NornAnyWorkflowDeclaration };
 
 export class NornWorkflowRegistry {
 	private readonly entries = new Map<string, NornRegisteredWorkflow>();
@@ -99,31 +108,34 @@ export class NornWorkflowRegistry {
 	launchableEntries(): NornRegisteredWorkflow[] { return this.sortedEntries().filter(({ workflow }) => workflow.isEntrypoint); }
 	workflowById(workflowId: string): NornAnyWorkflowDeclaration | undefined { return this.entries.get(workflowId)?.workflow; }
 
-	async describeGate<TWorkflow extends NornAnyWorkflowDeclaration>(workflow: TWorkflow, run: NornRunFor<TWorkflow>, args: unknown, configOverride?: unknown): Promise<string> {
+	async describeGate(input: NornWorkflowExecutionInput): Promise<string> {
+		const { workflow } = input;
 		const entry = this.requireEntry(workflow.id);
 		if (!workflow.gate) throw new Error(`Workflow is not gated: ${workflow.id}`);
-		const context = this.createExecutionContext({ entry, run, args, configOverride });
+		const context = this.createExecutionContext({ ...input, entry });
 		const description = await entry.workflow.gate?.describe?.(context) ?? workflow.id;
 		if (typeof description !== "string" || description.trim().length === 0) throw new Error(`Workflow gate description must not be empty: ${workflow.id}`);
 		return description.trim();
 	}
 
-	async execute<TWorkflow extends NornAnyWorkflowDeclaration>(workflow: TWorkflow, run: NornRunFor<TWorkflow>, args: unknown, configOverride?: unknown): Promise<NornWorkflowStepResult> {
+	async execute(input: NornWorkflowExecutionInput): Promise<NornWorkflowStepResult> {
+		const { workflow } = input;
 		const entry = this.requireEntry(workflow.id);
-		const result = await entry.workflow.execute(this.createExecutionContext({ entry, run, args, configOverride }));
+		const result = await entry.workflow.execute(this.createExecutionContext({ ...input, entry }));
 		if (isWorkflowNext(result)) return result;
 		if (isWorkflowComplete(result)) return { type: "complete", workflow, metadata: result.metadata };
 		if (isWorkflowFail(result)) return { type: "fail", workflow, metadata: result.metadata };
 		throw new Error(`Workflow returned invalid control result: ${workflow.id}`);
 	}
 
-	private createExecutionContext(input: { readonly entry: NornRegisteredWorkflow; readonly run: NornRunFor<NornAnyWorkflowDeclaration>; readonly args: unknown; readonly configOverride: unknown }): NornWorkflowContext {
-		const { entry, run, configOverride } = input;
+	private createExecutionContext(input: NornExecutionContextInput & { readonly entry: NornRegisteredWorkflow }): NornWorkflowContext {
+		const { entry, run, paths, configOverride } = input;
 		const scope = entry.scopeId ? this.scopes.get(entry.scopeId) : undefined;
 		return {
 			args: Value.Decode(entry.workflow.args, input.args),
 			config: parseExecutionConfig(entry.configuration, configOverride),
 			...(scope ? { scope: { id: scope.definition.id, config: parseExecutionConfig(scope.configuration, configOverride) } } : {}),
+			paths,
 			run,
 		};
 	}
@@ -175,7 +187,7 @@ function assertGateWorkflow(workflow: NornAnyWorkflowDeclaration): void {
 function workflowInfo(entry: NornRegisteredWorkflow): NornRegisteredWorkflowInfo {
 	return {
 		id: entry.workflow.id, instructions: entry.workflow.instructions, isEntrypoint: entry.workflow.isEntrypoint,
-		isolation: entry.workflow.isolation, source: entry.source,
+		source: entry.source,
 		configKey: entry.workflow.id,
 		scope: entry.scopeId ? { id: entry.scopeId } : undefined,
 	};

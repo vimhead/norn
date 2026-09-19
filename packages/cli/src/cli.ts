@@ -12,6 +12,7 @@ import { Value } from "typebox/value";
 import { NORN_BUILD_INFO, type NornBuildInfo, type NornGithubReleaseBinaryBuildInfo } from "./build-info.ts";
 import { renderNornDocumentationIntro, resolveDocumentationCacheRoot, resolveNornDocumentation, type NornDocumentationSource } from "./documentation.ts";
 import { NornEngine } from "./internal/engine.ts";
+import { resolveNornAgentDirectory } from "./internal/agent-directory.ts";
 import { errorMessage, NornProjectLoadError, NornRunStoppedError } from "./internal/errors.ts";
 import { clearRunResumeRequest, readRunLaunchRequest, readRunResumeRequest, writeRunLaunchRequest, writeRunResumeRequest, type NornRunResumeRequest } from "./internal/launch-request.ts";
 import { readRunMetrics } from "./internal/metrics.ts";
@@ -19,6 +20,7 @@ import { getRunLeaseOwner, NornRunLease } from "./internal/run-lease.ts";
 import { generateRunName } from "./internal/run-names.ts";
 import { assertRunVersion, getRunInfo, listRuns, mergeInterruptedWorkflowArgs, resolveRunRoot } from "./internal/run-state.ts";
 import { NornRunStore } from "./internal/run-store.ts";
+import { prepareRunWorkerDirectory } from "./internal/worker-directory.ts";
 import { discoverNornProject, findNornProject, inspectNornWorkflow, loadNornProject, NORN_PROJECT_FILE_NAME } from "./workflow-loader.ts";
 
 const RUNS_ROOT = join(".norn", "runs");
@@ -899,8 +901,10 @@ async function executeRun(runId: string): Promise<void> {
 	const runRoot = resolve(location.projectRoot, RUNS_ROOT, runId);
 	const request = await readOptionalRunLaunchRequest(runRoot) ?? await readRunResumeRequest(runRoot);
 	try {
-		const project = await loadNornProject(process.cwd());
-		const engine = new NornEngine({ cwd: project.projectRoot, signal: abortController.signal, gateMode: "pause", config: project.projectConfig });
+		const agentDir = resolveNornAgentDirectory({ home: homedir(), environment: process.env });
+		process.chdir(await prepareRunWorkerDirectory(runRoot));
+		const project = await loadNornProject(location.projectRoot);
+		const engine = new NornEngine({ cwd: project.projectRoot, agentDir, signal: abortController.signal, gateMode: "pause", config: project.projectConfig });
 		engine.registerWorkflows(project.definitions);
 		if (request.type === "run") {
 			const workflow = project.registry.workflowById(request.workflowId);

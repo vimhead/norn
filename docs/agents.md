@@ -17,14 +17,14 @@ installs its Pi dependency automatically; no separate Pi installation is needed.
 
 ## One prompt or a retained session
 
-`run.agents.prompt({ label, prompt, response, ...sessionOptions })` creates a Pi session for one prompt and returns the value described by the response schema, including any codec transformations—not `{ response, raw }`. You do not need to dispose this one-prompt session. See [schema input/output types](schemas.md#codecs-and-inputoutput-types).
+`run.agents.prompt({ label, cwd, prompt, response, ...sessionOptions })` creates a Pi session for one prompt and returns the value described by the response schema, including any codec transformations—not `{ response, raw }`. You do not need to dispose this one-prompt session. See [schema input/output types](schemas.md#codecs-and-inputoutput-types).
 
-For follow-up turns in the same conversation:
+Both session creation and one-prompt calls require an absolute `cwd`; choose from the workflow's [paths](persistence.md#filesystem-boundaries) or supply another prepared directory. For follow-up turns in the same conversation:
 
 ```ts
 const agentSession = await run.agents.createSession({
   label: "implementation",
-  cwd: run.cwd,
+  cwd: paths.run,
   tools: ["read", "bash", "edit", "write"],
 });
 try {

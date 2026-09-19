@@ -1,12 +1,14 @@
-import type { NornRun } from "@vimhead.dev/norn";
+import { join } from "node:path";
+import type { NornRun, NornWorkflowPaths } from "@vimhead.dev/norn";
 import { ensureCommandSucceeded } from "../../shared/commands.ts";
 
 const WORKSPACE_REPOSITORY_PATH = "repo";
 
-export async function materializeWorkspaceRepository(run: NornRun, repositoryRoot: string, baseRef: string): Promise<string> {
-	const repositoryPath = run.path(WORKSPACE_REPOSITORY_PATH);
+export async function materializeWorkspaceRepository({ run, paths, repositoryRoot, baseRef }: { run: NornRun; paths: NornWorkflowPaths; repositoryRoot: string; baseRef: string }): Promise<string> {
+	const repositoryPath = join(paths.run, WORKSPACE_REPOSITORY_PATH);
 	const result = await run.commands.run({
 		label: "materialize-workspace-repository",
+		cwd: paths.run,
 		command: [
 			`rm -rf ${shellQuote(repositoryPath)}`,
 			`git clone --no-checkout ${shellQuote(repositoryRoot)} ${shellQuote(repositoryPath)}`,

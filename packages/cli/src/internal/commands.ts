@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { requireAbsoluteWorkingDirectory } from "./working-directory.ts";
 import type { WriteStream } from "node:fs";
 import type { NornCommandRunInput, NornCommandRunResult, NornLogRef } from "@vimhead.dev/norn";
 import { errorMessage } from "./errors.ts";
@@ -9,9 +9,6 @@ import type { NornRunLogs } from "./logs.ts";
 import type { NornRunLogger } from "./run-log.ts";
 
 type NornCommandRunnerInput = {
-	readonly boundaryRoot: string;
-	readonly boundaryName: string;
-	readonly cwd: string;
 	readonly signal?: AbortSignal;
 	readonly logs: NornRunLogs;
 	readonly logger: NornRunLogger;
@@ -21,7 +18,7 @@ export class NornCommandRunner {
 	constructor(private readonly input: NornCommandRunnerInput) {}
 
 	async run(commandInput: NornCommandRunInput): Promise<NornCommandRunResult> {
-		const cwd = this.resolveFromCwd(commandInput.cwd ?? this.input.cwd);
+		const cwd = requireAbsoluteWorkingDirectory(commandInput.cwd);
 		const startedAtMs = Date.now();
 		const invocationId = randomUUID();
 		const stdoutRef = commandLog({ label: commandInput.label, invocationId, stream: "stdout" });
@@ -66,15 +63,6 @@ export class NornCommandRunner {
 			stderrLogId: commandResult.stderrLog.id,
 		});
 		return commandResult;
-	}
-
-	private resolveFromCwd(path: string): string {
-		const resolvedPath = isAbsolute(path) ? path : resolve(this.input.cwd, path);
-		const pathFromBoundary = relative(this.input.boundaryRoot, resolvedPath);
-		if (pathFromBoundary === ".." || pathFromBoundary.startsWith(`..${sep}`) || isAbsolute(pathFromBoundary)) {
-			throw new Error(`Command cwd escapes ${this.input.boundaryName} isolation: ${path}`);
-		}
-		return resolvedPath;
 	}
 }
 

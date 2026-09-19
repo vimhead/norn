@@ -18,7 +18,7 @@ async function createFixture(context: TestContext, signal?: AbortSignal) {
 	const events: Parameters<NornRunLogger["record"]>[0][] = [];
 	const logger = new NornRunLogger({ manifestPath: join(cwd, "manifest.json"), files, manifest: { id: "commands", name: "commands", workflowId: "test.commands", runRoot: cwd, workspace: cwd, initialCwd: cwd, startedAt: new Date().toISOString() } });
 	vi.spyOn(logger, "record").mockImplementation(async event => { events.push(event); });
-	const runner = new NornCommandRunner({ cwd, boundaryRoot: cwd, boundaryName: "test", signal, logs, logger });
+	const runner = new NornCommandRunner({ signal, logs, logger });
 	return { cwd, logs, logger, events, runner };
 }
 
@@ -28,8 +28,8 @@ function printCommand(text: string) {
 
 test("repeated labels retain each invocation's stdout and stderr", async context => {
 	const fixture = await createFixture(context);
-	const first = await fixture.runner.run({ label: "repeat", command: printCommand("first") });
-	const second = await fixture.runner.run({ label: "repeat", command: printCommand("second") });
+	const first = await fixture.runner.run({ label: "repeat", cwd: fixture.cwd, command: printCommand("first") });
+	const second = await fixture.runner.run({ label: "repeat", cwd: fixture.cwd, command: printCommand("second") });
 	assert.notEqual(first.stdoutLog.id, second.stdoutLog.id);
 	assert.notEqual(first.stderrLog.id, second.stderrLog.id);
 	assert.equal(await fixture.logs.read(first.stdoutLog), "first");
@@ -43,10 +43,10 @@ test("repeated labels retain each invocation's stdout and stderr", async context
 
 test("concurrent commands and new runner instances cannot collide on labels", async context => {
 	const fixture = await createFixture(context);
-	const inputs = Array.from({ length: 8 }, (_, index) => ({ label: index % 2 ? "a/b" : "a_b", command: printCommand(String(index)) }));
+	const inputs = Array.from({ length: 8 }, (_, index) => ({ label: index % 2 ? "a/b" : "a_b", cwd: fixture.cwd, command: printCommand(String(index)) }));
 	const results = await Promise.all(inputs.map(input => fixture.runner.run(input)));
-	const nextRunner = new NornCommandRunner({ cwd: fixture.cwd, boundaryRoot: fixture.cwd, boundaryName: "test", logs: fixture.logs, logger: fixture.logger });
-	results.push(await nextRunner.run({ label: "a_b", command: printCommand("8") }));
+	const nextRunner = new NornCommandRunner({ logs: fixture.logs, logger: fixture.logger });
+	results.push(await nextRunner.run({ label: "a_b", cwd: fixture.cwd, command: printCommand("8") }));
 	assert.equal(new Set(results.flatMap(result => [result.stdoutLog.id, result.stderrLog.id])).size, 18);
 	for (const [index, result] of results.entries()) assert.equal(await fixture.logs.read(result.stdoutLog), String(index));
 });
@@ -63,7 +63,7 @@ for (const cancellation of ["timeout", "abort"]) {
 		});
 		const script = `process.on("SIGTERM", () => process.stdout.write("ignored\\n")); require("node:fs").writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1000);`;
 		const startedAt = Date.now();
-		const resultPromise = fixture.runner.run({ label: "stubborn", command: [process.execPath, "-e", script, pidPath], timeoutMs: cancellation === "timeout" ? 800 : 2000 });
+		const resultPromise = fixture.runner.run({ label: "stubborn", cwd: fixture.cwd, command: [process.execPath, "-e", script, pidPath], timeoutMs: cancellation === "timeout" ? 800 : 2000 });
 		for (let attempt = 0; attempt < 100; attempt++) {
 			try { pid = Number(await readFile(pidPath, "utf8")); break; }
 			catch (error) { if (!isNodeError(error) || error.code !== "ENOENT") throw error; }
@@ -83,7 +83,7 @@ for (const cancellation of ["timeout", "abort"]) {
 
 test("ordinary command failures remain results, not workflow exceptions", async context => {
 	const fixture = await createFixture(context);
-	const result = await fixture.runner.run({ label: "nonzero", command: [process.execPath, "-e", "process.exit(7)"] });
+	const result = await fixture.runner.run({ label: "nonzero", cwd: fixture.cwd, command: [process.execPath, "-e", "process.exit(7)"] });
 	assert.equal(result.exitCode, 7);
 	assert.equal(result.killed, false);
 });

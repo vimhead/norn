@@ -13,8 +13,8 @@ function createWorkflow({ instructions, isEntrypoint = true, gate }: { instructi
 function register(registry: NornWorkflowRegistry, workflow: NornAnyWorkflowDeclaration) { return registry.register({ workflow, config: {}, source: undefined }); }
 function unexpectedRunOperation(): never { throw new Error("These gate descriptions must not invoke run operations"); }
 const run: NornRun = {
-	get resources() { return unexpectedRunOperation(); }, id: "metadata", workspace: "/workspace", cwd: "/workspace",
-	path: unexpectedRunOperation, next: unexpectedRunOperation, complete: unexpectedRunOperation, fail: unexpectedRunOperation,
+	get resources() { return unexpectedRunOperation(); }, id: "metadata",
+	next: unexpectedRunOperation, complete: unexpectedRunOperation, fail: unexpectedRunOperation,
 	artifacts: { read: unexpectedRunOperation, write: unexpectedRunOperation }, logs: { read: unexpectedRunOperation }, commands: { run: unexpectedRunOperation },
 	agents: { createSession: unexpectedRunOperation, prompt: unexpectedRunOperation },
 };
@@ -48,12 +48,12 @@ test("gate fallback is the workflow ID, not caller instructions", async () => {
 	const registry = new NornWorkflowRegistry();
 	const definition = createWorkflow({ instructions: "Use to collect records, not as a gate decision request.", gate: { enabled: true } });
 	register(registry, definition);
-	assert.equal(await registry.describeGate(definition, run, {}), definition.id);
+	assert.equal(await registry.describeGate({ workflow: definition, run, paths: { project: "/project", run: "/workspace" }, args: {}, configOverride: undefined }), definition.id);
 });
 test("gate descriptions remain independent from caller instructions", async () => {
 	const registry = new NornWorkflowRegistry();
 	const definition = createWorkflow({ instructions: "Use to collect records.", gate: { enabled: true, describe: () => "Check the collected evidence before proceeding." } });
 	register(registry, definition);
-	assert.equal(await registry.describeGate(definition, run, {}), "Check the collected evidence before proceeding.");
+	assert.equal(await registry.describeGate({ workflow: definition, run, paths: { project: "/project", run: "/workspace" }, args: {}, configOverride: undefined }), "Check the collected evidence before proceeding.");
 	assert.equal(registry.inspect(definition.id)?.instructions, "Use to collect records.");
 });

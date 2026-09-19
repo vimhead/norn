@@ -9,8 +9,8 @@ export const developmentLoopWorkflow = developmentLoopScope.workflow({
 	isEntrypoint: true,
 	instructions: "Plan once, then loop implementation and review in a workspace repository copy. Call this when a repository task should run through planning, implementation, and review.",
 	args: developmentLoopArgsSchema,
-	async execute({ args, scope, run }): Promise<WorkflowResult> {
-		const repositoryPath = await materializeWorkspaceRepository(run, scope.config.repositoryRoot, args.baseRef);
+	async execute({ args, scope, paths, run }): Promise<WorkflowResult> {
+		const repositoryPath = await materializeWorkspaceRepository({ run, paths, repositoryRoot: scope.config.repositoryRoot, baseRef: args.baseRef });
 
 		return planningWorkflow({ task: args.task, repositoryPath, maxIterations: args.maxIterations });
 	}

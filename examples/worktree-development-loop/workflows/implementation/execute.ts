@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { reviewWorkflow } from "../review/execute.ts";
 import type { WorkflowResult } from "@vimhead.dev/norn";
 import { developmentLoopScope } from "../../scope.ts";
@@ -10,8 +11,8 @@ export const implementationWorkflow = developmentLoopScope.workflow({
 	isEntrypoint: false,
 	instructions: "Apply one implementation pass in the current repository.",
 	args: implementationArgsSchema,
-	async execute({ args, run }): Promise<WorkflowResult> {
-		const repositoryPath = args.repositoryPath;
+	async execute({ args, paths, run }): Promise<WorkflowResult> {
+		const repositoryPath = resolve(paths.run, args.repositoryPath);
 		const planArtifact = args.planArtifact;
 		const plan = await run.artifacts.read(planArtifact);
 		const previousReviewArtifact = args.previousReviewArtifact;
