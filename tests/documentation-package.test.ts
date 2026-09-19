@@ -65,11 +65,10 @@ test("real npm tarballs provide public imports, exact dependencies, offline docs
 	assert.ok(intro.includes(JSON.stringify(documentation.paths.index)));
 	await assert.rejects(access(cacheRoot), { code: "ENOENT" });
 	await writeFile(join(consumer, "consumer.ts"), `
-import { workflow, workflowScope, workflowRefSchema, NornFileCoordinator, type NornRun } from "@vimhead.dev/norn";
+import { workflow, workflowScope, workflowRefSchema, type NornRun } from "@vimhead.dev/norn";
 import { createNornClient } from "@vimhead.dev/norn-cli/client";
 import { Type } from "typebox";
 declare const run: NornRun;
-const files: NornFileCoordinator = run.resources.files;
 const manifestScope = workflowScope({ id: "consumer", config: Type.Object({ label: Type.String() }) });
 const manifest_test = manifestScope.workflow({
 id: "test",
@@ -106,7 +105,7 @@ workflow({ id: "standalone", isEntrypoint: false, args: Type.Object({}), execute
   return context.run.complete();
 } });
 const client = createNornClient({ spawnCwd: process.cwd() });
-void [files, plugin, client];
+void [plugin, client];
 `);
 	await writeFile(join(consumer, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true, skipLibCheck: true }, include: ["consumer.ts"] }));
 	await execute(process.execPath, [join(workspaceRoot, "node_modules/typescript/bin/tsc"), "--project", join(consumer, "tsconfig.json")], { cwd: consumer, timeout: 30_000 });

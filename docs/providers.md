@@ -83,8 +83,8 @@ with `/model`. A newly started session reloads the provider; its model listing c
 contain fallback models even without working credentials.
 
 Keep the provider's **local runtime and Pi tool bridge enabled** for Norn agents.
-Norn requires its structured-response tool, and attached resources also expose Pi
-tools. The provider's cloud mode does not expose that local bridge. Cursor-native
+Norn requires its structured-response tool, and workflow-supplied custom tools use
+the same bridge. The provider's cloud mode does not expose that local bridge. Cursor-native
 tools are a separate surface: restricting Norn's `tools` list does not disable
 Cursor's own tools or ambient configuration. See the package's documentation for
 its runtime and isolation controls.

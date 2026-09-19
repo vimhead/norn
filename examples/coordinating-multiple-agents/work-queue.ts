@@ -1,7 +1,6 @@
-import type { NornFileCoordinator, NornResourceDefinition } from "@vimhead.dev/norn";
-import { randomUUID } from "node:crypto";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { access, mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { isDeepStrictEqual } from "node:util";
 import { Type, type StaticDecode } from "typebox";
 import { Value } from "typebox/value";
@@ -21,24 +20,39 @@ type QueueDocument = StaticDecode<typeof documentSchema>;
 type ClaimedNote = Extract<QueueDocument["items"][number], { status: "leased" }>;
 type ClaimReceipt = { readonly id: string; readonly owner: string; readonly token: string; readonly signal: AbortSignal | undefined };
 
-export class WorkQueue {
-	constructor(private readonly input: {
-		readonly path: string;
-		readonly files: NornFileCoordinator;
-		readonly leaseDurationMs: number;
-		readonly now: () => number;
-		readonly createToken: () => string;
-	}) {}
+type QueueOptions = {
+	readonly leaseDurationMs: number;
+	readonly now: () => number;
+	readonly createToken: () => string;
+};
 
-	async initialize(mode: "create" | "open"): Promise<void> {
-		await this.input.files.withExclusiveLock(this.input.path, async path => {
-			try {
-				await this.readDocument(path);
-			} catch (error) {
-				if (mode !== "create" || !(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
-				await this.writeDocument(path, { format: 1, items: [] });
+export class WorkQueue {
+	private isClosed = false;
+	private constructor(private readonly input: QueueOptions & { readonly database: DatabaseSync }) {}
+
+	static async open(input: QueueOptions & { readonly path: string; readonly create: boolean }): Promise<WorkQueue> {
+		if (input.create) await mkdir(dirname(input.path), { recursive: true });
+		else await access(input.path);
+		const database = new DatabaseSync(input.path);
+		try {
+			database.exec("PRAGMA busy_timeout = 30000; PRAGMA journal_mode = DELETE;");
+			if (input.create) {
+				database.exec("CREATE TABLE IF NOT EXISTS queue (id INTEGER PRIMARY KEY CHECK (id = 1), document TEXT NOT NULL)");
+				database.prepare("INSERT INTO queue (id, document) VALUES (1, ?) ON CONFLICT(id) DO NOTHING").run(JSON.stringify({ format: 1, items: [] }));
 			}
-		});
+			const queue = new WorkQueue({ ...input, database });
+			queue.readDocument();
+			return queue;
+		} catch (error) {
+			database.close();
+			throw error;
+		}
+	}
+
+	close(): void {
+		if (this.isClosed) return;
+		this.input.database.close();
+		this.isClosed = true;
 	}
 
 	async enqueue(input: Note & { readonly signal: AbortSignal | undefined }): Promise<{ readonly isNew: boolean }> {
@@ -89,65 +103,46 @@ export class WorkQueue {
 	}
 
 	async inspect() {
-		return this.input.files.withExclusiveLock(this.input.path, async path => {
-			const document = await this.readDocument(path);
-			const now = this.input.now();
-			const items = document.items.map(item => {
-				const common = { id: item.id, text: item.text, deliveries: item.deliveries };
-				if (item.status === "acknowledged") return { ...common, status: "acknowledged" as const, result: item.result };
-				if (item.status === "leased" && item.lease.expiresAt > now) return { ...common, status: "leased" as const, expiresAt: item.lease.expiresAt };
-				return { ...common, status: "available" as const };
-			});
-			return {
-				items, available: items.filter(item => item.status === "available").length,
-				leased: items.filter(item => item.status === "leased").length,
-				acknowledged: items.filter(item => item.status === "acknowledged").length,
-			};
+		const document = this.readDocument();
+		const now = this.input.now();
+		const items = document.items.map(item => {
+			const common = { id: item.id, text: item.text, deliveries: item.deliveries };
+			if (item.status === "acknowledged") return { ...common, status: "acknowledged" as const, result: item.result };
+			if (item.status === "leased" && item.lease.expiresAt > now) return { ...common, status: "leased" as const, expiresAt: item.lease.expiresAt };
+			return { ...common, status: "available" as const };
 		});
+		return {
+			items, available: items.filter(item => item.status === "available").length,
+			leased: items.filter(item => item.status === "leased").length,
+			acknowledged: items.filter(item => item.status === "acknowledged").length,
+		};
 	}
 
 	private describeClaim(item: ClaimedNote) {
 		return { id: item.id, text: item.text, token: item.lease.token, expiresAt: item.lease.expiresAt, deliveries: item.deliveries };
 	}
 
-	private async readDocument(path: string): Promise<QueueDocument> {
-		return Value.Parse(documentSchema, JSON.parse(await readFile(path, "utf8")));
-	}
-
-	private async writeDocument(path: string, document: QueueDocument): Promise<void> {
-		const temporary = `${path}.${this.input.createToken()}.tmp`;
-		try {
-			await writeFile(temporary, JSON.stringify(document), { flag: "wx", mode: 0o600 });
-			await rename(temporary, path);
-		} catch (error) {
-			if (error instanceof Error && "code" in error && error.code === "EEXIST") throw error;
-			try { await rm(temporary, { force: true }); }
-			catch (cleanupError) { throw new AggregateError([error, cleanupError], "Queue write and cleanup failed"); }
-			throw error;
-		}
+	private readDocument(): QueueDocument {
+		const row = this.input.database.prepare("SELECT document FROM queue WHERE id = 1").get();
+		if (!row) throw new Error("Missing queue document");
+		return Value.Parse(documentSchema, JSON.parse(String(row.document)));
 	}
 
 	private async mutate<Value>(input: { readonly signal: AbortSignal | undefined; readonly apply: (document: QueueDocument, now: number) => Value }): Promise<Value> {
 		input.signal?.throwIfAborted();
-		return this.input.files.withExclusiveLock(this.input.path, async path => {
+		const database = this.input.database;
+		database.exec("BEGIN IMMEDIATE");
+		try {
 			input.signal?.throwIfAborted();
-			const document = await this.readDocument(path);
-			input.signal?.throwIfAborted();
+			const document = this.readDocument();
 			const value = input.apply(document, this.input.now());
-			await this.writeDocument(path, document);
+			Value.Assert(documentSchema, document);
+			database.prepare("UPDATE queue SET document = ? WHERE id = 1").run(JSON.stringify(document));
+			database.exec("COMMIT");
 			return value;
-		});
+		} catch (error) {
+			database.exec("ROLLBACK");
+			throw error;
+		}
 	}
 }
-
-const configuration = { format: 1, leaseDurationMs: 300_000 };
-export const workQueueDefinition: NornResourceDefinition<WorkQueue> = {
-	name: "summaries",
-	kind: "example.note-summaries",
-	configuration,
-	async initialize({ directory, files, mode }) {
-		const queue = new WorkQueue({ path: join(directory, "queue.json"), files, leaseDurationMs: configuration.leaseDurationMs, now: Date.now, createToken: randomUUID });
-		await queue.initialize(mode);
-		return queue;
-	},
-};

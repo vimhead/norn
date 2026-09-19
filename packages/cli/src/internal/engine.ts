@@ -9,7 +9,7 @@ import {
 	type NornRunStartOptions,
 	type NornWorkflowPaths,
 } from "@vimhead.dev/norn";
-import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
+import { createRunFileCoordinator } from "./file-coordinator.ts";
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -20,7 +20,6 @@ import { clearRunResumeRequest, matchesRunResumeRequest, readOptionalRunResumeRe
 import { NornRunLogs } from "./logs.ts";
 import { NornRunLease } from "./run-lease.ts";
 import { NornRunLogger } from "./run-log.ts";
-import { NornRunResources } from "../resources.ts";
 import { assertRunVersion, getRunInfo, mergeInterruptedWorkflowArgs, NornRunStateStore, resolveRunRoot, type NornRunState } from "./run-state.ts";
 import { NornRunStore, runCurrentRoot } from "./run-store.ts";
 import { NornRunContext } from "./run.ts";
@@ -343,16 +342,15 @@ export class NornEngine {
 		const logsRoot = join(input.currentRoot, "logs");
 		await mkdir(input.paths.workspace, { recursive: true });
 		await mkdir(logsRoot, { recursive: true });
-		const resources = await NornRunResources.initialize(dirname(input.currentRoot));
+		const files = createRunFileCoordinator(dirname(input.currentRoot));
 		return new NornRunContext({
 			id: input.id,
 			runRoot: input.currentRoot,
 			signal: input.signal,
 			agentDir: this.input.agentDir,
 			responseCollector: this.responseCollector,
-			resources,
 			logger: input.logger,
-			logs: new NornRunLogs(logsRoot, resources.files),
+			logs: new NornRunLogs(logsRoot, files),
 		});
 	}
 

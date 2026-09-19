@@ -6,7 +6,6 @@ import { NornAgentRunner } from "./agents.ts";
 import { NornCommandRunner } from "./commands.ts";
 import type { NornRunLogs } from "./logs.ts";
 import type { NornRunLogger } from "./run-log.ts";
-import type { NornRunResources } from "../resources.ts";
 
 type DefaultNornRunInput = {
 	readonly id: string;
@@ -16,13 +15,11 @@ type DefaultNornRunInput = {
 	readonly thinkingLevel?: CreateAgentSessionOptions["thinkingLevel"];
 	readonly agentDir?: string;
 	readonly responseCollector: NornAgentResponseCollector;
-	readonly resources: NornRunResources;
 	readonly logger: NornRunLogger;
 	readonly logs: NornRunLogs;
 };
 
 export class NornRunContext implements NornRun {
-	readonly resources: NornRunResources;
 	readonly logs: NornRun["logs"];
 	readonly commands: NornRun["commands"];
 	readonly agents: NornRun["agents"];
@@ -30,7 +27,6 @@ export class NornRunContext implements NornRun {
 
 	constructor(private readonly input: DefaultNornRunInput) {
 		this.id = input.id;
-		this.resources = input.resources;
 		this.logs = {
 			read: (log) => this.input.logs.read(log),
 		};

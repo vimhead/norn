@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { test, vi, type TestContext } from "vitest";
-import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
+import { createRunFileCoordinator } from "../packages/cli/src/internal/file-coordinator.ts";
 import { NornCommandRunner } from "../packages/cli/src/internal/commands.ts";
 import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
 import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";

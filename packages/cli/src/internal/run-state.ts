@@ -5,7 +5,7 @@ import { isNodeError } from "@vimhead.dev/norn-core/errors";
 import { readRunLaunchRequest, readOptionalRunResumeRequest, RESUME_START_GRACE_MS } from "./launch-request.ts";
 import { getRunLeaseHealth } from "./run-lease.ts";
 import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
-import { createRunFileCoordinator, type NornFileCoordinator } from "@vimhead.dev/norn/files";
+import { createRunFileCoordinator, type NornFileCoordinator } from "./file-coordinator.ts";
 import { runCurrentRoot } from "./run-store.ts";
 import { jsonValueSchema } from "@vimhead.dev/norn/schema";
 import { Value } from "typebox/value";

@@ -2,7 +2,7 @@ import { createStateTools } from "../examples/shared-state/state-tools.ts";
 import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { AgentSession, createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
-import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
+import { createRunFileCoordinator } from "../packages/cli/src/internal/file-coordinator.ts";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -251,7 +251,9 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 
 test("native custom state tools retain values across sessions and session cleanup covers startup failure", { timeout: 30000 }, async context => {
 	const fixture = await createFixture(context);
-	const { resources, state } = await initializeSharedState(fixture.root);
+	const { state } = await initializeSharedState(fixture.root);
+	context.onTestFinished(() => state.close());
+	const files = createRunFileCoordinator(fixture.root);
 	const field = { id: "count", schema: Type.Integer() };
 	const hidden = { id: "private", schema: Type.String() };
 	await state.set(hidden, "not attached");
@@ -276,8 +278,8 @@ test("native custom state tools retain values across sessions and session cleanu
 	const runner = new NornAgentRunner({
 		id: "resource-sdk", runRoot: join(fixture.root, "current"),
 		agentDir: fixture.agentDir, model,
-		logs: new NornRunLogs(join(fixture.root, "current", "logs"), resources.files),
-		logger: new NornRunLogger({ manifestPath: join(fixture.root, "current", "manifest.json"), files: resources.files, manifest: { id: "resource-sdk", name: "resource-sdk", workflowId: "test.worker", runRoot: fixture.root, workspace: fixture.cwd, initialCwd: fixture.cwd, startedAt: new Date().toISOString() } }),
+		logs: new NornRunLogs(join(fixture.root, "current", "logs"), files),
+		logger: new NornRunLogger({ manifestPath: join(fixture.root, "current", "manifest.json"), files, manifest: { id: "resource-sdk", name: "resource-sdk", workflowId: "test.worker", runRoot: fixture.root, workspace: fixture.cwd, initialCwd: fixture.cwd, startedAt: new Date().toISOString() } }),
 		responseCollector: new NornAgentResponseCollector(),
 	});
 	const disposalSpy = vi.spyOn(AgentSession.prototype, "dispose");
@@ -297,7 +299,9 @@ test("native custom state tools retain values across sessions and session cleanu
 	assert.equal(disposalSpy.mock.calls.length, 1);
 	await runner.prompt({ label: "unattached", cwd: fixture.cwd, tools: [], prompt: "Return the result", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
 	assert.deepEqual(lastRequest(captured).tools, [AGENT_RESPONSE_TOOL_NAME]);
-	assert.equal(await (await initializeSharedState(fixture.root)).state.get(field), 7);
+	const reopened = (await initializeSharedState(fixture.root)).state;
+	context.onTestFinished(() => reopened.close());
+	assert.equal(await reopened.get(field), 7);
 	await runner.prompt({ label: "selected-one-shot", cwd: fixture.cwd, tools: ["norn_state_get"], customTools, prompt: "Return the result", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
 	assert.deepEqual(new Set(lastRequest(captured).tools), new Set([AGENT_RESPONSE_TOOL_NAME, "norn_state_get"]));
 	assert.equal(disposalSpy.mock.calls.length, 3);

@@ -98,8 +98,12 @@ test("compiled binary resolves complete offline docs without source and runs an 
 		batchId: "batch-17", summary: "Greeting prepared for Ada.", greeting: "Hello, Ada!",
 	});
 	await cp(join(documentation.paths.examples, "shared-state"), join(projectRoot, "shared-state"), { recursive: true });
+	await cp(join(documentation.paths.examples, "coordinating-multiple-agents", "work-queue.ts"), join(projectRoot, "work-queue.ts"));
 	await writeFile(join(projectRoot, "native.ts"), `
-import { sharedState } from "./shared-state/shared-state.ts";
+import { SharedState } from "./shared-state/shared-state.ts";
+import { WorkQueue } from "./work-queue.ts";
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import { workflow, workflowScope, workflowRefSchema } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -116,13 +120,27 @@ args: Type.Object({
     count: Type.Decode(Type.String({ default: "41" }), value => Number(value) + 1),
     next: workflowRefSchema({ args: Type.Object({ count: Type.Integer() }) }),
   }),
-async execute({ args: args, run: run }) {
+async execute({ args, paths }) {
     const expected = Type.Literal(42);
     if (!Value.Check(expected, args.count) || !Compile(expected).Check(args.count) || !Check(expected, args.count)) throw new Error("Incorrect decoded count");
-    const state = await run.resources.ensure(sharedState);
-    await state.set(countField, args.count);
-    const count = await state.get(countField);
-    return args.next({ count });
+    const state = await SharedState.open({ path: join(paths.workspace, "state.sqlite"), create: true });
+    try {
+      await state.set(countField, args.count);
+      const count = await state.get(countField);
+      const queue = await WorkQueue.open({ path: join(paths.workspace, "queue.sqlite"), create: true, leaseDurationMs: 300000, now: Date.now, createToken: randomUUID });
+      try {
+        await queue.enqueue({ id: "count", text: "Count is forty-two.", signal: undefined });
+        const claim = await queue.claim({ owner: "native", signal: undefined });
+        if (!claim) throw new Error("Missing native queue claim");
+        await queue.acknowledge({ ...claim, owner: "native", result: { summary: "Count checked.", quote: "forty-two" }, signal: undefined });
+        if ((await queue.inspect()).acknowledged !== 1) throw new Error("Missing native queue result");
+      } finally {
+        queue.close();
+      }
+      return args.next({ count });
+    } finally {
+      state.close();
+    }
   }
 });
 const manifest_finish = manifestScope.workflow({

@@ -1,7 +1,6 @@
 import * as nornModule from "@vimhead.dev/norn";
 import { isWorkflowDeclaration, type NornAnyWorkflowDeclaration, type NornDispose, type NornWorkflowDiagnostic, type NornProjectInfo, type NornProjectInspection, type NornProjectConfigurationInfo, type NornWorkflowCatalogInfo, type NornWorkflowInspection, type NornWorkflowSource } from "@vimhead.dev/norn";
 import { isNodeError } from "@vimhead.dev/norn-core/errors";
-import * as nornFilesModule from "@vimhead.dev/norn/files";
 import * as nornSchemaModule from "@vimhead.dev/norn/schema";
 import { inspectSchema, isPlainObject } from "@vimhead.dev/norn/schema";
 import { createJiti, type ModuleCache } from "jiti/static";
@@ -178,7 +177,7 @@ function createDiagnostic(input: { readonly source: NornWorkflowSource; readonly
 	return { configPath: input.source.configPath, modulePath: input.source.path, scopeId: input.scopeId, workflowId: input.workflowId, stage: input.stage, message: errorMessage(input.error), issues: input.error instanceof AssertError ? input.error.cause.errors : [] };
 }
 function nornWorkflowVirtualModules(): Record<string, unknown> {
-	return { "@vimhead.dev/norn": nornModule, "@vimhead.dev/norn/files": nornFilesModule, "@vimhead.dev/norn/schema": nornSchemaModule, typebox: typeboxModule, "typebox/value": typeboxValueModule, "typebox/compile": typeboxCompileModule, "typebox/schema": typeboxSchemaModule };
+	return { "@vimhead.dev/norn": nornModule, "@vimhead.dev/norn/schema": nornSchemaModule, typebox: typeboxModule, "typebox/value": typeboxValueModule, "typebox/compile": typeboxCompileModule, "typebox/schema": typeboxSchemaModule };
 }
 function mergeProjectConfig(files: readonly NornConfigFile[]): Record<string, unknown> {
 	const [project, ...reusable] = files;

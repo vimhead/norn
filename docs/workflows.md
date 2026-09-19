@@ -37,7 +37,7 @@ Supply `id`, `args`, `isEntrypoint`, and `execute` explicitly. Standalone IDs ar
 | `config` | Decoded workflow-local configuration, or `undefined` without a schema |
 | `scope` | `{ id, config }` for scoped workflows; the property is absent for standalone workflows |
 | `paths` | Absolute `project` and `workspace` directories; see [filesystem boundaries](persistence.md#filesystem-boundaries) |
-| `run` | Run control, agents, commands, logs, and resources |
+| `run` | Run control, agents, commands, and logs |
 
 It returns one control result:
 

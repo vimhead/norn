@@ -1,6 +1,6 @@
 import { createWriteStream, type WriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import type { NornFileCoordinator } from "@vimhead.dev/norn/files";
+import type { NornFileCoordinator } from "./file-coordinator.ts";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { NornLogRef } from "@vimhead.dev/norn";
 

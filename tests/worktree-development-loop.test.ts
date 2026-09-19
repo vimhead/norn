@@ -12,7 +12,7 @@ import { reviewRouterWorkflow } from "../examples/worktree-development-loop/work
 import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-response-tool.ts";
 import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
 import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
-import { NornRunResources } from "../packages/cli/src/resources.ts";
+import { createRunFileCoordinator } from "../packages/cli/src/internal/file-coordinator.ts";
 import { NornRunContext } from "../packages/cli/src/internal/run.ts";
 
 const execute = promisify(execFile);
@@ -38,16 +38,15 @@ async function createExampleRun(context: TestContext) {
 	const currentRoot = join(runRoot, "current");
 	const workspace = join(currentRoot, "workspace");
 	await mkdir(workspace, { recursive: true });
-	const resources = await NornRunResources.initialize(runRoot);
+	const files = createRunFileCoordinator(runRoot);
 	const run = new NornRunContext({
 		id: "worktree-example",
 		runRoot: currentRoot,
 		responseCollector: new NornAgentResponseCollector(),
-		resources,
-		logs: new NornRunLogs(join(currentRoot, "logs"), resources.files),
+		logs: new NornRunLogs(join(currentRoot, "logs"), files),
 		logger: new NornRunLogger({
 			manifestPath: join(currentRoot, "manifest.json"),
-			files: resources.files,
+			files,
 			manifest: {
 				id: "worktree-example", name: "worktree-example", workflowId: developmentLoopWorkflow.id,
 				runRoot, workspace, initialCwd: workspace, startedAt: new Date().toISOString(),

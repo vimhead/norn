@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import type { NornFileCoordinator } from "@vimhead.dev/norn/files";
+import type { NornFileCoordinator } from "./file-coordinator.ts";
 import { isNodeError } from "@vimhead.dev/norn-core/errors";
 import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
 

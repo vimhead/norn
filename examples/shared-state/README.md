@@ -1,4 +1,4 @@
-# Norn agent with explicitly attached state
+# Norn agent with workflow-owned state tools
 
 [Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this directory to a writable task directory, and enter it. This example makes one live model call and requires [Norn agent authentication and a default model](../../docs/providers.md).
 
@@ -9,7 +9,7 @@ norn runs wait <returned-run-id>
 norn runs inspect <returned-run-id>
 ```
 
-[shared-state.ts](shared-state.ts) defines an example-local resource, opened explicitly with `run.resources.ensure(sharedState)` in each step. Its `get`, `getOptional`, and `set` operations validate field values; missing required values fail, and schema defaults do not initialize fields.
+[shared-state.ts](shared-state.ts) defines an example-local SQLite store at `join(paths.workspace, "state.sqlite")`. The first step opens it with `SharedState.open({ path, create: true })`; verification reopens it with `create: false`. Its `get`, `getOptional`, and `set` operations validate field values; missing required values fail, and schema defaults do not initialize fields. Each step closes its store in `finally` before returning. No separate database package is needed.
 
 The first workflow writes the source. Its Norn agent receives only read access to the source and write access to the copy through the example's [createStateTools](state-tools.ts) factory. The workflow registers these definitions through `customTools` and selects their names through `tools`, requesting no filesystem task tools. After the agent session closes, a transition checkpoints the values; the next workflow checks exact equality and writes `copy.txt` inside `paths.workspace`. Missing or different output fails instead of trusting the agent's response.
 

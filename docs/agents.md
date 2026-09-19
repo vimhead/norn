@@ -65,7 +65,7 @@ Successful results and raw attempts are written under `current/logs/agents/`; Pi
 
 ## Custom tools
 
-Both session creation and one-shot prompting accept Pi `ToolDefinition` objects through `customTools`. Each definition supplies a name, description, parameter schema, and execution function. Tools can close over files, services, or resource handles; no Norn resource or adapter is required. The [state tools](../examples/shared-state/state-tools.ts) and [queue tools](../examples/coordinating-multiple-agents/queue-tools.ts) are complete example-owned factories.
+Both session creation and one-shot prompting accept Pi `ToolDefinition` objects through `customTools`. Each definition supplies a name, description, parameter schema, and execution function. Tools can close over files, services, or author-owned storage handles. The [state tools](../examples/shared-state/state-tools.ts) and [queue tools](../examples/coordinating-multiple-agents/queue-tools.ts) are complete example-owned factories.
 
 `customTools` registers definitions; an explicit `tools` array selects enabled names across built-in, custom, and loaded extension tools. The response tool is always included. `tools: []` requests only that response tool, even when custom definitions are supplied. Omitting `tools` uses Pi's configured default tools (`read`, `bash`, `edit`, `write` when unconfigured), plus custom and extension tools.
 

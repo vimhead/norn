@@ -467,7 +467,6 @@ export type NornRun = {
 	next(workflowId: string, args: unknown): NornRunNext;
 	complete(metadata?: NornRunOutcomeMetadata): NornRunComplete;
 	fail(metadata: NornRunOutcomeMetadata & { readonly summary: string }): NornRunFail;
-	resources: import("./resources.ts").NornResources;
 	logs: {
 		read(log: NornLogRef): Promise<string>;
 	};

@@ -149,6 +149,7 @@ test("workflow and scope configurations decode and override independently, inclu
 
 test("example shared storage validates values without decoding codecs or initializing defaults", async context => {
 	const { state } = await initializeSharedState(await fixture(context));
+	context.onTestFinished(() => state.close());
 	const field = { id: "count", schema: Type.Decode(Type.String(), text => Number(text) + 1) };
 	await state.set(field, "2");
 	assert.equal(await state.get(field), "2");

@@ -1,7 +1,7 @@
-import { sharedState } from "../../examples/shared-state/shared-state.ts";
-import { NornRunResources } from "../../packages/cli/src/resources.ts";
+import { join } from "node:path";
+import { SharedState } from "../../examples/shared-state/shared-state.ts";
 
 export async function initializeSharedState(runRoot: string) {
-	const resources = await NornRunResources.initialize(runRoot);
-	return { resources, state: await resources.ensure(sharedState) };
+	const path = join(runRoot, "current", "workspace", "state.sqlite");
+	return { path, state: await SharedState.open({ path, create: true }) };
 }

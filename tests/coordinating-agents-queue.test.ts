@@ -1,30 +1,28 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { setTimeout as delay } from "node:timers/promises";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { test, type TestContext } from "vitest";
-import { NornRunResources } from "../packages/cli/src/resources.ts";
 import type { ToolDefinition } from "@vimhead.dev/norn";
 import { NornRunStore } from "../packages/cli/src/internal/run-store.ts";
 import { createQueueTools } from "../examples/coordinating-multiple-agents/queue-tools.ts";
-import { WorkQueue, workQueueDefinition } from "../examples/coordinating-multiple-agents/work-queue.ts";
+import { WorkQueue } from "../examples/coordinating-multiple-agents/work-queue.ts";
 
 async function createQueueFixture(context: TestContext, overrides: { now?: () => number; leaseDurationMs?: number } = {}) {
 	const root = await mkdtemp(join(tmpdir(), "norn-example-queue-"));
 	context.onTestFinished(() => rm(root, { recursive: true, force: true }));
-	const leaseDurationMs = overrides.leaseDurationMs ?? 300_000;
-	const definition = { ...workQueueDefinition, configuration: { format: 1, leaseDurationMs }, async initialize(resource: Parameters<typeof workQueueDefinition.initialize>[0]) {
-		const queue = new WorkQueue({ path: join(resource.directory, "queue.json"), files: resource.files, leaseDurationMs, now: overrides.now ?? Date.now, createToken: randomUUID });
-		await queue.initialize(resource.mode);
+	const path = join(root, "current", "workspace", "queue.sqlite");
+	const openQueue = async (input: { create: boolean }) => {
+		const queue = await WorkQueue.open({ path, create: input.create, leaseDurationMs: overrides.leaseDurationMs ?? 300_000, now: overrides.now ?? Date.now, createToken: randomUUID });
+		context.onTestFinished(() => queue.close());
 		return queue;
-	} };
-	const resources = await NornRunResources.initialize(root);
-	return { root, resources, definition, queue: await resources.ensure(definition), path: join(root, "current/resources/summaries/queue.json") };
+	};
+	return { root, path, openQueue, queue: await openQueue({ create: true }) };
 }
 
 async function invoke(tools: readonly ToolDefinition[], input: { tool: string; args: object; signal?: AbortSignal }) {
@@ -45,8 +43,8 @@ function startWorker(context: TestContext, input: { root: string; mode: "consume
 	return { child, completed };
 }
 
-test("example queue identity and values survive reopen; retries cannot change a note or result", async context => {
-	const { queue, resources, definition, root } = await createQueueFixture(context);
+test("example queue values survive reopen; retries cannot change a note or result", async context => {
+	const { queue, openQueue } = await createQueueFixture(context);
 	assert.deepEqual(await queue.enqueue({ id: "first", text: "source", signal: undefined }), { isNew: true });
 	assert.deepEqual(await queue.enqueue({ id: "first", text: "source", signal: undefined }), { isNew: false });
 	await assert.rejects(queue.enqueue({ id: "first", text: "different", signal: undefined }), /Conflicting queue note/);
@@ -54,13 +52,11 @@ test("example queue identity and values survive reopen; retries cannot change a 
 	assert.ok(claim);
 	const acknowledgment = { ...claim, owner: "worker", result: { summary: "result", quote: "source" }, signal: undefined };
 	await queue.acknowledge(acknowledgment);
-	const reopened = await (await NornRunResources.initialize(root)).ensure(definition);
+	const reopened = await openQueue({ create: false });
 	await reopened.acknowledge(acknowledgment);
 	await assert.rejects(reopened.acknowledge({ ...acknowledgment, result: { summary: "changed", quote: "source" } }), /Conflicting queue result/);
-	assert.strictEqual(await resources.ensure(definition), queue);
 	assert.equal((await reopened.inspect()).acknowledged, 1);
 	assert.equal(await reopened.claim({ owner: "other", signal: undefined }), null);
-	await assert.rejects((await NornRunResources.initialize(root)).ensure({ ...definition, configuration: { format: 2 } }), /Incompatible resource definition/);
 });
 
 test("competing acknowledgment retries retain one complete result", async context => {
@@ -109,67 +105,57 @@ test("note/result bounds and retained-history capacity fail without overwriting 
 	for (let index = 0; index < 12; index++) await queue.enqueue({ id: `${index}`, text: `source ${index}`, signal: undefined });
 	const claim = await queue.claim({ owner: "owner", signal: undefined });
 	assert.ok(claim);
-	const before = await readFile(path, "utf8");
+	const before = await readFile(path);
 	await assert.rejects(queue.acknowledge({ ...claim, owner: "owner", result: { summary: 1 as never, quote: "source" }, signal: undefined }));
-	assert.equal(await readFile(path, "utf8"), before);
+	assert.deepEqual(await readFile(path), before);
 	await queue.acknowledge({ ...claim, owner: "owner", result: { summary: "complete", quote: "source" }, signal: undefined });
 	await assert.rejects(queue.enqueue({ id: "overflow", text: "another", signal: undefined }), /at most 12 notes/);
 	assert.equal((await queue.inspect()).items.length, 12);
 });
 
-test("a temporary-file collision preserves both the existing file and queue", async context => {
-	const { queue, path, resources } = await createQueueFixture(context);
-	const token = randomUUID();
-	const temporary = `${path}.${token}.tmp`;
-	await writeFile(temporary, "retained incomplete write");
-	const colliding = new WorkQueue({ path, files: resources.files, leaseDurationMs: 1000, now: Date.now, createToken: () => token });
-	await assert.rejects(colliding.enqueue({ id: "one", text: "source", signal: undefined }), { code: "EEXIST" });
-	assert.equal(await readFile(temporary, "utf8"), "retained incomplete write");
+test("failed queue transactions retain earlier data and do not poison later writes", async context => {
+	const { queue, path } = await createQueueFixture(context);
+	const database = new DatabaseSync(path);
+	context.onTestFinished(() => database.close());
+	database.exec("CREATE TRIGGER reject_update BEFORE UPDATE ON queue BEGIN SELECT RAISE(ABORT, 'storage failure'); END");
+	await assert.rejects(queue.enqueue({ id: "one", text: "source", signal: undefined }), /storage failure/);
 	assert.equal((await queue.inspect()).items.length, 0);
+	database.exec("DROP TRIGGER reject_update");
+	await queue.enqueue({ id: "one", text: "source", signal: undefined });
+	assert.equal((await queue.inspect()).items.length, 1);
 });
 
-test("initialized missing or malformed storage is never replaced with an empty queue", async context => {
-	const { root, path, definition } = await createQueueFixture(context);
-	for (const invalid of ["[]", '{"format":1,"items":[{}]}']) {
-		await writeFile(path, invalid);
-		await assert.rejects((await NornRunResources.initialize(root)).ensure(definition));
-		assert.equal(await readFile(path, "utf8"), invalid);
+test("opening missing or malformed storage fails without substituting an empty queue", async context => {
+	const { path, queue, openQueue } = await createQueueFixture(context);
+	const database = new DatabaseSync(path);
+	try {
+		for (const invalid of ["[]", '{"format":1,"items":[{}]}']) {
+			database.prepare("UPDATE queue SET document = ?").run(invalid);
+			await assert.rejects(openQueue({ create: false }));
+			assert.equal(database.prepare("SELECT document FROM queue").get()?.document, invalid);
+		}
+	} finally {
+		database.close();
 	}
+	queue.close();
 	await rm(path);
-	await assert.rejects((await NornRunResources.initialize(root)).ensure(definition), { code: "ENOENT" });
+	await assert.rejects(openQueue({ create: false }), { code: "ENOENT" });
 	await assert.rejects(readFile(path), { code: "ENOENT" });
 });
 
-test("creation retries retain partially initialized queue data", async context => {
-	const { root, definition } = await createQueueFixture(context);
-	const partial = { ...definition, name: "partial", async initialize(resource: Parameters<typeof definition.initialize>[0]) {
-		const queue = await definition.initialize(resource);
-		if (resource.mode === "create") {
-			await queue.enqueue({ id: "saved", text: "retained", signal: undefined });
-			throw new Error("interrupted before completion metadata");
-		}
-		return queue;
-	} };
-	await assert.rejects((await NornRunResources.initialize(root)).ensure(partial), /interrupted before completion/);
-	const repaired = await (await NornRunResources.initialize(root)).ensure({ ...partial, initialize: definition.initialize });
-	assert.equal((await repaired.inspect()).items[0].text, "retained");
+test("repeated queue creation preserves initialized data", async context => {
+	const { queue, openQueue } = await createQueueFixture(context);
+	await queue.enqueue({ id: "saved", text: "retained", signal: undefined });
+	queue.close();
+	const reopened = await openQueue({ create: true });
+	assert.equal((await reopened.inspect()).items[0].text, "retained");
 });
 
-test("mutation cancellation is checked after waiting for the process-safe lock", async context => {
-	const { queue, path, resources } = await createQueueFixture(context);
-	let entered!: () => void;
-	let release!: () => void;
-	const ready = new Promise<void>(resolve => { entered = resolve; });
-	const released = new Promise<void>(resolve => { release = resolve; });
-	const held = resources.files.withExclusiveLock(path, async () => { entered(); await released; });
-	await ready;
+test("cancelled queue mutations leave stored data unchanged", async context => {
+	const { queue } = await createQueueFixture(context);
 	const controller = new AbortController();
-	const writing = queue.enqueue({ id: "cancelled", text: "cancelled", signal: controller.signal });
-	const rejected = assert.rejects(writing, /cancelled/);
-	await delay(20);
 	controller.abort(new Error("cancelled"));
-	release();
-	await Promise.all([held, rejected]);
+	await assert.rejects(queue.enqueue({ id: "cancelled", text: "cancelled", signal: controller.signal }), /cancelled/);
 	assert.equal((await queue.inspect()).items.length, 0);
 	await queue.enqueue({ id: "next", text: "working", signal: undefined });
 });
@@ -226,15 +212,18 @@ test("a killed worker's durable claim is redelivered at expiry with a fenced tok
 
 test("checkpoint restore replays queue results and preserves lease expiry", async context => {
 	let now = 1000;
-	const { root, queue, definition } = await createQueueFixture(context, { now: () => now, leaseDurationMs: 100 });
+	const { root, queue, openQueue } = await createQueueFixture(context, { now: () => now, leaseDurationMs: 100 });
 	const store = await NornRunStore.initialize(root);
 	await queue.enqueue({ id: "task", text: "source", signal: undefined });
 	const old = await queue.claim({ owner: "old", signal: undefined });
 	assert.ok(old);
+	queue.close();
 	const checkpoint = await store.snapshotCurrent("leased");
-	await queue.acknowledge({ ...old, owner: "old", result: { summary: "later", quote: "source" }, signal: undefined });
+	const later = await openQueue({ create: false });
+	await later.acknowledge({ ...old, owner: "old", result: { summary: "later", quote: "source" }, signal: undefined });
+	later.close();
 	await store.restoreSnapshot(checkpoint.id, undefined);
-	const reopened = await (await NornRunResources.initialize(root)).ensure(definition);
+	const reopened = await openQueue({ create: false });
 	assert.equal((await reopened.inspect()).acknowledged, 0);
 	assert.equal(await reopened.claim({ owner: "new", signal: undefined }), null);
 	now = 1100;

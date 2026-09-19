@@ -1,4 +1,4 @@
-import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
+import { createRunFileCoordinator } from "../packages/cli/src/internal/file-coordinator.ts";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";

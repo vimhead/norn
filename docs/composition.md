@@ -8,7 +8,7 @@ return analyze({ draftPath });
 
 Return a workflow call to select the next step in the same run. Supply its complete input; TypeScript checks it against the declaration's args schema. The target must be registered in the loaded project.
 
-This transfers control rather than calling a subroutine: awaiting the declaration does not execute the target or return its eventual result. Steps share run resources and workspace files, not local variables or agent conversations. `run.complete` completes the whole run.
+This transfers control rather than calling a subroutine: awaiting the declaration does not execute the target or return its eventual result. Steps share workspace files, not local variables or agent conversations. `run.complete` completes the whole run.
 
 For a dynamically selected string ID, use `return run.next(workflowId, args)`. The selected target checks its input at runtime. `run.next` accepts IDs, not declarations or reference functions.
 

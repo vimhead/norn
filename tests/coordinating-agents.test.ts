@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,12 +8,11 @@ import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-s
 import { AgentSession } from "@earendil-works/pi-coding-agent";
 import { test, vi, type TestContext } from "vitest";
 import { start, work, verify } from "../examples/coordinating-multiple-agents/plugin.ts";
-import { workQueueDefinition } from "../examples/coordinating-multiple-agents/work-queue.ts";
+import { WorkQueue } from "../examples/coordinating-multiple-agents/work-queue.ts";
 import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
 import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
 import { getRunInfo } from "../packages/cli/src/internal/run-state.ts";
-import { NornRunResources } from "../packages/cli/src/resources.ts";
 import { loadNornProject } from "../packages/cli/src/workflow-loader.ts";
 
 const model: Model<"anthropic-messages"> = { id: "offline", name: "Offline queue agent", provider: "offline-test", api: "anthropic-messages", baseUrl: "https://unused.invalid", reasoning: false, input: ["text"], contextWindow: 128000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } };
@@ -105,6 +105,13 @@ async function createWorkflowFixture(context: TestContext, input: { failureLabel
 	return { root, agentDir, engine, sessions, claims, activeTools, maximumConcurrentPrompts: () => maximumConcurrentPrompts, repairModel: () => { failureLabel = undefined; } };
 }
 
+async function inspectQueue(runRoot: string) {
+	const workspace = (await getRunInfo(runRoot)).paths.workspace;
+	const queue = await WorkQueue.open({ path: join(workspace, "queue.sqlite"), create: false, leaseDurationMs: 300_000, now: Date.now, createToken: randomUUID });
+	try { return await queue.inspect(); }
+	finally { queue.close(); }
+}
+
 for (const noteCount of [3, 4]) {
 	test(`the copied example coordinates Norn agent sessions and verifies ${noteCount} persisted results`, { timeout: 30000 }, async context => {
 		const setup = await createWorkflowFixture(context, { failureLabel: undefined, shouldInventQuote: false });
@@ -128,8 +135,7 @@ test("agent success reports without persisted results cannot complete the exampl
 	const setup = await createWorkflowFixture(context, { failureLabel: undefined, shouldInventQuote: false, isReportOnly: true });
 	const result = await setup.engine.runWorkflow(start, { notes }, undefined);
 	assert.equal(result.status, "failed");
-	const queue = await (await NornRunResources.initialize(join(setup.root, ".norn/runs", result.id))).ensure(workQueueDefinition);
-	assert.equal((await queue.inspect()).acknowledged, 0);
+	assert.equal((await inspectQueue(join(setup.root, ".norn/runs", result.id))).acknowledged, 0);
 });
 
 test("acknowledgment is not semantic approval: the example rejects invented quotations", { timeout: 30000 }, async context => {
@@ -137,8 +143,7 @@ test("acknowledgment is not semantic approval: the example rejects invented quot
 	await assert.rejects(setup.engine.runWorkflow(start, { notes }, { id: "invalid-quotes" }), /Unverified result or source quotation/);
 	const runRoot = join(setup.root, ".norn/runs/invalid-quotes");
 	assert.equal((await getRunInfo(runRoot)).status, "failed");
-	const queue = await (await NornRunResources.initialize(runRoot)).ensure(workQueueDefinition);
-	assert.equal((await queue.inspect()).acknowledged, 4);
+	assert.equal((await inspectQueue(runRoot)).acknowledged, 4);
 	await assert.rejects(readFile(join((await getRunInfo(runRoot)).paths.workspace, "summaries.json")), { code: "ENOENT" });
 });
 
@@ -152,8 +157,7 @@ test("native rollback and fresh Norn agents retain checkpointed results and retr
 	const checkpoint = checkpoints.at(-1);
 	assert.ok(checkpoint);
 	await setup.engine.rollbackRun(runRoot, checkpoint.id);
-	const queue = await (await NornRunResources.initialize(runRoot)).ensure(workQueueDefinition);
-	const restored = await queue.inspect();
+	const restored = await inspectQueue(runRoot);
 	assert.equal(restored.acknowledged, 2);
 	assert.equal(restored.available, 2);
 	assert.equal(restored.leased, 0);
@@ -164,7 +168,7 @@ test("native rollback and fresh Norn agents retain checkpointed results and retr
 	resumed.registerWorkflows((await loadNornProject(setup.root)).definitions);
 	const result = await resumed.resumeWorkflow(runRoot);
 	assert.equal(result.status, "completed");
-	assert.equal((await queue.inspect()).acknowledged, 4);
+	assert.equal((await inspectQueue(runRoot)).acknowledged, 4);
 	assert.ok(setup.claims.slice(priorClaims).every(claim => !completedIds.includes(claim.id)));
 	assert.ok([...setup.sessions].every(session => !session.isStreaming));
 });

@@ -1,5 +1,5 @@
 import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
-import { createRunFileCoordinator } from "@vimhead.dev/norn/files";
+import { createRunFileCoordinator } from "../../packages/cli/src/internal/file-coordinator.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -24,8 +24,12 @@ if (mode === "hold") {
 	}
 } else if (mode === "state") {
 	const { state } = await initializeSharedState(root);
-	for (let index = 0; index < 12; index++) {
-		await state.set({ id: `${worker}-${index}`, schema: Type.Number() }, index);
+	try {
+		for (let index = 0; index < 12; index++) {
+			await state.set({ id: `${worker}-${index}`, schema: Type.Number() }, index);
+		}
+	} finally {
+		state.close();
 	}
 } else {
 	throw new Error(`Unknown lock worker mode: ${mode}`);

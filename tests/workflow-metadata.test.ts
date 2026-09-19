@@ -13,7 +13,7 @@ function createWorkflow({ instructions, isEntrypoint = true, gate }: { instructi
 function register(registry: NornWorkflowRegistry, workflow: NornAnyWorkflowDeclaration) { return registry.register({ workflow, config: {}, source: undefined }); }
 function unexpectedRunOperation(): never { throw new Error("These gate descriptions must not invoke run operations"); }
 const run: NornRun = {
-	get resources() { return unexpectedRunOperation(); }, id: "metadata",
+	id: "metadata",
 	next: unexpectedRunOperation, complete: unexpectedRunOperation, fail: unexpectedRunOperation,
 	logs: { read: unexpectedRunOperation }, commands: { run: unexpectedRunOperation },
 	agents: { createSession: unexpectedRunOperation, prompt: unexpectedRunOperation },
