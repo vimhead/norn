@@ -1,25 +1,26 @@
 # Coordinating multiple Norn agents
 
-This example implements its own queue and agent adapter using Norn's existing [resource contracts](../../docs/resources.md). Neither the queue nor `QueueAdapter` is a built-in Norn API.
+This example implements its own queue using Norn's [resource contracts](../../docs/resources.md) and supplies ordinary [agent tools](../../docs/agents.md#custom-tools) for it.
 
 - [`work-queue.ts`](work-queue.ts): note/result schemas, file-backed `WorkQueue`, and a plain `NornResourceDefinition` named `workQueueDefinition`.
-- [`queue-adapter.ts`](queue-adapter.ts): `QueueAdapter({queue})` implements `NornAgentResourceAdapter`, exposing claim, acknowledgment and status tools for one queue.
+- [`queue-tools.ts`](queue-tools.ts): `createQueueTools({queue})` returns claim, acknowledgment and status tools for one queue owner.
 - [`plugin.ts`](plugin.ts): seed notes, explicitly start two Norn agents per round, close both sessions before a checkpoint, and verify persisted results.
 
 ```ts
-import { QueueAdapter } from "./queue-adapter.ts";
+import { createQueueTools } from "./queue-tools.ts";
 import { workQueueDefinition } from "./work-queue.ts";
 
 const queue = await run.resources.ensure(workQueueDefinition);
+const queueTools = createQueueTools({ queue });
 const agentSession = await run.agents.createSession({
   label: "summary-1",
   cwd: paths.workspace,
-  tools: [],
-  resourceAdapters: [QueueAdapter({ queue })],
+  customTools: queueTools,
+  tools: queueTools.map(tool => tool.name),
 });
 ```
 
-The workflows own prompting and disposal. Resource initialization and agent attachment remain separate; the queue does not start or schedule agents.
+The workflows own prompting and session disposal. Each agent receives a fresh `createQueueTools({ queue })` result so competing agents do not share claim ownership. The queue does not start or schedule agents.
 
 ## Run
 
@@ -38,9 +39,9 @@ Verification checks persisted results for coverage, schemas, unchanged sources a
 
 ## Queue boundaries
 
-The local format retains at most 12 notes and their results in `current/resources/summaries/queue.json`. Note/result schemas bound every tool payload; there is no general schema registry, configurable permissions framework or multi-queue adapter. Workflow code enqueues notes and inspects results. Norn agents receive only `queue_claim`, `queue_acknowledge` and counts-only `queue_status`, not enqueue or filesystem tools. Normal [agent resource loading](../../docs/agents.md#prompts-tools-and-resource-loading) still applies; this is not an OS sandbox.
+The local format retains at most 12 notes and their results in `current/resources/summaries/queue.json`. Note/result schemas bound every tool payload; there is no general schema registry or configurable permissions framework. Workflow code enqueues notes and inspects results. Norn agents receive only `queue_claim`, `queue_acknowledge` and counts-only `queue_status`, not enqueue or filesystem tools. Normal [agent resource loading](../../docs/agents.md#prompts-tools-and-resource-loading) still applies; this is not an OS sandbox.
 
-A claim lasts five minutes, measured by the local wall clock. Repeating a live owner's claim returns the same note/token; another binding has a distinct owner even when labels match. Expiry makes abandoned work available with a new token. Stale, expired and wrong-owner acknowledgments fail. Disposal does not acknowledge or release work. This bounded example has no renewal, subscriptions or automatic retry scheduler.
+A claim lasts five minutes, measured by the local wall clock. Repeating a live owner's claim returns the same note/token; another `createQueueTools` call creates a distinct owner. Expiry makes abandoned work available with a new token. Stale, expired and wrong-owner acknowledgments fail. Closing an agent session does not acknowledge or release work. This bounded example has no renewal, subscriptions or automatic retry scheduler.
 
 Enqueue retries must use the same ID and text. Acknowledgment saves the result and completion together under one short file lock, with atomic file replacement; identical successful retries are idempotent, conflicting results fail. Locks are not held across model turns. Acknowledgment records processing, not semantic approval. There is no separate ledger or external-effect transaction.
 
@@ -48,7 +49,7 @@ Enqueue retries must use the same ID and text. Acknowledgment saves the result a
 
 Use the [recovery procedure](../../docs/recovery.md#source-repair-and-rollback) after inspecting and repairing the failure. Stop every queue user before rollback and preserve wanted failed-attempt evidence outside `current/`. Select the actual checkpoint before the affected round, then resume without args.
 
-Completed earlier rounds survive that boundary. Work after it is rolled back and can repeat, including a successful peer's work from a failed round. Fresh bindings get new owners. Restoring a snapshot containing live claims retains their original expiry; tokens do not fence arbitrary rollback or external effects. The supplied workflow closes its sessions and checks for unfinished claims before taking a round boundary.
+Completed earlier rounds survive that boundary. Work after it is rolled back and can repeat, including a successful peer's work from a failed round. Fresh tool factories create new owners. Restoring a snapshot containing live claims retains their original expiry; tokens do not fence arbitrary rollback or external effects. The supplied workflow closes its sessions and checks for unfinished claims before taking a round boundary.
 
 | Decision | GOOD | BAD |
 |---|---|---|

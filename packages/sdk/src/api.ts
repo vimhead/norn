@@ -1,4 +1,4 @@
-import type { CreateAgentSessionOptions, EventBus, PromptOptions } from "@earendil-works/pi-coding-agent";
+import type { CreateAgentSessionOptions, EventBus, PromptOptions, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type, type StaticDecode, type StaticEncode, type TCodec, type TSchema } from "typebox";
 import type { TLocalizedValidationError } from "typebox/error";
 import { createWorkflowTransition } from "@vimhead.dev/norn-core/workflow-transition";
@@ -335,7 +335,7 @@ export type NornAgentBeforeSessionStartContext = {
 };
 
 export type NornAgentCreateSessionInput = {
-	readonly resourceAdapters?: readonly import("./agent-resource-adapter.ts").NornAgentResourceAdapter[];
+	readonly customTools?: readonly ToolDefinition[];
 	readonly label: string;
 	readonly cwd: string;
 	readonly tools?: string[];

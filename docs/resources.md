@@ -15,18 +15,13 @@
 
 [Persistence](persistence.md) covers resource lifetimes, storage locations, and recovery. Cross-run storage, queues, ledgers, and scheduler/agent activation are not supplied by this API.
 
-## Explicit agent attachment
+## Agent tools
 
-The [shared-state example](../examples/shared-state/README.md) supplies its own resource and permission-selected adapter. The [queue example](../examples/coordinating-multiple-agents/README.md) supplies a different resource and tool contract. Neither adapter is a built-in SDK state facility.
-
-Custom adapters implement `NornAgentResourceAdapter`: a unique name and `bind({runId, label})` returning a `NornAgentResourceBinding` with tools and async `dispose()`. An adapter can expose one or several resource handles; initializing storage does not construct or attach tools. Session creation and one-shot prompting accept adapters through `resourceAdapters`, not through the resource manager or state handle directly. Attached tools are activated with the normal response tool. Duplicate adapter names and collisions with built-ins, the response tool, other adapters or already-loaded extension tools fail. Successful bindings are cleaned up in reverse order on session disposal or later creation failure. An initializer/binder that throws before returning its handle owns cleanup of its partial allocations.
+Ensuring a resource does not expose it to agents. Authors can wrap its handle in ordinary [custom tools](agents.md#custom-tools) and select the operations each agent needs. The [shared-state example](../examples/shared-state/README.md) supplies permission-selected state tools; the [queue example](../examples/coordinating-multiple-agents/README.md) supplies claim and acknowledgment tools.
 
 | Decision | GOOD | BAD |
 |---|---|---|
-| IF a Norn agent needs resource access, THEN attach an adapter exposing the required operations. ELSE omit the attachment. | A reviewer receives read-only access to a candidate. | Automatically expose every resource to every session. |
-| IF disposing a binding, THEN release session-local handles only. ELSE retain the resource for later sessions. | Close a subscription. | Delete workflow state when its agent exits. |
-
-The attachment never exposes internal scheduler/checkpoint control state. It is a cooperative tool boundary, not a sandbox against unrestricted filesystem tools or trusted extensions. [Agent loading](agents.md#prompts-tools-and-resource-loading) owns those limitations.
+| IF a Norn agent needs resource access, THEN supply tools exposing the required operations. ELSE keep the handle in workflow code. | A reviewer receives read-only access to a candidate. | Automatically expose every resource to every session. |
 
 ## Shared storage coordination
 
@@ -43,4 +38,4 @@ Reads of live command-output logs may return partial streams. File locks do not 
 | IF a callback holds a lock, THEN finish its short storage operation before prompting a model or taking another lock on the same file. ELSE release it first. | Persist a value and return. | Wait for a model turn while holding a file lock. |
 | IF restoring a checkpoint, THEN restore resource data but not lock ownership. ELSE follow the owning external resource's recovery contract. | Built-in locks live under the run's `locks/`, outside `current/`. | Restore an old owner's lock directory as live ownership. |
 
-Sources: [resource contracts](../packages/sdk/src/resources.ts), [resource manager](../packages/cli/src/resources.ts), [adapter contracts](../packages/sdk/src/agent-resource-adapter.ts), [file coordinator](../packages/sdk/src/files.ts).
+Sources: [resource contracts](../packages/sdk/src/resources.ts), [resource manager](../packages/cli/src/resources.ts), [file coordinator](../packages/sdk/src/files.ts).

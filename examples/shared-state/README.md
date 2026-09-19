@@ -11,9 +11,9 @@ norn runs inspect <returned-run-id>
 
 [shared-state.ts](shared-state.ts) defines an example-local resource, opened explicitly with `run.resources.ensure(sharedState)` in each step. Its `get`, `getOptional`, and `set` operations validate field values; missing required values fail, and schema defaults do not initialize fields.
 
-The first workflow writes the source. Its Norn agent receives only read access to the source and write access to the copy through the example's [StateAdapter](state-adapter.ts), passed in `resourceAdapters`. It requests no filesystem task tools. After the agent session closes, a transition checkpoints the values; the next workflow checks exact equality and writes `copy.txt` inside `paths.workspace`. Missing or different output fails instead of trusting the agent's response.
+The first workflow writes the source. Its Norn agent receives only read access to the source and write access to the copy through the example's [createStateTools](state-tools.ts) factory. The workflow registers these definitions through `customTools` and selects their names through `tools`, requesting no filesystem task tools. After the agent session closes, a transition checkpoints the values; the next workflow checks exact equality and writes `copy.txt` inside `paths.workspace`. Missing or different output fails instead of trusting the agent's response.
 
-The adapter exposes `norn_state_list`, `norn_state_get`, and `norn_state_set`. List/get responses page serialized JSON using UTF-16 `offset` and `limit` (1–10000), returning `text`, `nextOffset`, and `revision`. Unset values report `isSet:false`; writes require a granted field and its schema-valid complete value. A separate get followed by set is not a transaction.
+The factory provides `norn_state_list`, `norn_state_get`, and `norn_state_set`. List/get responses page serialized JSON using UTF-16 `offset` and `limit` (1–10000), returning `text`, `nextOffset`, and `revision`. Unset values report `isSet:false`; writes require a granted field and its schema-valid complete value. A separate get followed by set is not a transaction.
 
 | Decision | GOOD | BAD |
 |---|---|---|

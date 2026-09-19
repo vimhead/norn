@@ -1,5 +1,4 @@
-import { StateAdapter } from "../examples/shared-state/state-adapter.ts";
-import { sharedState, type SharedStateAccess } from "../examples/shared-state/shared-state.ts";
+import { createStateTools } from "../examples/shared-state/state-tools.ts";
 import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { AgentSession, createAgentSession, DefaultResourceLoader, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
@@ -13,8 +12,7 @@ import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import { test, vi, type TestContext } from "vitest";
 
-import type { NornWorkflowCatalogInfo, NornWorkflowInspection } from "@vimhead.dev/norn";
-import { type NornAgentResourceAdapter } from "@vimhead.dev/norn";
+import type { NornWorkflowCatalogInfo, NornWorkflowInspection, ToolDefinition } from "@vimhead.dev/norn";
 import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
 import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-response-tool.ts";
 import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
@@ -251,7 +249,7 @@ test("a real native Norn worker excludes the adapter, including after reload wit
 	await assert.rejects(readFile(calledPath), { code: "ENOENT" });
 });
 
-test("native resource tools are explicit, persist across sessions, and clean up on disposal and startup failure", { timeout: 30000 }, async context => {
+test("native custom state tools retain values across sessions and session cleanup covers startup failure", { timeout: 30000 }, async context => {
 	const fixture = await createFixture(context);
 	const { resources, state } = await initializeSharedState(fixture.root);
 	const field = { id: "count", schema: Type.Integer() };
@@ -282,10 +280,11 @@ test("native resource tools are explicit, persist across sessions, and clean up 
 		logger: new NornRunLogger({ manifestPath: join(fixture.root, "current", "manifest.json"), files: resources.files, manifest: { id: "resource-sdk", name: "resource-sdk", workflowId: "test.worker", runRoot: fixture.root, workspace: fixture.cwd, initialCwd: fixture.cwd, startedAt: new Date().toISOString() } }),
 		responseCollector: new NornAgentResponseCollector(),
 	});
-	let disposals = 0;
-	const lifecycle: NornAgentResourceAdapter = { name: "test.lifecycle", async bind() { return { tools: [], async dispose() { disposals++; } }; } };
-	const attachment = StateAdapter({ state, fields: [{ field, access: "read-write" }] });
-	const worker = await runner.createSession({ label: "writer", cwd: fixture.root, tools: [], resourceAdapters: [attachment, lifecycle] });
+	const disposalSpy = vi.spyOn(AgentSession.prototype, "dispose");
+	context.onTestFinished(() => disposalSpy.mockRestore());
+	const customTools = createStateTools({ state, fields: [{ field, access: "read-write" }] });
+	const tools = customTools.map(tool => tool.name);
+	const worker = await runner.createSession({ label: "writer", cwd: fixture.root, tools, customTools });
 	context.onTestFinished(() => worker.dispose());
 	assert.equal(worker.cwd, fixture.root);
 	assert.deepEqual(await worker.prompt({ prompt: "Exercise attached state", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 }), { ok: true });
@@ -295,21 +294,77 @@ test("native resource tools are explicit, persist across sessions, and clean up 
 	assert.equal(results.filter(message => message.isError).length, 2);
 	await worker.dispose();
 	await worker.dispose();
-	assert.equal(disposals, 1);
+	assert.equal(disposalSpy.mock.calls.length, 1);
 	await runner.prompt({ label: "unattached", cwd: fixture.cwd, tools: [], prompt: "Return the result", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
 	assert.deepEqual(lastRequest(captured).tools, [AGENT_RESPONSE_TOOL_NAME]);
 	assert.equal(await (await initializeSharedState(fixture.root)).state.get(field), 7);
-	await runner.prompt({ label: "attached-one-shot", cwd: fixture.cwd, tools: [], resourceAdapters: [attachment, lifecycle], prompt: "Return the result", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
-	assert.ok(lastRequest(captured).tools.includes("norn_state_get"));
-	assert.equal(disposals, 2);
-	await assert.rejects(runner.createSession({ label: "broken-start", cwd: fixture.cwd, resourceAdapters: [lifecycle], beforeSessionStart() { throw new Error("startup failure"); } }), /startup failure/);
-	assert.equal(disposals, 3);
-	await assert.rejects(runner.createSession({ label: "duplicate", cwd: fixture.cwd, resourceAdapters: [lifecycle, lifecycle] }), /Duplicate resource adapter/);
-	assert.equal(disposals, 4);
-	const collision: NornAgentResourceAdapter = { name: "test.collision", async bind() {
-		const binding = await attachment.bind({ runId: "test", label: "collision" });
-		return { tools: [{ ...binding.tools[0], name: "read" }], async dispose() { disposals++; } };
-	} };
-	await assert.rejects(runner.createSession({ label: "collision", cwd: fixture.cwd, resourceAdapters: [lifecycle, collision] }), /tool name collision/);
-	assert.equal(disposals, 6);
+	await runner.prompt({ label: "selected-one-shot", cwd: fixture.cwd, tools: ["norn_state_get"], customTools, prompt: "Return the result", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
+	assert.deepEqual(new Set(lastRequest(captured).tools), new Set([AGENT_RESPONSE_TOOL_NAME, "norn_state_get"]));
+	assert.equal(disposalSpy.mock.calls.length, 3);
+	await assert.rejects(runner.createSession({ label: "broken-start", cwd: fixture.cwd, customTools, beforeSessionStart() { throw new Error("startup failure"); } }), /startup failure/);
+	assert.equal(disposalSpy.mock.calls.length, 4);
+	for (const name of [customTools[0].name, "read", AGENT_RESPONSE_TOOL_NAME]) {
+		await assert.rejects(runner.createSession({ label: "collision", cwd: fixture.cwd, tools: [], customTools: [customTools[0], { ...customTools[0], name }] }), /Custom tool name collision/);
+	}
+	assert.equal(disposalSpy.mock.calls.length, 4);
+});
+
+test("plain custom tools follow Pi defaults, explicit selection, and loaded-extension collisions", { timeout: 30000 }, async context => {
+	const fixture = await createFixture(context);
+	const draftPath = join(fixture.cwd, "draft.txt");
+	await writeFile(draftPath, "Workflow-owned draft");
+	await mkdir(join(fixture.agentDir, "extensions"));
+	await writeFile(join(fixture.agentDir, "extensions", "extra.ts"), `export default pi => {
+		pi.registerTool({ name: "extra_tool", label: "Extra", description: "Return an extension value.",
+			parameters: { type: "object", properties: {} },
+			async execute() { return { content: [{ type: "text", text: "extra" }], details: {} }; }
+		});
+	};`);
+	const reads: string[] = [];
+	const readDraft: ToolDefinition = {
+		name: "read_draft", label: "Read draft", description: "Read the workflow's draft.", parameters: Type.Object({}),
+		async execute(_id, _args, signal) {
+			const text = await readFile(draftPath, { encoding: "utf8", signal });
+			reads.push(text);
+			return { content: [{ type: "text", text }], details: { text } };
+		},
+	};
+	const customTools = [readDraft, { ...readDraft, name: "spare_tool" }];
+	const captured: CapturedRequest[] = [];
+	const nativeSessions: AgentSession[] = [];
+	let shouldReadDraft = false;
+	const originalPrompt = AgentSession.prototype.prompt;
+	const promptSpy = vi.spyOn(AgentSession.prototype, "prompt").mockImplementation(async function (this: AgentSession, ...args) {
+		if (!nativeSessions.includes(this)) {
+			nativeSessions.push(this);
+			captureModelRequests(this, captured, shouldReadDraft ? [{ name: readDraft.name, arguments: {} }] : []);
+		}
+		return originalPrompt.apply(this, args);
+	});
+	context.onTestFinished(() => promptSpy.mockRestore());
+	const files = createRunFileCoordinator(fixture.root);
+	const runner = new NornAgentRunner({
+		id: "custom-tools", runRoot: join(fixture.root, "run"), agentDir: fixture.agentDir, model,
+		logs: new NornRunLogs(join(fixture.root, "logs"), files),
+		logger: new NornRunLogger({ manifestPath: join(fixture.root, "manifest.json"), files, manifest: { id: "custom-tools", name: "custom-tools", workflowId: "test.worker", runRoot: join(fixture.root, "run"), workspace: fixture.cwd, initialCwd: fixture.cwd, startedAt: new Date().toISOString() } }),
+		responseCollector: new NornAgentResponseCollector(),
+	});
+	for (const scenario of [
+		{ tools: undefined, expected: ["read", "bash", "edit", "write", "extra_tool", readDraft.name, "spare_tool"] },
+		{ tools: [], expected: [] },
+		{ tools: [readDraft.name], expected: [readDraft.name] },
+		{ tools: ["read", readDraft.name, "extra_tool"], expected: ["read", readDraft.name, "extra_tool"] },
+	]) {
+		shouldReadDraft = scenario.expected.includes(readDraft.name);
+		const readCount = reads.length;
+		assert.deepEqual(await runner.prompt({ label: "selection", cwd: fixture.cwd, tools: scenario.tools, customTools, prompt: "Read the draft if available and report success.", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 }), { ok: true });
+		assert.deepEqual(new Set(lastRequest(captured).tools), new Set([...scenario.expected, AGENT_RESPONSE_TOOL_NAME]));
+		assert.equal(reads.length, readCount + Number(shouldReadDraft));
+	}
+	assert.ok(reads.every(text => text === "Workflow-owned draft"));
+	await writeFile(join(fixture.agentDir, "settings.json"), JSON.stringify({ defaultTools: ["grep"] }));
+	shouldReadDraft = false;
+	await runner.prompt({ label: "configured-defaults", cwd: fixture.cwd, customTools, prompt: "Return the result.", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
+	assert.deepEqual(new Set(lastRequest(captured).tools), new Set(["grep", "extra_tool", readDraft.name, "spare_tool", AGENT_RESPONSE_TOOL_NAME]));
+	await assert.rejects(runner.createSession({ label: "extension-collision", cwd: fixture.cwd, customTools: [{ ...readDraft, name: "extra_tool" }] }), /Custom tool name collision: extra_tool/);
 });

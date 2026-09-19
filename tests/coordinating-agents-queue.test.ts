@@ -9,9 +9,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { test, type TestContext } from "vitest";
 import { NornRunResources } from "../packages/cli/src/resources.ts";
-import type { NornAgentResourceBinding } from "@vimhead.dev/norn";
+import type { ToolDefinition } from "@vimhead.dev/norn";
 import { NornRunStore } from "../packages/cli/src/internal/run-store.ts";
-import { QueueAdapter } from "../examples/coordinating-multiple-agents/queue-adapter.ts";
+import { createQueueTools } from "../examples/coordinating-multiple-agents/queue-tools.ts";
 import { WorkQueue, workQueueDefinition } from "../examples/coordinating-multiple-agents/work-queue.ts";
 
 async function createQueueFixture(context: TestContext, overrides: { now?: () => number; leaseDurationMs?: number } = {}) {
@@ -27,8 +27,8 @@ async function createQueueFixture(context: TestContext, overrides: { now?: () =>
 	return { root, resources, definition, queue: await resources.ensure(definition), path: join(root, "current/resources/summaries/queue.json") };
 }
 
-async function invoke(binding: NornAgentResourceBinding, input: { tool: string; args: object; signal?: AbortSignal }) {
-	const tool = binding.tools.find(tool => tool.name === input.tool);
+async function invoke(tools: readonly ToolDefinition[], input: { tool: string; args: object; signal?: AbortSignal }) {
+	const tool = tools.find(tool => tool.name === input.tool);
 	assert.ok(tool, `Expected attached tool: ${input.tool}`);
 	return tool.execute("test", input.args, input.signal, undefined, {} as never);
 }
@@ -174,12 +174,11 @@ test("mutation cancellation is checked after waiting for the process-safe lock",
 	await queue.enqueue({ id: "next", text: "working", signal: undefined });
 });
 
-test("example adapter gives repeated labels separate claim owners and hides peer claims from status", async context => {
+test("queue tool factories create separate claim owners and hide peer claims from status", async context => {
 	const { queue } = await createQueueFixture(context);
 	await queue.enqueue({ id: "one", text: "first note", signal: undefined });
-	const adapter = QueueAdapter({ queue });
-	const first = await adapter.bind({ runId: "test", label: "same-label" });
-	const second = await adapter.bind({ runId: "test", label: "same-label" });
+	const first = createQueueTools({ queue });
+	const second = createQueueTools({ queue });
 	const claimed = await invoke(first, { tool: "queue_claim", args: {} });
 	const { claim } = claimed.details as { claim: { id: string; token: string } };
 	const competing = await invoke(second, { tool: "queue_claim", args: {} });
@@ -187,8 +186,6 @@ test("example adapter gives repeated labels separate claim owners and hides peer
 	await assert.rejects(invoke(second, { tool: "queue_acknowledge", args: { ...claim, result: { summary: "stolen", quote: "first note" } } }), /invalid queue lease/);
 	const status = await invoke(second, { tool: "queue_status", args: {} });
 	assert.deepEqual(status.details, { available: 0, leased: 1, acknowledged: 0 });
-	await first.dispose();
-	await second.dispose();
 	assert.equal((await queue.inspect()).leased, 1);
 });
 

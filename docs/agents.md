@@ -63,9 +63,33 @@ Successful results and raw attempts are written under `current/logs/agents/`; Pi
 | IF a Norn agent claims a verifiable result, THEN verify the evidence before accepting it. ELSE preserve the uncertainty in the result. | Check quotations against source bytes and command outcomes against logs. | Treat a schema-valid `passed: true` as proof that tests ran. |
 | IF a result must survive a workflow transition, THEN save its content/ref using [persistence](persistence.md). ELSE keep it local to the active step. | Save a draft file, then pass its path to analysis. | Expect the next workflow to recover a local variable or an undisposed session object. |
 
-## Prompts, tools, and resource loading
+## Custom tools
 
-The default tool allowlist is `read`, `bash`, `edit`, `write`, plus the response tool. An explicit `tools: []` requests no built-in task tools, but still includes the response tool and any explicitly attached [resource-adapter tools](resources.md#explicit-agent-attachment). `resourceAdapters` is accepted by both session creation and one-shot prompting; omitting it attaches no resource tools.
+Both session creation and one-shot prompting accept Pi `ToolDefinition` objects through `customTools`. Each definition supplies a name, description, parameter schema, and execution function. Tools can close over files, services, or resource handles; no Norn resource or adapter is required. The [state tools](../examples/shared-state/state-tools.ts) and [queue tools](../examples/coordinating-multiple-agents/queue-tools.ts) are complete example-owned factories.
+
+`customTools` registers definitions; an explicit `tools` array selects enabled names across built-in, custom, and loaded extension tools. The response tool is always included. `tools: []` requests only that response tool, even when custom definitions are supplied. Omitting `tools` uses Pi's configured default tools (`read`, `bash`, `edit`, `write` when unconfigured), plus custom and extension tools.
+
+```ts
+const result = await run.agents.prompt({
+  label: "lookup",
+  cwd: paths.workspace,
+  customTools: [lookupTool],
+  tools: ["read", lookupTool.name],
+  prompt: "Look up the requested information and summarize it.",
+  response: Type.Object({ summary: Type.String() }),
+});
+return run.complete({ summary: result.summary });
+```
+
+`lookupTool` is an author-provided `ToolDefinition` in this fragment. Custom tool names must be unique and must not collide with built-ins, the response tool, or already-loaded extension tools. Authors own tool dependencies and their cleanup, including when session creation fails; closing an agent does not close a database or delete stored data captured by its tools.
+
+| Decision | GOOD | BAD |
+|---|---|---|
+| IF supplying an explicit `tools` list, THEN include each custom or extension tool name the agent needs. ELSE Pi's default selection applies. | Register `lookupTool` and select `lookupTool.name`. | Expect `customTools: [lookupTool]` to bypass `tools: []`. |
+| IF tool closures contain per-agent state, THEN create fresh definitions for each agent. ELSE shared definitions can use a shared dependency. | Create queue tools separately for each claim owner. | Reuse one owner's closures across competing workers. |
+| IF tool dependencies need cleanup, THEN retain ownership with `try/finally` around session creation and use. ELSE no cleanup wrapper is necessary. | Close an author-opened connection after the agent finishes or fails. | Expect a tool definition to provide automatic connection disposal. |
+
+## Prompts, tools, and resource loading
 
 Each session loads resources for its `cwd` and [Norn configuration](providers.md#norn-configuration). Installed provider extensions register before default-model selection. Both `run.agents.createSession` and `run.agents.prompt` accept per-session `model` and `thinkingLevel` overrides; omitted values use Pi's configured selection and defaults. Discoverable settings, skills, context files, and extensions can therefore affect it. It does **not** inherit the outer conversation or its in-memory tool registrations. Loaded extensions may change active tools; the requested tool list alone is not an adversarial restriction.
 

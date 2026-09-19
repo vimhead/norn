@@ -5,6 +5,7 @@ import {
 	createEventBus,
 	type AgentSession,
 	type CreateAgentSessionOptions,
+	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { NornAgentCreateSessionInput, NornAgentPromptInput, NornAgentRunRawAttempt, NornAgentRunResult, NornAgentSession, NornAgentSessionEvents, NornAgentSinglePromptInput, NornAgentUsage } from "@vimhead.dev/norn";
 import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
@@ -24,12 +25,10 @@ import {
 import { errorMessage } from "./errors.ts";
 import { safeFileName } from "./file-names.ts";
 import type { NornRunLogs } from "./logs.ts";
-import { NornSessionResourceBindings } from "./resource-bindings.ts";
 import type { NornRunLogger } from "./run-log.ts";
 import { agentUsageFromValue, emptyAgentUsage, totalAgentUsage } from "./usage.ts";
 
 const DEFAULT_AGENT_ATTEMPTS = 3;
-const DEFAULT_AGENT_TOOL_ALLOWLIST = ["read", "bash", "edit", "write", AGENT_RESPONSE_TOOL_NAME] as const;
 
 type NornAgentRunnerInput = {
 	readonly id: string;
@@ -47,7 +46,6 @@ type CreatedNornAgentSessionInput = NornAgentRunnerInput & {
 	readonly label: string;
 	readonly cwd: string;
 	readonly session: AgentSession;
-	readonly resourceBindings: NornSessionResourceBindings;
 	readonly events: NornAgentSessionEvents;
 };
 
@@ -80,19 +78,19 @@ export class NornAgentRunner {
 			...loader.getExtensions().errors.map(error => `Failed to load extension ${error.path}: ${error.error}`),
 		];
 		if (errors.length > 0) throw new Error(errors.join("\n"));
-		const resourceBindings = new NornSessionResourceBindings();
+		const customTools = agentInput.customTools ?? [];
+		assertCustomToolNames({
+			tools: customTools,
+			reservedNames: ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell", AGENT_RESPONSE_TOOL_NAME,
+				...loader.getExtensions().extensions.flatMap((extension) => [...extension.tools.keys()])],
+		});
 		let session: AgentSession | undefined;
 		try {
-			await resourceBindings.bind({
-				adapters: agentInput.resourceAdapters ?? [], runId: this.input.id, label: agentInput.label,
-				reservedTools: ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell", AGENT_RESPONSE_TOOL_NAME,
-					...loader.getExtensions().extensions.flatMap((extension) => [...extension.tools.keys()])],
-			});
 			({ session } = await createAgentSessionFromServices({
 				services,
 				sessionManager: SessionManager.create(cwd, sessionDir),
-				tools: [...withAgentResponseTool(agentInput.tools), ...resourceBindings.tools.map((tool) => tool.name)],
-				customTools: [this.responseToolFactory.create(), ...resourceBindings.tools],
+				tools: withAgentResponseTool(agentInput.tools),
+				customTools: [this.responseToolFactory.create(), ...customTools],
 				model: agentInput.model ?? this.input.model,
 				thinkingLevel: agentInput.thinkingLevel ?? this.input.thinkingLevel,
 			}));
@@ -100,13 +98,12 @@ export class NornAgentRunner {
 			await session.bindExtensions({});
 			await this.input.logger.record({ type: "agent.spawned", label: agentInput.label, cwd });
 			return new CreatedNornAgentSession({
-				...this.input, label: agentInput.label, cwd, session, resourceBindings, events: eventBus,
+				...this.input, label: agentInput.label, cwd, session, events: eventBus,
 			});
 		} catch (error) {
 			const errors = [error];
 			try { session?.dispose(); } catch (cleanupError) { errors.push(cleanupError); }
-			try { await resourceBindings.dispose(); } catch (cleanupError) { errors.push(cleanupError); }
-			if (errors.length > 1) throw new AggregateError(errors, "Agent creation and resource cleanup failed");
+			if (errors.length > 1) throw new AggregateError(errors, "Agent creation and cleanup failed");
 			throw error;
 		}
 	}
@@ -218,7 +215,6 @@ class CreatedNornAgentSession implements NornAgentSession {
 		const errors: unknown[] = [];
 		try { await this.input.session.abort(); } catch (error) { errors.push(error); }
 		try { this.input.session.dispose(); } catch (error) { errors.push(error); }
-		try { await this.input.resourceBindings.dispose(); } catch (error) { errors.push(error); }
 		if (errors.length) throw new AggregateError(errors, "Agent disposal failed");
 		await this.input.logger.record({ type: "agent.disposed", label: this.label });
 	}
@@ -349,7 +345,14 @@ function withResponseToolFinalizationInstruction(
 	].join("\n");
 }
 
-function withAgentResponseTool(tools: readonly string[] | undefined): string[] {
-	if (!tools) return [...DEFAULT_AGENT_TOOL_ALLOWLIST];
-	return Array.from(new Set([...tools, AGENT_RESPONSE_TOOL_NAME]));
+function withAgentResponseTool(tools: readonly string[] | undefined): string[] | undefined {
+	return tools === undefined ? undefined : Array.from(new Set([...tools, AGENT_RESPONSE_TOOL_NAME]));
+}
+
+function assertCustomToolNames(input: { readonly tools: readonly ToolDefinition[]; readonly reservedNames: readonly string[] }): void {
+	const names = new Set(input.reservedNames);
+	for (const tool of input.tools) {
+		if (names.has(tool.name)) throw new Error(`Custom tool name collision: ${tool.name}`);
+		names.add(tool.name);
+	}
 }

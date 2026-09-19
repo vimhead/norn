@@ -1,4 +1,4 @@
-import { StateAdapter } from "../examples/shared-state/state-adapter.ts";
+import { createStateTools } from "../examples/shared-state/state-tools.ts";
 import { sharedState, type SharedStateAccess } from "../examples/shared-state/shared-state.ts";
 import { workflow, workflowScope, type NornResources } from "@vimhead.dev/norn";
 import { NornFileCoordinator, createRunFileCoordinator } from "@vimhead.dev/norn/files";
@@ -100,13 +100,13 @@ test("state rejects invalid documents and failed writes do not poison subsequent
 	assert.equal(await state.get({ id: "__proto__", schema: Type.String() }), "ordinary field");
 });
 
-test("workflow and example adapter writes share resource locking", async context => {
+test("workflow and example tool writes share resource locking", async context => {
 	const { root } = await fixture(context);
 	const { state } = await initializeSharedState(root);
 	const field = { id: "count", schema: Type.Number() };
 	await state.set(field, 0);
-	const binding = await StateAdapter({ state, fields: [{ field, access: "write" }] }).bind({ runId: "test", label: "writer" });
-	const writeTool = binding.tools.find(tool => tool.name === "norn_state_set")!;
+	const tools = createStateTools({ state, fields: [{ field, access: "write" }] });
+	const writeTool = tools.find(tool => tool.name === "norn_state_set")!;
 	let markEntered!: () => void;
 	let releaseQueue!: () => void;
 	const entered = new Promise<void>(resolve => { markEntered = resolve; });
@@ -117,37 +117,32 @@ test("workflow and example adapter writes share resource locking", async context
 	});
 	await entered;
 	const workflowWrite = state.set(field, 1);
-	const adapterWrite = writeTool.execute("write", { key: field.id, value: 2 }, undefined, undefined, {} as never);
+	const toolWrite = writeTool.execute("write", { key: field.id, value: 2 }, undefined, undefined, {} as never);
 	try {
 		await delay(25);
 		assert.equal(JSON.parse(await readFile(state.stateFile, "utf8"))[field.id], 0);
 	} finally {
 		releaseQueue();
-		await Promise.all([held, workflowWrite, adapterWrite]);
-		await binding.dispose();
+		await Promise.all([held, workflowWrite, toolWrite]);
 	}
 	assert.ok([1, 2].includes(await state.get(field)));
 });
 
-test("StateAdapter delegates to the state interface without filesystem metadata", async context => {
+test("state tools delegate to the state interface without filesystem metadata", async context => {
 	const { root } = await fixture(context);
 	const { state: stored } = await initializeSharedState(root);
 	const state: SharedStateAccess = { get: stored.get.bind(stored), getOptional: stored.getOptional.bind(stored), set: stored.set.bind(stored) };
 	const field = { id: "message", schema: Type.String() };
-	const binding = await StateAdapter({ state, fields: [{ field, access: "read-write" }] }).bind({ runId: "test", label: "memory" });
-	try {
-		const set = binding.tools.find(tool => tool.name === "norn_state_set")!;
-		const get = binding.tools.find(tool => tool.name === "norn_state_get")!;
-		await set.execute("write", { key: field.id, value: "saved" }, undefined, undefined, {} as never);
-		const result = await get.execute("read", { key: field.id, offset: 0, limit: 10000 }, undefined, undefined, {} as never);
-		assert.deepEqual(JSON.parse((result.details as { text: string }).text), { isSet: true, value: "saved" });
-		const controller = new AbortController();
-		controller.abort();
-		await assert.rejects(set.execute("cancelled", { key: field.id, value: "cancelled" }, controller.signal, undefined, {} as never));
-		assert.equal(await state.get(field), "saved");
-	} finally {
-		await binding.dispose();
-	}
+	const tools = createStateTools({ state, fields: [{ field, access: "read-write" }] });
+	const set = tools.find(tool => tool.name === "norn_state_set")!;
+	const get = tools.find(tool => tool.name === "norn_state_get")!;
+	await set.execute("write", { key: field.id, value: "saved" }, undefined, undefined, {} as never);
+	const result = await get.execute("read", { key: field.id, offset: 0, limit: 10000 }, undefined, undefined, {} as never);
+	assert.deepEqual(JSON.parse((result.details as { text: string }).text), { isSet: true, value: "saved" });
+	const controller = new AbortController();
+	controller.abort();
+	await assert.rejects(set.execute("cancelled", { key: field.id, value: "cancelled" }, controller.signal, undefined, {} as never));
+	assert.equal(await state.get(field), "saved");
 });
 
 test("resource identity survives reopening, rejects conflicts and permits a failed initializer to retry", async context => {
@@ -191,15 +186,15 @@ test("checkpoint rollback restores resource data but never restores transient lo
 	assert.deepEqual(await readdir(join(root, "locks")), []);
 });
 
-test("StateAdapter accepts public state, scopes tools, validates schemas and paginates large values", async context => {
+test("state tools accept public state, scope access, validate schemas and paginate large values", async context => {
 	const { root } = await fixture(context);
 	const state: SharedStateAccess = (await initializeSharedState(root)).state;
 	const visible = { id: "visible", schema: Type.String() };
 	const hidden = { id: "hidden", schema: Type.String() };
 	await state.set(hidden, "secret context");
 	await state.set(visible, "a".repeat(20000));
-	const binding = await StateAdapter({ state, fields: [{ field: visible, access: "read" }] }).bind({ runId: "test", label: "reader" });
-	const execute = async (name: string, args: object) => binding.tools.find(tool => tool.name === name)!.execute("call", args, undefined, undefined, {} as never);
+	const tools = createStateTools({ state, fields: [{ field: visible, access: "read" }] });
+	const execute = async (name: string, args: object) => tools.find(tool => tool.name === name)!.execute("call", args, undefined, undefined, {} as never);
 	const listed = await execute("norn_state_list", { offset: 0, limit: 10000 });
 	assert.ok(JSON.stringify(listed.content).includes("visible"));
 	assert.ok(!JSON.stringify(listed.content).includes("hidden"));
@@ -209,9 +204,8 @@ test("StateAdapter accepts public state, scopes tools, validates schemas and pag
 	const details = first.details as { nextOffset: number; revision: string; text: string };
 	assert.equal(details.nextOffset, 10000);
 	assert.ok(Buffer.byteLength(JSON.stringify(first.content)) < 50000);
-	await binding.dispose();
-	const writer = await StateAdapter({ state, fields: [{ field: visible, access: "write" }] }).bind({ runId: "test", label: "writer" });
-	await assert.rejects(writer.tools.find(tool => tool.name === "norn_state_set")!.execute("call", { key: "visible", value: 3 }, undefined, undefined, {} as never));
+	const writerTools = createStateTools({ state, fields: [{ field: visible, access: "write" }] });
+	await assert.rejects(writerTools.find(tool => tool.name === "norn_state_set")!.execute("call", { key: "visible", value: 3 }, undefined, undefined, {} as never));
 	assert.equal((await state.get(visible)).length, 20000);
 });
 
