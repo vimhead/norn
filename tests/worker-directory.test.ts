@@ -61,7 +61,7 @@ async function verifyCwd(paths) {
   const cwd = process.cwd();
   assert.equal(cwd, importCwd);
   assert.notEqual(cwd, paths.project);
-  assert.notEqual(cwd, paths.run);
+  assert.notEqual(cwd, paths.workspace);
   assert.deepEqual(await readdir(cwd), []);
   await assert.rejects(unlink("source.txt"), { code: "ENOENT" });
   if (process.platform !== "win32" && process.getuid?.() !== 0) {
@@ -74,7 +74,7 @@ const start = workflow({
   id: "start", isEntrypoint: true, instructions: "Check execution directories.", args: Type.Object({}),
   async execute({ paths, run }) {
     const cwd = await verifyCwd(paths);
-    await writeFile(join(paths.run, "start.txt"), cwd);
+    await writeFile(join(paths.workspace, "start.txt"), cwd);
     return finish({});
   },
 });
@@ -83,29 +83,36 @@ const finish = workflow({
   gate: { enabled: true, async describe({ paths }) { return await verifyCwd(paths); } },
   async execute({ paths, run }) {
     const cwd = await verifyCwd(paths);
-    assert.equal(await readFile(join(paths.run, "start.txt"), "utf8"), cwd);
-    await writeFile(join(paths.run, "finish.txt"), cwd);
+    assert.equal(await readFile(join(paths.workspace, "start.txt"), "utf8"), cwd);
+    await writeFile(join(paths.workspace, "finish.txt"), cwd);
     return run.complete({ data: { cwd, paths } });
   },
 });
 export default [start, finish];
 `);
-	const invoke = async (args: string[], input: unknown): Promise<{ run: NornRunInfo }> => {
+	const invoke = async <Output = { run: NornRunInfo }>(args: string[], input: unknown): Promise<Output> => {
 		const child = execute(process.execPath, [cliPath, ...args], { cwd: project, timeout: 30000 });
 		child.child.stdin!.end(input === undefined ? "" : JSON.stringify(input));
 		return JSON.parse((await child).stdout);
 	};
 	const launches = await Promise.all([1, 2].map(() => invoke(["runs", "start", "start"], { args: {} })));
 	for (const { run } of launches) {
+		const paths = { project, workspace: join(run.path, "current/workspace") };
+		assert.deepEqual(run.paths, paths);
 		const paused = (await invoke(["runs", "wait", run.id], undefined)).run;
 		assert.equal(paused.status, "interrupted", JSON.stringify(paused));
+		assert.deepEqual(paused.paths, paths);
 		assert.equal(paused.interruption?.description, join(run.path, "worker"));
+		assert.deepEqual((await invoke(["runs", "inspect", run.id], undefined)).run.paths, paths);
 	}
+	const listed = await invoke<{ runs: NornRunInfo[] }>(["runs", "list"], undefined);
+	for (const run of listed.runs) assert.deepEqual(run.paths, { project, workspace: join(run.path, "current/workspace") });
 	await Promise.all(launches.map(({ run }) => invoke(["runs", "resume", run.id], { args: {} })));
 	for (const { run } of launches) {
 		const completed = (await invoke(["runs", "wait", run.id], undefined)).run;
 		assert.equal(completed.status, "completed", JSON.stringify(completed));
-		assert.deepEqual(completed.outcome?.metadata?.data, { cwd: join(run.path, "worker"), paths: { project, run: join(run.path, "current/workspace") } });
+		assert.deepEqual(completed.paths, run.paths);
+		assert.deepEqual(completed.outcome?.metadata?.data, { cwd: join(run.path, "worker"), paths: { project, workspace: join(run.path, "current/workspace") } });
 	}
 	assert.equal(await readFile(join(project, "source.txt"), "utf8"), "project evidence");
 	await assert.rejects(readFile(join(project, "start.txt")), { code: "ENOENT" });

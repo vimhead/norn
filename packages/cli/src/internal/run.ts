@@ -2,7 +2,6 @@ import type { CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent"
 import type { NornRunOutcomeMetadata, NornRun } from "@vimhead.dev/norn";
 import { createWorkflowTransition } from "@vimhead.dev/norn-core/workflow-transition";
 import type { NornAgentResponseCollector } from "./agent-response-tool.ts";
-import type { NornArtifacts } from "./artifacts.ts";
 import { NornAgentRunner } from "./agents.ts";
 import { NornCommandRunner } from "./commands.ts";
 import type { NornRunLogs } from "./logs.ts";
@@ -19,13 +18,11 @@ type DefaultNornRunInput = {
 	readonly responseCollector: NornAgentResponseCollector;
 	readonly resources: NornRunResources;
 	readonly logger: NornRunLogger;
-	readonly artifacts: NornArtifacts;
 	readonly logs: NornRunLogs;
 };
 
 export class NornRunContext implements NornRun {
 	readonly resources: NornRunResources;
-	readonly artifacts: NornRun["artifacts"];
 	readonly logs: NornRun["logs"];
 	readonly commands: NornRun["commands"];
 	readonly agents: NornRun["agents"];
@@ -34,7 +31,6 @@ export class NornRunContext implements NornRun {
 	constructor(private readonly input: DefaultNornRunInput) {
 		this.id = input.id;
 		this.resources = input.resources;
-		this.artifacts = input.artifacts;
 		this.logs = {
 			read: (log) => this.input.logs.read(log),
 		};

@@ -1,5 +1,4 @@
 import { implementationArgsSchema } from "../implementation/schema.ts";
-import { artifactRefSchema } from "@vimhead.dev/norn";
 import { Type, type StaticDecode } from "typebox";
 
 export const reviewDecisionSchema = Type.Enum(["accept", "revise", "blocked"]);
@@ -17,7 +16,7 @@ export const reviewAgentResponseSchema = Type.Object({
 export const storedReviewSchema = Type.Object({
 	decision: reviewDecisionSchema,
 	summary: Type.String(),
-	reviewArtifact: artifactRefSchema,
+	reviewPath: Type.String(),
 });
 
 export type ReviewArgs = StaticDecode<typeof reviewArgsSchema>;

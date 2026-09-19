@@ -9,8 +9,8 @@ is a single-step starting point.
 It registers an entrypoint workflow named **Workspace development loop**. The
 workflow:
 
-1. clones the configured repository into `paths.run/repo`;
-2. passes the repository path and retained artifact references through workflow arguments;
+1. clones the configured repository into `paths.workspace/repo`;
+2. passes the repository path and retained file paths through workflow arguments;
 3. passes explicit cwd values to agents and commands;
 4. plans once, then loops through implementation and automated review;
 5. routes automated review through a gated review router;
@@ -62,13 +62,14 @@ norn runs inspect "$RUN"
 After planning, implementation, and automated review succeed, expect
 `run.status: interrupted` at `worktreeDevelopmentLoop.reviewRouter`, **not** a
 completed run. Inspection exposes the iteration, proposed decision, summary, and
-automated-review artifact in `run.interruption.args`. A command or agent failure
+`automatedReviewPath` in `run.interruption.args`. A command or agent failure
 can end the run before this gate; inspect the failure instead of attempting approval.
 
 ## Review and resume
 
-For the interrupted iteration `N`, inspect these files under
-`.norn/runs/$RUN/current/artifacts/`:
+The example's file and repository paths are relative to `run.paths.workspace`,
+reported by run inspection. For the interrupted iteration `N`, inspect these files
+in that directory:
 
 - `planning/plan.md` — the saved plan.
 - `implementation/iteration-N-status.txt` — recorded Git status.
@@ -78,8 +79,9 @@ For the interrupted iteration `N`, inspect these files under
 Inspect the actual clone as well:
 
 ```bash
-git -C ".norn/runs/$RUN/current/workspace/repo" status --short
-git -C ".norn/runs/$RUN/current/workspace/repo" diff HEAD -- .
+WORKSPACE=<run.paths.workspace-from-inspection>
+git -C "$WORKSPACE/repo" status --short
+git -C "$WORKSPACE/repo" diff HEAD -- .
 ```
 
 Check new files, any commits made since the selected base revision, and evidence
@@ -112,12 +114,12 @@ resume input and protected fields.
 
 After acceptance, expect `run.status: completed`, `run.health: healthy`, and
 `run.outcome.workflowId: worktreeDevelopmentLoop.reviewRouter`. Outcome metadata
-includes plan/review artifact refs and data with `status: done`,
-`repositoryPath: "repo"`, and the iteration count. The review ref points to
-`review/iteration-N-decision.json`, retaining the chosen decision and automated
-review ref.
+includes `data.planPath`, `data.reviewPath`, `data.status: done`,
+`data.repositoryPath: "repo"`, and the iteration count. The review file is
+`review/iteration-N-decision.json`, retaining the chosen decision and
+`automatedReviewPath`.
 
-The resulting repository is `.norn/runs/$RUN/current/workspace/repo`. There is no
+The resulting repository is `repo` inside the inspected `run.paths.workspace`. There is no
 automatic step to merge, push, or copy its changes back to the original repository;
 retain or transfer the wanted changes before deleting the run. This workspace is
 [not a filesystem sandbox](../../docs/persistence.md#filesystem-boundaries).

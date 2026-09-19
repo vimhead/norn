@@ -11,7 +11,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import { test, type TestContext } from "vitest";
-import { NornArtifacts } from "../packages/cli/src/internal/artifacts.ts";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
 import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
 import { initializeSharedState } from "./helpers/shared-state.ts";
@@ -241,19 +240,18 @@ test("lock cleanup preserves both an operation error and lost ownership evidence
 	assert.equal(await files.readText(target), "0");
 });
 
-test("replaceable artifact reads observe complete values across independent writers", async context => {
+test("coordinated file reads observe complete values across independent writers", async context => {
 	const { root, files } = await fixture(context);
-	const path = join(root, "current", "artifacts");
-	const first = new NornArtifacts(path, files);
-	const second = new NornArtifacts(path, createRunFileCoordinator(root));
+	const path = join(root, "current", "workspace", "shared.txt");
+	const second = createRunFileCoordinator(root);
 	const values = ["a".repeat(100000), "б".repeat(100000)];
-	const reference = await first.write("shared.txt", values[0]);
-	await chmod(join(path, reference.path), 0o640);
+	await files.writeText(path, values[0]);
+	await chmod(path, 0o640);
 	await Promise.all(Array.from({ length: 12 }, async (_, index) => {
-		await second.write(reference.path, values[index % 2]);
-		assert.ok(values.includes(await first.read(reference)));
+		await second.writeText(path, values[index % 2]);
+		assert.ok(values.includes(await files.readText(path)));
 	}));
-	assert.equal((await stat(join(path, reference.path))).mode & 0o777, 0o640);
+	assert.equal((await stat(path)).mode & 0o777, 0o640);
 });
 
 test("native workflow contexts share one state resource and resume reopens its persisted values", async context => {
@@ -315,6 +313,7 @@ for (const layout of ["symlink", "legacy"] as const) {
 	test(`scheduler locking retains ${layout} state loading and writes`, async context => {
 		const { root } = await fixture(context);
 		await NornRunStateStore.create(root, {
+			projectRoot: root,
 			id: "layout", name: "layout", entrypointWorkflowId: "test.step", workspace: root,
 			current: { workflowId: "test.step", args: {}, cwd: root, env: {} }, startedAt: new Date().toISOString(),
 		});

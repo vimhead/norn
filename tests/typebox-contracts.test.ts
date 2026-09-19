@@ -55,7 +55,7 @@ function verifyAuthoringTypes(run: NornRun, reference: StaticDecode<typeof conti
 		// @ts-expect-error Standalone contexts do not have a scope property.
 		context.scope;
 		expectTypeOf(context.paths.project).toEqualTypeOf<string>();
-		expectTypeOf(context.paths.run).toEqualTypeOf<string>();
+		expectTypeOf(context.paths.workspace).toEqualTypeOf<string>();
 		// @ts-expect-error Commands require an explicit working directory.
 		context.run.commands.run({ label: "check", command: ["pwd"] });
 		// @ts-expect-error Agent sessions require an explicit working directory.
@@ -68,7 +68,7 @@ function verifyAuthoringTypes(run: NornRun, reference: StaticDecode<typeof conti
 		expectTypeOf(scope.config).toEqualTypeOf<undefined>();
 		expectTypeOf(scope.id).toEqualTypeOf<"empty">();
 		expectTypeOf(paths.project).toEqualTypeOf<string>();
-		expectTypeOf(paths.run).toEqualTypeOf<string>();
+		expectTypeOf(paths.workspace).toEqualTypeOf<string>();
 		return run.complete();
 	} });
 }

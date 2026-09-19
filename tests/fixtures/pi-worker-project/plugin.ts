@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { workflow, workflowScope } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 
@@ -8,9 +10,10 @@ isEntrypoint: true,
 instructions: "Exercise a configured provider in a native worker.",
 args: Type.Object({}),
 async execute({ paths, run }) {
-				const result = await run.agents.prompt({ label: "check", cwd: paths.run, tools: [], prompt: "Return ok", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
-				const artifact = await run.artifacts.write("result.json", JSON.stringify(result));
-				return run.complete({ artifacts: { result: artifact } });
+				const result = await run.agents.prompt({ label: "check", cwd: paths.workspace, tools: [], prompt: "Return ok", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
+				const resultPath = "result.json";
+				await writeFile(join(paths.workspace, resultPath), JSON.stringify(result));
+				return run.complete({ data: { resultPath } });
 			}
 });
 

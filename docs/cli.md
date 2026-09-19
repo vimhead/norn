@@ -129,13 +129,13 @@ norn runs metrics <run>
 
 Start returns `{ "run": ... }` with `id`, `name`, and `path`, after launching a detached executor. This is acceptance of the launch, not success of the task. `runs wait` returns when the run is no longer running or inspection reports it unhealthy. Its successful process exit does not mean the workflow completed; callers check `run.status`, `run.health`, and outcome/failure information.
 
-A completed capability's outputs are in `run.outcome.metadata`. Artifact refs resolve beneath `<run.path>/current/artifacts/`. The [minimal example](../examples/minimal-workflow/README.md) gives concrete output expectations.
+Run results expose `run.paths.project` and `run.paths.workspace` as absolute directories. `run.path` identifies the complete run storage directory, not the workspace. A completed capability's outputs are in `run.outcome.metadata`; file paths in `data` follow that workflow's declared convention. The [minimal example](../examples/minimal-workflow/README.md) returns a `greetingPath` relative to `run.paths.workspace`.
 
 Start stdin accepts `args` and optional `config`, with config overrides keyed independently by workflow ID or scope ID. Args are JSON, not CLI flags or TOON. For display, a JSON viewer can format a finite result; keep machine artifacts and JSONL events in their native format.
 
 | Decision | GOOD | BAD |
 |---|---|---|
-| IF start returns a run ID, THEN retain it and inspect the terminal outcome. ELSE handle the launch error. | Wait, then verify `status === "completed"` and expected artifact content. | Report task success from `runs start` alone. |
+| IF start returns a run ID, THEN retain it and inspect the terminal outcome. ELSE handle the launch error. | Wait, then verify `status === "completed"` and expected file content. | Report task success from `runs start` alone. |
 | IF a new capability is written or registered, THEN query the current catalogue and schema. ELSE use the inspected contract. | `workflows inspect greeting.write` after editing. | Rely on a cached session-start list that cannot contain the new workflow. |
 
 For live monitoring and explicit lifecycle control:

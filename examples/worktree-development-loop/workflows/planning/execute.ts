@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { implementationWorkflow } from "../implementation/execute.ts";
 import type { WorkflowResult } from "@vimhead.dev/norn";
 import { developmentLoopScope } from "../../scope.ts";
@@ -11,7 +12,7 @@ export const planningWorkflow = developmentLoopScope.workflow({
 	instructions: "Create an implementation plan for a repository task.",
 	args: planningArgsSchema,
 	async execute({ args, paths, run }): Promise<WorkflowResult> {
-		const repositoryPath = resolve(paths.run, args.repositoryPath);
+		const repositoryPath = resolve(paths.workspace, args.repositoryPath);
 		const planning = await run.agents.prompt({
 			label: "planning",
 			cwd: repositoryPath,
@@ -19,8 +20,10 @@ export const planningWorkflow = developmentLoopScope.workflow({
 			prompt: buildPlanningPrompt(args.task),
 			response: planningAgentResponseSchema,
 		});
-		const planArtifact = await run.artifacts.write("planning/plan.md", planning.plan);
-		return implementationWorkflow({ ...args, planArtifact, iteration: 1 });
+		const planPath = "planning/plan.md";
+		await mkdir(join(paths.workspace, "planning"), { recursive: true });
+		await writeFile(join(paths.workspace, planPath), planning.plan);
+		return implementationWorkflow({ ...args, planPath, iteration: 1 });
 	}
 });
 

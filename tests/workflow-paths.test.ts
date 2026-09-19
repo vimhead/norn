@@ -16,7 +16,7 @@ async function createDirectory(context: TestContext) {
 test("standalone execution, scoped gates, and resumed execution share absolute paths with distinct rollback behavior", async context => {
 	const project = await createDirectory(context);
 	await writeFile(join(project, "source.txt"), "original project");
-	const expectedPaths: NornWorkflowPaths = { project, run: join(project, ".norn/runs/paths/current/workspace") };
+	const expectedPaths: NornWorkflowPaths = { project, workspace: join(project, ".norn/runs/paths/current/workspace") };
 	const scope = workflowScope({ id: "paths" });
 	const finish = scope.workflow({
 		id: "finish", isEntrypoint: false, args: Type.Object({}),
@@ -28,8 +28,8 @@ test("standalone execution, scoped gates, and resumed execution share absolute p
 		async execute({ paths, run }) {
 			assert.deepEqual(paths, expectedPaths);
 			await writeFile(join(paths.project, "source.txt"), "changed project");
-			await writeFile(join(paths.run, "work.txt"), "changed workspace");
-			await writeFile(join(paths.run, "new.txt"), "created after checkpoint");
+			await writeFile(join(paths.workspace, "work.txt"), "changed workspace");
+			await writeFile(join(paths.workspace, "new.txt"), "created after checkpoint");
 			return run.complete();
 		},
 	});
@@ -37,9 +37,9 @@ test("standalone execution, scoped gates, and resumed execution share absolute p
 		id: "start", isEntrypoint: false, args: Type.Object({}),
 		async execute({ paths }) {
 			assert.deepEqual(paths, expectedPaths);
-			assert.ok(isAbsolute(paths.project) && isAbsolute(paths.run));
-			assert.deepEqual(await readdir(paths.run), []);
-			await writeFile(join(paths.run, "work.txt"), "checkpoint workspace");
+			assert.ok(isAbsolute(paths.project) && isAbsolute(paths.workspace));
+			assert.deepEqual(await readdir(paths.workspace), []);
+			await writeFile(join(paths.workspace, "work.txt"), "checkpoint workspace");
 			return finish({});
 		},
 	});
@@ -54,10 +54,10 @@ test("standalone execution, scoped gates, and resumed execution share absolute p
 	const reopened = new NornEngine({ cwd: project, gateMode: "pause" });
 	reopened.registerWorkflows([start, finish]);
 	assert.equal((await reopened.resumeWorkflow(runRoot, {})).status, "completed");
-	assert.equal(await readFile(join(expectedPaths.run, "work.txt"), "utf8"), "changed workspace");
+	assert.equal(await readFile(join(expectedPaths.workspace, "work.txt"), "utf8"), "changed workspace");
 	assert.equal((await reopened.rollbackRun(runRoot, checkpoint.id)).status, "interrupted");
-	assert.equal(await readFile(join(expectedPaths.run, "work.txt"), "utf8"), "checkpoint workspace");
-	await assert.rejects(readFile(join(expectedPaths.run, "new.txt")), { code: "ENOENT" });
+	assert.equal(await readFile(join(expectedPaths.workspace, "work.txt"), "utf8"), "checkpoint workspace");
+	await assert.rejects(readFile(join(expectedPaths.workspace, "new.txt")), { code: "ENOENT" });
 	assert.equal(await readFile(join(project, "source.txt"), "utf8"), "changed project");
 	assert.equal((await reopened.resumeWorkflow(runRoot, {})).status, "completed");
 });
@@ -68,7 +68,7 @@ test("one workflow chooses project, run, and external command directories explic
 	const check = workflow({
 		id: "directories", isEntrypoint: false, args: Type.Object({}),
 		async execute({ paths, run }) {
-			for (const cwd of [paths.project, paths.run, external]) {
+			for (const cwd of [paths.project, paths.workspace, external]) {
 				const result = await run.commands.run({ label: "pwd", cwd, command: [process.execPath, "-e", "process.stdout.write(process.cwd())"] });
 				assert.equal(result.exitCode, 0);
 				assert.equal(result.cwd, cwd);

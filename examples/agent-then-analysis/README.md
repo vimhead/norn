@@ -1,4 +1,4 @@
-# Norn agent → saved artifact → analysis
+# Norn agent → saved file → analysis
 
 ```text
 sourceSummary.draft
@@ -45,13 +45,13 @@ norn runs metrics "$RUN"
 
 Expected successful structure (wording and verdict are model-dependent):
 
-- `status: completed`, with draft and analysis refs in outcome metadata.
-- `current/artifacts/draft.json`: `{ source, draft: { summary, quotations, uncertainties } }`.
-- `current/artifacts/analysis.json`: `{ verdict, reason, issues }`.
+- `status: completed`, with `data.draftPath: "draft.json"` and `data.analysisPath: "analysis.json"` in outcome metadata.
+- `draft.json`: `{ source, draft: { summary, quotations, uncertainties } }`.
+- `analysis.json`: `{ verdict, reason, issues }`.
 - A `sourceSummary.draft -> sourceSummary.analyze` transition checkpoint.
 - Norn agent records labeled `draft` and `analysis`, with separate Pi sessions.
 
-Paths are under `.norn/runs/$RUN/`. Read the actual artifacts and compare them
+These file paths are relative to the inspected `run.paths.workspace`. Read the files and compare them
 against [input.json](input.json); a run ID or valid schema is not evidence of a
 correct assessment. `needs-revision` means analysis completed and found problems,
 not that the summary is approved. Missing verbatim quotations fail the run before
@@ -67,7 +67,7 @@ external service outage.
    `throw new Error("Analysis repair exercise");`.
 2. Start a new run with `input.json` and wait. It should fail in
    `sourceSummary.analyze` after the drafting agent has saved its result.
-3. Read `current/artifacts/draft.json` and retain its bytes for comparison.
+3. Read `draft.json` in the inspected `run.paths.workspace` and retain its bytes for comparison.
    List checkpoints and select the actual ID whose message is
    `transition: sourceSummary.draft -> sourceSummary.analyze`.
 4. Remove the injected throw. Inspect `sourceSummary.analyze` with a new CLI
@@ -96,8 +96,8 @@ an inactive failed analysis from its saved boundary. New source does not replace
 code already loaded by a running executor. For a second source, supply another
 `{"args":{"source":"..."}}` through the unchanged draft entrypoint.
 
-The result schemas, saved source, artifact reference, and analysis args are the
+The result schemas, saved source, file path, and analysis args are the
 reusable boundary. Analysis deliberately receives no domain task state through
-module memory. [Persistence and artifacts](../../docs/persistence.md) describes the
+module memory. [Persistence and files](../../docs/persistence.md) describes the
 storage contract; [composition](../../docs/composition.md) extends fixed
 transitions to caller-selected continuations.

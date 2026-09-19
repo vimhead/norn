@@ -1,12 +1,11 @@
-import { artifactRefSchema } from "@vimhead.dev/norn";
 import { planningArgsSchema } from "../planning/schema.ts";
 import { Type, type StaticDecode } from "typebox";
 
 export const implementationArgsSchema = Type.Object({
 	...planningArgsSchema.properties,
 	iteration: Type.Integer({ minimum: 1 }),
-	planArtifact: artifactRefSchema,
-	previousReviewArtifact: Type.Optional(artifactRefSchema),
+	planPath: Type.String(),
+	previousReviewPath: Type.Optional(Type.String()),
 });
 
 export const implementationAgentResponseSchema = Type.Object({

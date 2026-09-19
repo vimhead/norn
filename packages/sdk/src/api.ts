@@ -20,7 +20,7 @@ export type NornWorkflowPaths = {
 	readonly project: string;
 
 	/** Absolute, initially empty workspace. Saved in run checkpoints and restored on rollback. */
-	readonly run: string;
+	readonly workspace: string;
 };
 
 export type NornWorkflowDeclaration<
@@ -158,7 +158,6 @@ export type NornRunNext = {
 
 export type NornRunOutcomeMetadata = {
 	readonly summary?: string;
-	readonly artifacts?: Record<string, NornArtifactRef>;
 	readonly logs?: Record<string, NornLogRef>;
 	readonly data?: Record<string, unknown>;
 };
@@ -261,6 +260,7 @@ export type NornRunInfo = {
 	readonly id: string;
 	readonly name: string;
 	readonly path: string;
+	readonly paths: NornWorkflowPaths;
 	readonly entrypointWorkflowId: string;
 	readonly currentWorkflowId?: string;
 	readonly status: NornRunStatus;
@@ -293,12 +293,6 @@ export type NornCommandRunInput = {
 	readonly env?: Record<string, string>;
 	readonly timeoutMs?: number;
 };
-
-export const artifactRefSchema = Type.Object({
-	path: Type.String(),
-});
-
-export type NornArtifactRef = StaticDecode<typeof artifactRefSchema>;
 
 const emptyWorkflowRefArgsSchema = Type.Object({});
 const workflowReferenceInputSchema = Type.Union([
@@ -474,10 +468,6 @@ export type NornRun = {
 	complete(metadata?: NornRunOutcomeMetadata): NornRunComplete;
 	fail(metadata: NornRunOutcomeMetadata & { readonly summary: string }): NornRunFail;
 	resources: import("./resources.ts").NornResources;
-	artifacts: {
-		write(path: string, content: string): Promise<NornArtifactRef>;
-		read(ref: NornArtifactRef): Promise<string>;
-	};
 	logs: {
 		read(log: NornLogRef): Promise<string>;
 	};

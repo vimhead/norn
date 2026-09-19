@@ -13,7 +13,7 @@ import { workQueueDefinition } from "./work-queue.ts";
 const queue = await run.resources.ensure(workQueueDefinition);
 const agentSession = await run.agents.createSession({
   label: "summary-1",
-  cwd: paths.run,
+  cwd: paths.workspace,
   tools: [],
   resourceAdapters: [QueueAdapter({ queue })],
 });
@@ -32,7 +32,7 @@ norn runs wait <returned-run-id>
 norn runs inspect <returned-run-id>
 ```
 
-Success reports `status: completed`, `data.processed: 4`, and a `summaries` artifact at `current/artifacts/summaries.json`. It contains each input ID, original source, summary, exact source quotation and delivery count. Round reports are in `current/artifacts/rounds/`; [agent session evidence](../../docs/agents.md#response-contract-and-evidence) is retained separately.
+Success reports `status: completed`, `data.processed: 4`, and `data.summariesPath: "summaries.json"`, relative to the inspected `run.paths.workspace`. The file contains each input ID, original source, summary, exact source quotation and delivery count. Round reports are in that workspace's `rounds/` directory; [agent session evidence](../../docs/agents.md#response-contract-and-evidence) is retained separately.
 
 Verification checks persisted results for coverage, schemas, unchanged sources and quotation membership—not summary quality or completeness. Agent success reports alone cannot complete the run.
 

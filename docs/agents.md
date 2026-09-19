@@ -2,7 +2,7 @@
 
 A Norn agent is a workflow-managed session powered by the bundled, open-source and extensible [Pi coding agent](https://pi.dev). Pi supplies the agent implementation regardless of which [outer harness invokes Norn](cli.md#javascript-client-and-other-harnesses). Extensions, skills, and custom providers can customize these sessions; their loading and boundaries are described below.
 
-The [Norn agent → saved artifact → analysis example](../examples/agent-then-analysis/README.md) is a complete two-session application. Agent outputs flow through a saved contract, not shared conversation history.
+The [Norn agent → saved file → analysis example](../examples/agent-then-analysis/README.md) is a complete two-session application. Agent outputs flow through a saved contract, not shared conversation history.
 
 ## Authoring types
 
@@ -22,9 +22,12 @@ installs its Pi dependency automatically; no separate Pi installation is needed.
 Both session creation and one-prompt calls require an absolute `cwd`; choose from the workflow's [paths](persistence.md#filesystem-boundaries) or supply another prepared directory. For follow-up turns in the same conversation:
 
 ```ts
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
 const agentSession = await run.agents.createSession({
   label: "implementation",
-  cwd: paths.run,
+  cwd: paths.workspace,
   tools: ["read", "bash", "edit", "write"],
 });
 try {
@@ -38,8 +41,9 @@ try {
     response: verificationSchema,
     maxAttempts: 2,
   });
-  const verificationArtifact = await run.artifacts.write("verification.json", JSON.stringify(verification));
-  return run.complete({ artifacts: { verification: verificationArtifact } });
+  const verificationPath = join(paths.workspace, "verification.json");
+  await writeFile(verificationPath, JSON.stringify(verification));
+  return run.complete({ data: { verificationPath } });
 } finally {
   await agentSession.dispose();
 }
@@ -57,7 +61,7 @@ Successful results and raw attempts are written under `current/logs/agents/`; Pi
 |---|---|---|
 | IF later work needs independent judgment, THEN create a fresh session and pass only its input/evidence contract. ELSE retain a session for conversation-dependent follow-up. | Analysis receives saved source and draft, not the author's conversation. | Call an author again and describe its self-review as independent. |
 | IF a Norn agent claims a verifiable result, THEN verify the evidence before accepting it. ELSE preserve the uncertainty in the result. | Check quotations against source bytes and command outcomes against logs. | Treat a schema-valid `passed: true` as proof that tests ran. |
-| IF a result must survive a workflow transition, THEN save its content/ref using [persistence](persistence.md). ELSE keep it local to the active step. | Save a draft artifact, then pass its ref to analysis. | Expect the next workflow to recover a local variable or an undisposed session object. |
+| IF a result must survive a workflow transition, THEN save its content/ref using [persistence](persistence.md). ELSE keep it local to the active step. | Save a draft file, then pass its path to analysis. | Expect the next workflow to recover a local variable or an undisposed session object. |
 
 ## Prompts, tools, and resource loading
 

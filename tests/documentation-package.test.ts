@@ -81,7 +81,7 @@ args: Type.Object({
   }),
 async execute({ args, scope, paths, run }) {
   const project: string = paths.project;
-  const workspace: string = paths.run;
+  const workspace: string = paths.workspace;
   const count: number = args.count;
   const label: string = scope.config.label;
   return args.next({ report: label + String(count) });
@@ -98,7 +98,7 @@ workflow({ id: "standalone", isEntrypoint: false, args: Type.Object({}), execute
   // @ts-expect-error Standalone workflows do not have a scope.
   context.scope;
   const project: string = context.paths.project;
-  const workspace: string = context.paths.run;
+  const workspace: string = context.paths.workspace;
   // @ts-expect-error Commands require cwd.
   context.run.commands.run({ label: "check", command: ["pwd"] });
   // @ts-expect-error Agent sessions require cwd.
@@ -125,14 +125,14 @@ const client = createNornClient({ spawnCwd: join(process.cwd(), "workflow") });
 const started = await client.runs.start({ workflowId: "greeting.write", args: { name: "Packed" } });
 const finished = await client.runs.wait(started.id);
 assert.equal(finished.status, "completed", JSON.stringify(finished));
-assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Packed!\\n");
+assert.equal(await readFile(join(finished.paths.workspace, finished.outcome.metadata.data.greetingPath), "utf8"), "Hello, Packed!\\n");
 const continuation = createNornClient({ spawnCwd: join(process.cwd(), "continuation") });
 const input = JSON.parse(await readFile(join(process.cwd(), "continuation/input.json"), "utf8"));
 const continued = await continuation.runs.start({ workflowId: "greetingProducer.write", args: input.args });
 const delivered = await continuation.runs.wait(continued.id);
 assert.equal(delivered.status, "completed", JSON.stringify(delivered));
 assert.equal(delivered.outcome.workflowId, "greetingConsumer.saveJson");
-assert.deepEqual(JSON.parse(await readFile(join(delivered.path, "current/artifacts/delivery.json"), "utf8")), {
+assert.deepEqual(JSON.parse(await readFile(join(delivered.paths.workspace, delivered.outcome.metadata.data.deliveryPath), "utf8")), {
   batchId: "batch-17", summary: "Greeting prepared for Ada.", greeting: "Hello, Ada!",
 });
 const loader = new DefaultResourceLoader({ cwd: process.cwd(), agentDir: ${JSON.stringify(join(root, "outer-agent"))}, settingsManager: SettingsManager.inMemory({ packages: [${JSON.stringify(adapterRoot)}] }) });

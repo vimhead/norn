@@ -59,6 +59,7 @@ type NornRunWorkflowOutcome = {
 
 export type NornRunState = {
 	readonly version: 1 | typeof RUN_STATE_VERSION;
+	readonly projectRoot?: string;
 	readonly id: string;
 	readonly name: string;
 	readonly entrypointWorkflowId: string;
@@ -74,6 +75,7 @@ export type NornRunState = {
 };
 
 type CreateNornRunStateInput = {
+	readonly projectRoot: string;
 	readonly id: string;
 	readonly name: string;
 	readonly entrypointWorkflowId: string;
@@ -101,7 +103,8 @@ export class NornRunStateStore {
 			id: input.id,
 			name: input.name,
 			entrypointWorkflowId: input.entrypointWorkflowId,
-			workspace: input.workspace,
+			projectRoot: resolve(input.projectRoot),
+			workspace: resolve(input.workspace),
 			configOverride: input.configOverride,
 			status: "running",
 			current: input.current,
@@ -252,6 +255,7 @@ export async function getRunInfo(runRoot: string): Promise<NornRunInfo> {
 			id: state.id,
 			name: state.name,
 			path: runRoot,
+			paths: { project: state.projectRoot ?? resolve(runRoot, "../../.."), workspace: state.workspace },
 			entrypointWorkflowId: state.entrypointWorkflowId,
 			currentWorkflowId: state.current?.workflowId,
 			status: resumeRequest ? "running" : state.status,
@@ -317,6 +321,7 @@ async function getLaunchedRunInfo(runRoot: string): Promise<NornRunInfo> {
 		id: launchRequest.id,
 		name: launchRequest.name,
 		path: runRoot,
+		paths: { project: resolve(runRoot, "../../.."), workspace: join(runCurrentRoot(resolve(runRoot)), "workspace") },
 		entrypointWorkflowId: launchRequest.workflowId,
 		currentWorkflowId: launchRequest.workflowId,
 		status: "running",

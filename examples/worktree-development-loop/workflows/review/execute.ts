@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { reviewRouterWorkflow } from "../review-router/execute.ts";
 import type { WorkflowResult } from "@vimhead.dev/norn";
 import { developmentLoopScope } from "../../scope.ts";
@@ -12,10 +13,9 @@ export const reviewWorkflow = developmentLoopScope.workflow({
 	instructions: "Review the current repository boundary changes.",
 	args: reviewArgsSchema,
 	async execute({ args, paths, run }): Promise<WorkflowResult> {
-		const repositoryPath = resolve(paths.run, args.repositoryPath);
-		const planArtifact = args.planArtifact;
+		const repositoryPath = resolve(paths.workspace, args.repositoryPath);
 		const implementationSummary = args.implementationSummary;
-		const plan = await run.artifacts.read(planArtifact);
+		const plan = await readFile(join(paths.workspace, args.planPath), "utf8");
 		const diff = await run.commands.run({
 			label: `review-${args.iteration}-diff`,
 			cwd: repositoryPath,
@@ -23,7 +23,8 @@ export const reviewWorkflow = developmentLoopScope.workflow({
 		});
 		await ensureCommandSucceeded(diff);
 		const diffOutput = await run.logs.read(diff.stdoutLog);
-		await run.artifacts.write(`review/iteration-${args.iteration}-diff.txt`, diffOutput);
+		await mkdir(join(paths.workspace, "review"), { recursive: true });
+		await writeFile(join(paths.workspace, `review/iteration-${args.iteration}-diff.txt`), diffOutput);
 		const review = await run.agents.prompt({
 			label: `review-${args.iteration}`,
 			cwd: repositoryPath,
@@ -31,13 +32,14 @@ export const reviewWorkflow = developmentLoopScope.workflow({
 			prompt: buildReviewPrompt(args.task, plan, implementationSummary, diffOutput),
 			response: reviewAgentResponseSchema,
 		});
-		const automatedReviewArtifact = await run.artifacts.write(`review/iteration-${args.iteration}-automated.json`, JSON.stringify(review, null, 2));
+		const automatedReviewPath = `review/iteration-${args.iteration}-automated.json`;
+		await writeFile(join(paths.workspace, automatedReviewPath), JSON.stringify(review, null, 2));
 		return reviewRouterWorkflow({
 			...args,
 			iteration: args.iteration,
 			decision: review.decision,
 			summary: review.summary,
-			automatedReviewArtifact,
+			automatedReviewPath,
 		});
 	}
 });

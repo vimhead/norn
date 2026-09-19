@@ -18,6 +18,7 @@ async function createFixture(context: TestContext, status: "interrupted" | "pend
 	const runRoot = join(cwd, ".norn/runs/requested");
 	await mkdir(runRoot, { recursive: true });
 	const state = await NornRunStateStore.create(runRoot, {
+		projectRoot: cwd,
 		id: "requested", name: "requested", entrypointWorkflowId: "test.step", workspace: join(runRoot, "current/workspace"),
 		current: { workflowId: "test.step", args: { answer: false }, cwd, env: {} }, startedAt: new Date().toISOString(),
 	});

@@ -10,7 +10,6 @@ import { implementationWorkflow } from "../examples/worktree-development-loop/wo
 import { developmentLoopWorkflow } from "../examples/worktree-development-loop/workflows/development-loop/execute.ts";
 import { reviewRouterWorkflow } from "../examples/worktree-development-loop/workflows/review-router/execute.ts";
 import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-response-tool.ts";
-import { NornArtifacts } from "../packages/cli/src/internal/artifacts.ts";
 import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
 import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
 import { NornRunResources } from "../packages/cli/src/resources.ts";
@@ -45,7 +44,6 @@ async function createExampleRun(context: TestContext) {
 		runRoot: currentRoot,
 		responseCollector: new NornAgentResponseCollector(),
 		resources,
-		artifacts: new NornArtifacts(join(currentRoot, "artifacts"), resources.files),
 		logs: new NornRunLogs(join(currentRoot, "logs"), resources.files),
 		logger: new NornRunLogger({
 			manifestPath: join(currentRoot, "manifest.json"),
@@ -59,7 +57,7 @@ async function createExampleRun(context: TestContext) {
 	const unexpectedAgentCall = new Error("Setup and routing tests must not prompt an agent");
 	vi.spyOn(run.agents, "prompt").mockRejectedValue(unexpectedAgentCall);
 	vi.spyOn(run.agents, "createSession").mockRejectedValue(unexpectedAgentCall);
-	return { root, paths: { project: root, run: workspace }, run };
+	return { root, paths: { project: root, workspace: workspace }, run };
 }
 
 async function createSourceRepository(root: string) {
@@ -85,7 +83,7 @@ test("worktree setup checks out the requested committed revision without changin
 	const args = { task: "Update the tracked file", baseRef: source.baseRevision, maxIterations: 3 };
 	const result = await developmentLoopWorkflow.execute({ args, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot: source.repositoryRoot } }, paths, run });
 	assert.deepEqual(result, planningWorkflow({ task: args.task, repositoryPath: "repo", maxIterations: 3 }));
-	const clone = join(paths.run, "repo");
+	const clone = join(paths.workspace, "repo");
 	assert.equal(await runGit({ cwd: clone, args: ["rev-parse", "HEAD"] }), source.baseRevision);
 	assert.equal(await readFile(join(clone, "tracked.txt"), "utf8"), "base revision\n");
 	await assert.rejects(readFile(join(clone, "local-only.txt")), { code: "ENOENT" });
@@ -117,30 +115,31 @@ for (const scenario of [
 	test(`worktree review ${scenario.decision} at iteration ${scenario.iteration}/3 returns ${scenario.resultType}`, async context => {
 		const { paths, run } = await createExampleRun(context);
 		const task = "Update the tracked file";
-		const planArtifact = await run.artifacts.write("planning/plan.md", "Update the file and verify it.\n");
+		const planPath = "planning/plan.md";
+		await mkdir(join(paths.workspace, "planning"), { recursive: true });
+		await mkdir(join(paths.workspace, "review"), { recursive: true });
+		await writeFile(join(paths.workspace, planPath), "Update the file and verify it.\n");
 		const automatedReview = { decision: "revise", summary: "Automated review evidence." };
-		const automatedReviewArtifact = await run.artifacts.write(
-			`review/iteration-${scenario.iteration}-automated.json`, JSON.stringify(automatedReview),
-		);
+		const automatedReviewPath = `review/iteration-${scenario.iteration}-automated.json`;
+		await writeFile(join(paths.workspace, automatedReviewPath), JSON.stringify(automatedReview));
 		const args = {
-			task, repositoryPath: "repo", maxIterations: 3, planArtifact, iteration: scenario.iteration, decision: scenario.decision,
-			summary: "Selected decision after checking evidence.", automatedReviewArtifact,
+			task, repositoryPath: "repo", maxIterations: 3, planPath, iteration: scenario.iteration, decision: scenario.decision,
+			summary: "Selected decision after checking evidence.", automatedReviewPath,
 		};
 		const result = await reviewRouterWorkflow.execute({ args, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot: paths.project } }, paths, run });
 		assert.equal(result.type, scenario.resultType);
-		const reviewArtifact = { path: `review/iteration-${scenario.iteration}-decision.json` };
-		assert.deepEqual(JSON.parse(await run.artifacts.read(reviewArtifact)), {
-			decision: args.decision, summary: args.summary, automatedReviewArtifact,
+		const reviewPath = `review/iteration-${scenario.iteration}-decision.json`;
+		assert.deepEqual(JSON.parse(await readFile(join(paths.workspace, reviewPath), "utf8")), {
+			decision: args.decision, summary: args.summary, automatedReviewPath,
 		});
-		assert.deepEqual(JSON.parse(await run.artifacts.read(automatedReviewArtifact)), automatedReview);
+		assert.deepEqual(JSON.parse(await readFile(join(paths.workspace, automatedReviewPath), "utf8")), automatedReview);
 		if (result.type === "next") {
-			assert.deepEqual(result, implementationWorkflow({ task, repositoryPath: "repo", maxIterations: 3, planArtifact, previousReviewArtifact: reviewArtifact, iteration: 2 }));
+			assert.deepEqual(result, implementationWorkflow({ task, repositoryPath: "repo", maxIterations: 3, planPath, previousReviewPath: reviewPath, iteration: 2 }));
 		} else {
 			assert.equal(result.metadata?.summary, scenario.summary);
-			assert.deepEqual(result.metadata?.artifacts, { plan: planArtifact, review: reviewArtifact });
 			assert.deepEqual(result.metadata?.data, {
-				status: scenario.status, repositoryPath: "repo", iterations: scenario.iteration,
-				lastReview: { decision: args.decision, summary: args.summary, reviewArtifact },
+				status: scenario.status, repositoryPath: "repo", planPath, reviewPath, iterations: scenario.iteration,
+				lastReview: { decision: args.decision, summary: args.summary, reviewPath },
 			});
 		}
 	});

@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { workflowScope } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 import { sharedState } from "./shared-state.ts";
@@ -16,7 +18,7 @@ export const copy = copyScope.workflow({
 		const state = await run.resources.ensure(sharedState);
 		await state.set(sourceField, args.source);
 		await run.agents.prompt({
-			label: "copy", cwd: paths.run, tools: [],
+			label: "copy", cwd: paths.workspace, tools: [],
 			resourceAdapters: [StateAdapter({ state, fields: [
 				{ field: sourceField, access: "read" },
 				{ field: copyField, access: "write" },
@@ -30,13 +32,14 @@ export const copy = copyScope.workflow({
 });
 export const verify = copyScope.workflow({
 	id: "verify", isEntrypoint: false, args: Type.Object({}),
-	async execute({ run }) {
+	async execute({ paths, run }) {
 		const state = await run.resources.ensure(sharedState);
 		const source = await state.get(sourceField);
 		const copied = await state.get(copyField);
 		if (copied !== source) return run.fail({ summary: "Stored copy differs from the source." });
-		const artifact = await run.artifacts.write("copy.txt", copied);
-		return run.complete({ summary: "Verified the stored copy.", artifacts: { copy: artifact } });
+		const copyPath = "copy.txt";
+		await writeFile(join(paths.workspace, copyPath), copied);
+		return run.complete({ summary: "Verified the stored copy.", data: { copyPath } });
 	},
 });
 export default [copy, verify];

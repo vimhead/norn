@@ -1,7 +1,7 @@
 # Create → run → change a workflow
 
 This code-driven example needs no model, credentials, dependencies in the example
-directory, or compilation step. It writes a greeting artifact and exposes its text
+directory, or compilation step. It writes a greeting file and exposes its text
 in the run outcome.
 
 ## Create and register
@@ -38,8 +38,9 @@ norn runs inspect "$RUN"
 
 Expected outcome: `run.status` is `completed`,
 `run.outcome.metadata.data.greeting` is `Hello, Ada!`, and
-`run.outcome.metadata.artifacts.greeting` is `{ "path": "greeting.txt" }`.
-Read `.norn/runs/$RUN/current/artifacts/greeting.txt` to verify the saved content.
+`run.outcome.metadata.data.greetingPath` is `"greeting.txt"`, relative to the
+absolute `run.paths.workspace` directory reported by inspection. Read that file
+to verify the saved content; `run.path` is the storage root, not this file's base.
 
 ## Change and re-exercise
 
@@ -56,7 +57,7 @@ const greeting = `Welcome, ${args.name}!`;
 ```
 
 Run inspection and start again with the same input, then wait on the **new** run
-ID. The new outcome/artifact should say `Welcome, Ada!`; the first run still
+ID. The new outcome/file should say `Welcome, Ada!`; the first run still
 contains `Hello, Ada!`. No rebuild or Norn reload command is needed.
 
 Starting with `{"args":{"name":" "}}` should fail parameter validation rather

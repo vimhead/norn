@@ -10,10 +10,10 @@ Norn capabilities are ordinary TypeScript workflows: an agent can write one duri
 | Define TypeBox schemas, constraints, or codecs | [TypeBox schemas](schemas.md) | — |
 | Discover contracts or invoke Norn from another harness | [CLI and client](cli.md) | [Create → run → change](../examples/minimal-workflow/README.md) |
 | Configure providers, models, and authentication for Norn agents | [Providers and authentication](providers.md) | — |
-| Delegate work with explicit inputs and structured results | [Norn agents](agents.md) | [Norn agent → saved artifact → analysis](../examples/agent-then-analysis/README.md) |
+| Delegate work with explicit inputs and structured results | [Norn agents](agents.md) | [Norn agent → saved file → analysis](../examples/agent-then-analysis/README.md) |
 | Initialize resources, attach agent tools, or coordinate file mutations | [Resources and locking](resources.md) | [Explicit shared state](../examples/shared-state/README.md) |
 | Implement a custom resource and adapter to coordinate concurrent agents | [Resource contracts](resources.md) | [Example-local work queue](../examples/coordinating-multiple-agents/README.md) |
-| Retain evidence or choose a filesystem boundary | [Persistence, artifacts, and workspaces](persistence.md) | [Norn agent → saved artifact → analysis](../examples/agent-then-analysis/README.md) |
+| Retain evidence or choose a filesystem boundary | [Persistence, files, and workspaces](persistence.md) | [Norn agent → saved file → analysis](../examples/agent-then-analysis/README.md) |
 | Reuse a workflow with a caller-selected continuation | [Composition](composition.md) | [Caller-selected continuation](../examples/caller-selected-continuation/README.md) |
 | Repair a failed run without repeating earlier work | [Recovery and gates](recovery.md) | [Analysis-only repair](../examples/agent-then-analysis/README.md#repair-only-the-analysis-step) |
 

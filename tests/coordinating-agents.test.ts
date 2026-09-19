@@ -111,9 +111,9 @@ for (const noteCount of [3, 4]) {
 		const selectedNotes = notes.slice(0, noteCount);
 		const result = await setup.engine.runWorkflow(start, { notes: selectedNotes }, undefined);
 		assert.equal(result.status, "completed");
-		assert.deepEqual(result.metadata?.data, { processed: noteCount });
+		assert.deepEqual(result.metadata?.data, { summariesPath: "summaries.json", processed: noteCount });
 		const runRoot = join(setup.root, ".norn/runs", result.id);
-		const saved = JSON.parse(await readFile(join(runRoot, "current/artifacts/summaries.json"), "utf8"));
+		const saved = JSON.parse(await readFile(join((await getRunInfo(runRoot)).paths.workspace, "summaries.json"), "utf8"));
 		assert.deepEqual(saved.map((item: { id: string }) => item.id), selectedNotes.map(note => note.id));
 		assert.ok(saved.every((item: { source: string; quote: string; deliveries: number }) => item.source.includes(item.quote) && item.deliveries === 1));
 		assert.equal(setup.maximumConcurrentPrompts(), 2);
@@ -139,7 +139,7 @@ test("acknowledgment is not semantic approval: the example rejects invented quot
 	assert.equal((await getRunInfo(runRoot)).status, "failed");
 	const queue = await (await NornRunResources.initialize(runRoot)).ensure(workQueueDefinition);
 	assert.equal((await queue.inspect()).acknowledged, 4);
-	await assert.rejects(readFile(join(runRoot, "current/artifacts/summaries.json")), { code: "ENOENT" });
+	await assert.rejects(readFile(join((await getRunInfo(runRoot)).paths.workspace, "summaries.json")), { code: "ENOENT" });
 });
 
 test("native rollback and fresh Norn agents retain checkpointed results and retry only the interrupted round", { timeout: 30000 }, async context => {

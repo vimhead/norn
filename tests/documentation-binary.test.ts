@@ -86,7 +86,7 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	});
 	const finished = (await invoke(["runs", "wait", launch.run.id], projectRoot)).run;
 	assert.equal(finished.status, "completed", JSON.stringify(finished));
-	assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Offline!\n");
+	assert.equal(await readFile(join(finished.paths.workspace, "greeting.txt"), "utf8"), "Hello, Offline!\n");
 	const continuationRoot = join(root, "continuation-copy");
 	await cp(join(documentation.paths.examples, "caller-selected-continuation"), continuationRoot, { recursive: true });
 	const continuationInput = JSON.parse(await readFile(join(continuationRoot, "input.json"), "utf8"));
@@ -94,7 +94,7 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	const delivered = (await invoke(["runs", "wait", continuationLaunch.run.id], continuationRoot)).run;
 	assert.equal(delivered.status, "completed", JSON.stringify(delivered));
 	assert.equal(delivered.outcome.workflowId, "greetingConsumer.saveJson");
-	assert.deepEqual(JSON.parse(await readFile(join(delivered.path, "current/artifacts/delivery.json"), "utf8")), {
+	assert.deepEqual(JSON.parse(await readFile(join(delivered.paths.workspace, "delivery.json"), "utf8")), {
 		batchId: "batch-17", summary: "Greeting prepared for Ada.", greeting: "Hello, Ada!",
 	});
 	await cp(join(documentation.paths.examples, "shared-state"), join(projectRoot, "shared-state"), { recursive: true });
@@ -151,7 +151,7 @@ export default [manifest_check, manifest_finish, manifest_dynamic, manifest_done
 	const nativeLaunch = await invoke(["runs", "start", "native.check"], nestedDirectory, { args: { next: { workflow: "native.finish", forwardArgs: { origin: "queued" } } } });
 	const nativeResult = (await invoke(["runs", "wait", nativeLaunch.run.id], projectRoot)).run;
 	assert.equal(nativeResult.status, "completed", JSON.stringify(nativeResult));
-	assert.deepEqual(nativeResult.outcome?.metadata?.data, { count: 42, origin: "queued", paths: { project: await realpath(projectRoot), run: join(nativeResult.path, "current/workspace") }, cwd: join(nativeResult.path, "worker") });
+	assert.deepEqual(nativeResult.outcome?.metadata?.data, { count: 42, origin: "queued", paths: { project: await realpath(projectRoot), workspace: join(nativeResult.path, "current/workspace") }, cwd: join(nativeResult.path, "worker") });
 	await writeFile(documentation.paths.index, "modified");
 	await assert.rejects(invoke(["docs", "inspect"]), error => {
 		assert.match(readProcessStdout(error), /cache is incomplete or modified/);
@@ -196,7 +196,7 @@ export default [manifest_check, manifest_finish, manifest_dynamic, manifest_done
 	const { run: workerRun } = await invoke(["runs", "start", "provider.check"], workerProject);
 	const completedWorker = (await invoke(["runs", "wait", workerRun.id], workerProject)).run;
 	assert.equal(completedWorker.status, "completed", JSON.stringify(completedWorker));
-	assert.deepEqual(JSON.parse(await readFile(join(completedWorker.path, "current/artifacts/result.json"), "utf8")), { ok: true });
+	assert.deepEqual(JSON.parse(await readFile(join(completedWorker.paths.workspace, "result.json"), "utf8")), { ok: true });
 	assert.equal(await readFile(join(piAgentDir, "auth.json"), "utf8"), piAuth);
 	await assert.rejects(access(join(piAgentDir, "settings.json")), { code: "ENOENT" });
 	await writeFile(join(response.packageRoot, "theme/dark.json"), "modified");

@@ -36,8 +36,8 @@ Supply `id`, `args`, `isEntrypoint`, and `execute` explicitly. Standalone IDs ar
 | `args` | Decoded invocation arguments |
 | `config` | Decoded workflow-local configuration, or `undefined` without a schema |
 | `scope` | `{ id, config }` for scoped workflows; the property is absent for standalone workflows |
-| `paths` | Absolute `project` and `run` directories; see [filesystem boundaries](persistence.md#filesystem-boundaries) |
-| `run` | Run control, agents, commands, artifacts, and resources |
+| `paths` | Absolute `project` and `workspace` directories; see [filesystem boundaries](persistence.md#filesystem-boundaries) |
+| `run` | Run control, agents, commands, logs, and resources |
 
 It returns one control result:
 
@@ -45,10 +45,10 @@ It returns one control result:
 |---|---|
 | `target(args)` / `args.next(contribution)` | Select a known workflow or a caller-supplied next step. See [composition](composition.md). |
 | `run.next(workflowId, args)` | Select a workflow by string ID; its input is checked at execution. |
-| `run.complete(metadata)` | Complete the whole run, optionally exposing `summary`, `artifacts`, `logs`, and `data`. |
+| `run.complete(metadata)` | Complete the whole run, optionally exposing `summary`, `logs`, and `data`. |
 | `run.fail({ summary, ...metadata })` | Record failure with an actionable explanation and optional evidence. |
 
-Throwing also fails execution. Neither a Norn agent returning text nor writing an artifact completes the run. Outcome `data` has no workflow-specific result schema enforced by Norn: the capability must define and validate its own result contract.
+Throwing also fails execution. Neither a Norn agent returning text nor writing a file completes the run. Outcome `data` has no workflow-specific result schema enforced by Norn: the capability must define and validate its own result contract.
 
 | Decision | GOOD | BAD |
 |---|---|---|
@@ -60,6 +60,8 @@ Throwing also fails execution. Neither a Norn agent returning text nor writing a
 A scope gives workflows a namespace and optional shared configuration. Each workflow can also declare its own configuration:
 
 ```ts
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { workflowScope } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 
@@ -73,9 +75,11 @@ export const save = reports.workflow({
   isEntrypoint: false,
   args: Type.Object({ text: Type.String() }),
   config: Type.Object({ filename: Type.String() }),
-  async execute({ args, config, scope, run }) {
-    const artifact = await run.artifacts.write(`${scope.config.path}/${config.filename}`, args.text);
-    return run.complete({ artifacts: { report: artifact } });
+  async execute({ args, config, scope, paths, run }) {
+    const reportPath = join(paths.workspace, scope.config.path, config.filename);
+    await mkdir(dirname(reportPath), { recursive: true });
+    await writeFile(reportPath, args.text);
+    return run.complete({ data: { reportPath } });
   },
 });
 ```

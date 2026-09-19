@@ -5,10 +5,10 @@ import { ensureCommandSucceeded } from "../../shared/commands.ts";
 const WORKSPACE_REPOSITORY_PATH = "repo";
 
 export async function materializeWorkspaceRepository({ run, paths, repositoryRoot, baseRef }: { run: NornRun; paths: NornWorkflowPaths; repositoryRoot: string; baseRef: string }): Promise<string> {
-	const repositoryPath = join(paths.run, WORKSPACE_REPOSITORY_PATH);
+	const repositoryPath = join(paths.workspace, WORKSPACE_REPOSITORY_PATH);
 	const result = await run.commands.run({
 		label: "materialize-workspace-repository",
-		cwd: paths.run,
+		cwd: paths.workspace,
 		command: [
 			`rm -rf ${shellQuote(repositoryPath)}`,
 			`git clone --no-checkout ${shellQuote(repositoryRoot)} ${shellQuote(repositoryPath)}`,

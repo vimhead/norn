@@ -18,8 +18,8 @@ Then follow [Getting started, step 3](../../README.md#getting-started) to run it
 
 `runs wait` returns the run details. Check that `run.status` is `completed`;
 a successful CLI exit alone does not mean the workflow succeeded. The outcome's
-`metadata.artifacts.summary` refers to `summary.txt` under
-`.norn/runs/<run-id>/current/artifacts/`. Read it to assess the summary itself.
+`metadata.data.summaryPath` is `"summary.txt"`, relative to the absolute
+`run.paths.workspace` reported in those run details. Read that file to assess the summary itself.
 
 Change the prompt or supply different text to reuse the workflow.
 [Norn agents](../../docs/agents.md) covers structured responses, model selection,

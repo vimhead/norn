@@ -786,7 +786,7 @@ async function startRun(workflowId: string, commandArgs: readonly string[]): Pro
 	const createdAt = new Date().toISOString();
 	await writeRunLaunchRequest(runRoot, { version: 2, type: "run", id, name, workflowId, args, configOverride, createdAt });
 	await startDetachedExecuteRun(id, project.projectRoot);
-	writeJson({ run: startedRunInfo({ id, name, workflow, runRoot, createdAt }) });
+	writeJson({ run: startedRunInfo({ id, name, workflow, runRoot, projectRoot: project.projectRoot, createdAt }) });
 }
 
 async function resumeRun(run: string, args: readonly string[]): Promise<void> {
@@ -1004,6 +1004,7 @@ function detachedExecuteRunArgs(runId: string): readonly string[] {
 }
 
 function startedRunInfo(input: {
+	readonly projectRoot: string;
 	readonly id: string;
 	readonly name: string;
 	readonly workflow: NornAnyWorkflowDeclaration;
@@ -1015,6 +1016,7 @@ function startedRunInfo(input: {
 		id: input.id,
 		name: input.name,
 		path: input.runRoot,
+		paths: { project: input.projectRoot, workspace: join(input.runRoot, "current", "workspace") },
 		entrypointWorkflowId: input.workflow.id,
 		currentWorkflowId: input.workflow.id,
 		status: "running",

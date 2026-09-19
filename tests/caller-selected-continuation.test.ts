@@ -23,18 +23,17 @@ test("the copied continuation example exposes its contribution contract and comp
 		"greetingConsumer.saveJson", "greetingConsumer.saveText", "greetingProducer.write",
 	]);
 	const producer = await client.workflows.inspect("greetingProducer.write");
-	expect(producer.workflow?.argsSchema).toHaveProperty("properties.next.x-norn-workflow-ref.contributedArgsSchema.required", ["resultArtifact", "summary"]);
+	expect(producer.workflow?.argsSchema).toHaveProperty("properties.next.x-norn-workflow-ref.contributedArgsSchema.required", ["resultPath", "summary"]);
 	const consumer = await client.workflows.inspect("greetingConsumer.saveJson");
-	expect(consumer.workflow?.argsSchema).toHaveProperty("required", ["batchId", "resultArtifact", "summary"]);
+	expect(consumer.workflow?.argsSchema).toHaveProperty("required", ["batchId", "resultPath", "summary"]);
 	const started = await client.runs.start({ workflowId: "greetingProducer.write", args });
 	const finished = await client.runs.wait(started.id);
 	assert.equal(finished.status, "completed", JSON.stringify(finished));
 	assert.equal(finished.health, "healthy");
 	assert.equal(finished.outcome?.workflowId, "greetingConsumer.saveJson");
-	assert.deepEqual(finished.outcome?.metadata?.data, { batchId: "batch-17", format: "json" });
-	assert.deepEqual(finished.outcome?.metadata?.artifacts, { greeting: { path: "greeting.txt" }, delivery: { path: "delivery.json" } });
-	assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Ada!");
-	assert.deepEqual(JSON.parse(await readFile(join(finished.path, "current/artifacts/delivery.json"), "utf8")), {
+	assert.deepEqual(finished.outcome?.metadata?.data, { batchId: "batch-17", format: "json", greetingPath: "greeting.txt", deliveryPath: "delivery.json" });
+	assert.equal(await readFile(join(finished.paths.workspace, "greeting.txt"), "utf8"), "Hello, Ada!");
+	assert.deepEqual(JSON.parse(await readFile(join(finished.paths.workspace, "delivery.json"), "utf8")), {
 		batchId: "batch-17", summary: "Greeting prepared for Ada.", greeting: "Hello, Ada!",
 	});
 	assert.ok((await client.runs.checkpoints(started.id)).some(checkpoint => checkpoint.message === "transition: greetingProducer.write -> greetingConsumer.saveJson"));
@@ -50,9 +49,8 @@ test("changing only the caller reference selects another consumer and forwards i
 	assert.equal(finished.status, "completed", JSON.stringify(finished));
 	assert.equal(finished.health, "healthy");
 	assert.equal(finished.outcome?.workflowId, "greetingConsumer.saveText");
-	assert.deepEqual(finished.outcome?.metadata?.data, { batchId: "batch-99", format: "text" });
-	assert.deepEqual(finished.outcome?.metadata?.artifacts?.delivery, { path: "delivery.txt" });
-	assert.equal(await readFile(join(finished.path, "current/artifacts/delivery.txt"), "utf8"), "batch-99: Hello, Ada!\n");
+	assert.deepEqual(finished.outcome?.metadata?.data, { batchId: "batch-99", format: "text", greetingPath: "greeting.txt", deliveryPath: "delivery.txt" });
+	assert.equal(await readFile(join(finished.paths.workspace, "delivery.txt"), "utf8"), "batch-99: Hello, Ada!\n");
 });
 
 test("a producer contribution cannot complete delivery without the consumer's required caller context", async context => {
@@ -64,6 +62,6 @@ test("a producer contribution cannot complete delivery without the consumer's re
 	const finished = await client.runs.wait(started.id);
 	assert.equal(finished.status, "failed", JSON.stringify(finished));
 	assert.ok(finished.failed);
-	assert.equal(await readFile(join(finished.path, "current/artifacts/greeting.txt"), "utf8"), "Hello, Ada!");
-	await assert.rejects(readFile(join(finished.path, "current/artifacts/delivery.json")), { code: "ENOENT" });
+	assert.equal(await readFile(join(finished.paths.workspace, "greeting.txt"), "utf8"), "Hello, Ada!");
+	await assert.rejects(readFile(join(finished.paths.workspace, "delivery.json")), { code: "ENOENT" });
 });

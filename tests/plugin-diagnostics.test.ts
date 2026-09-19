@@ -254,19 +254,20 @@ test("an empty project is complete and an unknown workflow is an error only afte
 });
 
 test("CLI and client inspection advertise contribution schemas without losing forwarded context during execution", { timeout: 20000 }, async context => {
-	const source = 'import { artifactRefSchema, workflowRefSchema } from "@vimhead.dev/norn";\n' + createPluginSource({
+	const source = 'import { workflowRefSchema } from "@vimhead.dev/norn";\nimport { writeFile } from "node:fs/promises";\nimport { join } from "node:path";\n' + createPluginSource({
 		id: "handoff",
 		workflows: `{
 			caller: { instructions: "Use to collect records for the supplied task.", isEntrypoint: true, args: Type.Object({ taskId: Type.String(), context: Type.Record(Type.String(), Type.Unknown()) }) },
-			collect: { instructions: "Use to collect records and forward them to the supplied continuation.", isEntrypoint: true, args: Type.Object({ query: Type.String(), next: workflowRefSchema({ args: Type.Object({ records: artifactRefSchema }) }) }) },
-			finish: { isEntrypoint: false, args: Type.Object({ taskId: Type.String(), context: Type.Record(Type.String(), Type.Unknown()), records: artifactRefSchema }) }
+			collect: { instructions: "Use to collect records and forward them to the supplied continuation.", isEntrypoint: true, args: Type.Object({ query: Type.String(), next: workflowRefSchema({ args: Type.Object({ records: Type.String() }) }) }) },
+			finish: { isEntrypoint: false, args: Type.Object({ taskId: Type.String(), context: Type.Record(Type.String(), Type.Unknown()), records: Type.String() }) }
 		}`,
 		implementation: `{ workflows: {
 			caller: { execute: (_run, args) => manifest.workflows.collect({
 				query: "recent incidents", next: { workflow: manifest.workflows.finish.id, forwardArgs: args }
 			}) },
-			collect: { async execute(run, args) {
-				const records = await run.artifacts.write("records.json", JSON.stringify([args.query]));
+			collect: { async execute({ args, paths }) {
+				const records = "records.json";
+				await writeFile(join(paths.workspace, records), JSON.stringify([args.query]));
 				return args.next({ records });
 			} },
 			finish: { execute: (run, args) => run.complete({ data: args }) }
@@ -282,8 +283,7 @@ test("CLI and client inspection advertise contribution schemas without losing fo
 	const contributionPath = "properties.next.x-norn-workflow-ref.contributedArgsSchema";
 	expect(schema).toHaveProperty(`${contributionPath}.type`, "object");
 	expect(schema).toHaveProperty(`${contributionPath}.required`, ["records"]);
-	expect(schema).toHaveProperty(`${contributionPath}.properties.records.properties`, { path: { type: "string" } });
-	expect(schema).toHaveProperty(`${contributionPath}.properties.records.required`, ["path"]);
+	expect(schema).toHaveProperty(`${contributionPath}.properties.records.type`, "string");
 	expect(schema).toHaveProperty("properties.next.anyOf.1.properties.forwardArgs.type", "object");
 	expect(schema).toHaveProperty("properties.next.anyOf.1.properties.forwardArgs.patternProperties", { "^.*$": {} });
 	expect(schema).toHaveProperty("properties.next.anyOf.1.required", ["workflow", "forwardArgs"]);
@@ -294,8 +294,8 @@ test("CLI and client inspection advertise contribution schemas without losing fo
 	assert.equal(started.exitCode, 0, JSON.stringify(started.result));
 	const completed = (await executeCli<RunOutput>({ cwd, args: ["runs", "wait", started.result.run.id] })).result.run;
 	assert.equal(completed.status, "completed");
-	assert.deepEqual(completed.outcome?.metadata?.data, { ...args, records: { path: "records.json" } });
-	assert.deepEqual(JSON.parse(await readFile(join(completed.path, "current/artifacts/records.json"), "utf8")), ["recent incidents"]);
+	assert.deepEqual(completed.outcome?.metadata?.data, { ...args, records: "records.json" });
+	assert.deepEqual(JSON.parse(await readFile(join(completed.paths.workspace, "records.json"), "utf8")), ["recent incidents"]);
 });
 
 test("unrepresentable contributions fail inspection as schema diagnostics rather than plugin import errors", async context => {

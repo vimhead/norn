@@ -1,4 +1,4 @@
-import { artifactRefSchema, workflow, isWorkflowDeclaration, workflowRefSchema, type NornWorkflowRefSchemaOptions } from "@vimhead.dev/norn";
+import { workflow, isWorkflowDeclaration, workflowRefSchema, type NornWorkflowRefSchemaOptions } from "@vimhead.dev/norn";
 import { inspectSchema } from "@vimhead.dev/norn/schema";
 import assert from "node:assert/strict";
 import { Type } from "typebox";
@@ -56,7 +56,7 @@ test("optional reference properties remain optional in validation and inspection
 test("inspection advertises encoded contributions and invocation does not decode them", () => {
 	let decodes = 0;
 	const contributions = Type.Object({
-		records: artifactRefSchema,
+		records: Type.String(),
 		count: Type.Decode(Type.String(), value => { decodes++; return Number(value); }),
 		label: Type.Optional(Type.String({ default: "collected" })),
 	});
@@ -71,10 +71,10 @@ test("inspection advertises encoded contributions and invocation does not decode
 	expect(inspected).toHaveProperty("properties.next.x-norn-workflow-ref.contributedArgsSchema.properties.count.type", "string");
 	const forwardArgs = { taskId: "task-42", nested: { labels: ["one", "two"], enabled: false, absent: null } };
 	const next = Value.Decode(schema, { next: { workflow: "refs.finish", forwardArgs } }).next;
-	const contribution = { records: { path: "records.json" }, count: "2" };
+	const contribution = { records: "records.json", count: "2" };
 	assert.deepEqual(next(contribution).args, { ...forwardArgs, ...contribution });
 	assert.equal(decodes, 0);
-	assert.throws(() => Reflect.apply(next, undefined, [{ records: { path: "records.json" }, count: 2 }]));
+	assert.throws(() => Reflect.apply(next, undefined, [{ records: "records.json", count: 2 }]));
 });
 
 test("references without contributions advertise an empty object schema", () => {
@@ -99,10 +99,10 @@ test("optional, nullable and array references retain annotations and callable co
 
 test("nested references retain encoded payloads in contributed parameters", () => {
 	const finalContributions = Type.Object({ summary: Type.String() });
-	const contributions = Type.Object({ records: artifactRefSchema, next: workflowRefSchema({ args: finalContributions }) });
+	const contributions = Type.Object({ records: Type.String(), next: workflowRefSchema({ args: finalContributions }) });
 	const reference = workflowRefSchema({ args: contributions });
 	expect(inspectSchema(reference)).toHaveProperty("x-norn-workflow-ref.contributedArgsSchema.properties.next.x-norn-workflow-ref.contributedArgsSchema", inspectSchema(finalContributions));
-	const args = { records: { path: "records.json" }, next: { workflow: "refs.finish", forwardArgs: { batch: 1 } } };
+	const args = { records: "records.json", next: { workflow: "refs.finish", forwardArgs: { batch: 1 } } };
 	const transition = Value.Decode(reference, "intermediate")(args);
 	assert.deepEqual(transition.args, args);
 	assert.deepEqual(Value.Decode(contributions, transition.args).next({ summary: "done" }).args, { batch: 1, summary: "done" });

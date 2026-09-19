@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { reviewWorkflow } from "../review/execute.ts";
 import type { WorkflowResult } from "@vimhead.dev/norn";
 import { developmentLoopScope } from "../../scope.ts";
@@ -12,11 +13,9 @@ export const implementationWorkflow = developmentLoopScope.workflow({
 	instructions: "Apply one implementation pass in the current repository.",
 	args: implementationArgsSchema,
 	async execute({ args, paths, run }): Promise<WorkflowResult> {
-		const repositoryPath = resolve(paths.run, args.repositoryPath);
-		const planArtifact = args.planArtifact;
-		const plan = await run.artifacts.read(planArtifact);
-		const previousReviewArtifact = args.previousReviewArtifact;
-		const previousReview = previousReviewArtifact ? await run.artifacts.read(previousReviewArtifact) : undefined;
+		const repositoryPath = resolve(paths.workspace, args.repositoryPath);
+		const plan = await readFile(join(paths.workspace, args.planPath), "utf8");
+		const previousReview = args.previousReviewPath ? await readFile(join(paths.workspace, args.previousReviewPath), "utf8") : undefined;
 		const implementation = await run.agents.prompt({
 			label: `implementation-${args.iteration}`,
 			cwd: repositoryPath,
@@ -31,7 +30,8 @@ export const implementationWorkflow = developmentLoopScope.workflow({
 		});
 		await ensureCommandSucceeded(status);
 		const statusOutput = await run.logs.read(status.stdoutLog);
-		await run.artifacts.write(`implementation/iteration-${args.iteration}-status.txt`, statusOutput);
+		await mkdir(join(paths.workspace, "implementation"), { recursive: true });
+		await writeFile(join(paths.workspace, `implementation/iteration-${args.iteration}-status.txt`), statusOutput);
 		return reviewWorkflow({ ...args, implementationSummary: implementation.summary });
 	}
 });
