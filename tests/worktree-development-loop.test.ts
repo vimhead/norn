@@ -13,7 +13,7 @@ import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-r
 import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
 import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
 import { createRunFileCoordinator } from "../packages/cli/src/internal/file-coordinator.ts";
-import { NornRunContext } from "../packages/cli/src/internal/run.ts";
+import { NornExecutionContext } from "../packages/cli/src/internal/execution-context.ts";
 
 const execute = promisify(execFile);
 
@@ -39,7 +39,7 @@ async function createExampleRun(context: TestContext) {
 	const workspace = join(currentRoot, "workspace");
 	await mkdir(workspace, { recursive: true });
 	const files = createRunFileCoordinator(runRoot);
-	const run = new NornRunContext({
+	const execution = new NornExecutionContext({
 		id: "worktree-example",
 		runRoot: currentRoot,
 		responseCollector: new NornAgentResponseCollector(),
@@ -54,9 +54,9 @@ async function createExampleRun(context: TestContext) {
 		}),
 	});
 	const unexpectedAgentCall = new Error("Setup and routing tests must not prompt an agent");
-	vi.spyOn(run.agents, "prompt").mockRejectedValue(unexpectedAgentCall);
-	vi.spyOn(run.agents, "createSession").mockRejectedValue(unexpectedAgentCall);
-	return { root, paths: { project: root, workspace: workspace }, run };
+	vi.spyOn(execution.agents, "prompt").mockRejectedValue(unexpectedAgentCall);
+	vi.spyOn(execution.agents, "createSession").mockRejectedValue(unexpectedAgentCall);
+	return { root, context: { paths: { project: root, workspace }, run: execution.run, agents: execution.agents, commands: execution.commands, logs: execution.logs } };
 }
 
 async function createSourceRepository(root: string) {
@@ -77,10 +77,11 @@ async function createSourceRepository(root: string) {
 }
 
 test("worktree setup checks out the requested committed revision without changing the source repository", async context => {
-	const { root, paths, run } = await createExampleRun(context);
+	const { root, context: workflowContext } = await createExampleRun(context);
+	const { paths } = workflowContext;
 	const source = await createSourceRepository(root);
 	const args = { task: "Update the tracked file", baseRef: source.baseRevision, maxIterations: 3 };
-	const result = await developmentLoopWorkflow.execute({ args, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot: source.repositoryRoot } }, paths, run });
+	const result = await developmentLoopWorkflow.execute({ ...workflowContext, args, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot: source.repositoryRoot } } });
 	assert.deepEqual(result, planningWorkflow({ task: args.task, repositoryPath: "repo", maxIterations: 3 }));
 	const clone = join(paths.workspace, "repo");
 	assert.equal(await runGit({ cwd: clone, args: ["rev-parse", "HEAD"] }), source.baseRevision);
@@ -94,11 +95,11 @@ test("worktree setup checks out the requested committed revision without changin
 });
 
 test("worktree setup rejects a missing base revision before transitioning to planning", async context => {
-	const { root, paths, run } = await createExampleRun(context);
+	const { root, context: workflowContext } = await createExampleRun(context);
 	const { repositoryRoot } = await createSourceRepository(root);
-	await assert.rejects(async () => developmentLoopWorkflow.execute({ args: {
+	await assert.rejects(async () => developmentLoopWorkflow.execute({ ...workflowContext, args: {
 		task: "Do not reach planning", baseRef: "missing-base-revision", maxIterations: 3,
-	}, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot } }, paths, run }), /materialize-workspace-repository failed/);
+	}, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot } } }), /materialize-workspace-repository failed/);
 });
 
 test("the worktree review gate permits decision and summary patches", () => {
@@ -112,7 +113,8 @@ for (const scenario of [
 	{ decision: "revise", iteration: 3, resultType: "fail", status: "needs-attention", summary: "Maximum iteration count reached after 3 iteration(s)." },
 ] as const) {
 	test(`worktree review ${scenario.decision} at iteration ${scenario.iteration}/3 returns ${scenario.resultType}`, async context => {
-		const { paths, run } = await createExampleRun(context);
+		const { context: workflowContext } = await createExampleRun(context);
+		const { paths } = workflowContext;
 		const task = "Update the tracked file";
 		const planPath = "planning/plan.md";
 		await mkdir(join(paths.workspace, "planning"), { recursive: true });
@@ -125,7 +127,7 @@ for (const scenario of [
 			task, repositoryPath: "repo", maxIterations: 3, planPath, iteration: scenario.iteration, decision: scenario.decision,
 			summary: "Selected decision after checking evidence.", automatedReviewPath,
 		};
-		const result = await reviewRouterWorkflow.execute({ args, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot: paths.project } }, paths, run });
+		const result = await reviewRouterWorkflow.execute({ ...workflowContext, args, config: undefined, scope: { id: "worktreeDevelopmentLoop", config: { repositoryRoot: paths.project } } });
 		assert.equal(result.type, scenario.resultType);
 		const reviewPath = `review/iteration-${scenario.iteration}-decision.json`;
 		assert.deepEqual(JSON.parse(await readFile(join(paths.workspace, reviewPath), "utf8")), {

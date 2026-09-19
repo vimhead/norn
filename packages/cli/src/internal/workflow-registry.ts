@@ -1,4 +1,4 @@
-import { isWorkflowComplete, isWorkflowDeclaration, isWorkflowFail, isWorkflowNext, type NornAnyWorkflowDeclaration, type NornDispose, type NornInspectedWorkflowInfo, type NornRegisteredWorkflowInfo, type NornRunComplete, type NornRunFail, type NornRun, type NornRunNext, type NornWorkflowPaths, type NornWorkflowContext, type NornWorkflowGateInfo, type NornWorkflowSource, type NornWorkflowScopeInfo, type NornProjectConfigurationInfo } from "@vimhead.dev/norn";
+import { isWorkflowComplete, isWorkflowDeclaration, isWorkflowFail, isWorkflowNext, type NornAnyWorkflowDeclaration, type NornDispose, type NornInspectedWorkflowInfo, type NornRegisteredWorkflowInfo, type NornRunComplete, type NornRunFail, type NornRunNext, type NornWorkflowPaths, type NornWorkflowContext, type NornWorkflowGateInfo, type NornWorkflowSource, type NornWorkflowScopeInfo, type NornProjectConfigurationInfo } from "@vimhead.dev/norn";
 import { assertWorkflowMetadata, inspectSchema, isPlainObject, schemaShape, schemaType, unwrapSchema } from "@vimhead.dev/norn/schema";
 import type { TSchema } from "typebox";
 import { Value } from "typebox/value";
@@ -43,7 +43,7 @@ export type NornWorkflowStepResult =
 	| { readonly type: "fail"; readonly workflow: NornAnyWorkflowDeclaration; readonly metadata: NornRunFail["metadata"] };
 
 type NornExecutionContextInput = {
-	readonly run: NornRun;
+	readonly execution: Pick<NornWorkflowContext, "run" | "agents" | "commands" | "logs">;
 	readonly paths: NornWorkflowPaths;
 	readonly args: unknown;
 	readonly configOverride: unknown;
@@ -129,14 +129,17 @@ export class NornWorkflowRegistry {
 	}
 
 	private createExecutionContext(input: NornExecutionContextInput & { readonly entry: NornRegisteredWorkflow }): NornWorkflowContext {
-		const { entry, run, paths, configOverride } = input;
+		const { entry, execution, paths, configOverride } = input;
 		const scope = entry.scopeId ? this.scopes.get(entry.scopeId) : undefined;
 		return {
 			args: Value.Decode(entry.workflow.args, input.args),
 			config: parseExecutionConfig(entry.configuration, configOverride),
 			...(scope ? { scope: { id: scope.definition.id, config: parseExecutionConfig(scope.configuration, configOverride) } } : {}),
 			paths,
-			run,
+			run: execution.run,
+			agents: execution.agents,
+			commands: execution.commands,
+			logs: execution.logs,
 		};
 	}
 

@@ -29,7 +29,7 @@ Supply `id`, `args`, `isEntrypoint`, and `execute` explicitly. Standalone IDs ar
 
 `instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare args and config with [TypeBox schemas](schemas.md). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
 
-`execute(context)` receives inferred `args`, `config`, `scope`, `paths`, and `run`. Gate descriptions receive the same context:
+Destructure the properties needed by the step from `execute(context)`. Gate descriptions receive the same inferred context:
 
 | Property | Value |
 |---|---|
@@ -37,9 +37,14 @@ Supply `id`, `args`, `isEntrypoint`, and `execute` explicitly. Standalone IDs ar
 | `config` | Decoded workflow-local configuration, or `undefined` without a schema |
 | `scope` | `{ id, config }` for scoped workflows; the property is absent for standalone workflows |
 | `paths` | Absolute `project` and `workspace` directories; see [filesystem boundaries](persistence.md#filesystem-boundaries) |
-| `run` | Run control, agents, commands, and logs |
+| `agents` | `prompt` and `createSession`; see [Norn agents](agents.md) |
+| `commands` | `run` for recorded command execution |
+| `logs` | `read(logRef)` for recorded output |
+| `run` | Run identity (`id`) and control (`next`, `complete`, `fail`) |
 
-It returns one control result:
+Helpers can accept `NornAgents`, `NornCommands`, or `NornLogs` from the SDK when they need only that capability.
+
+Execution returns one control result:
 
 | Control | Meaning |
 |---|---|
@@ -121,10 +126,10 @@ const repeat = workflow({
 
 ## Commands
 
-`run.commands.run` requires an absolute `cwd`, accepts a shell string or an executable/argument tuple, records stdout/stderr logs, and returns exit status and bounded output tails:
+`commands.run` requires an absolute `cwd`, accepts a shell string or an executable/argument tuple, records stdout/stderr logs, and returns exit status and bounded output tails:
 
 ```ts
-const verification = await run.commands.run({
+const verification = await commands.run({
   label: "verify",
   cwd: paths.project,
   command: ["npm", "test"],
@@ -139,7 +144,7 @@ if (verification.exitCode !== 0) {
 return run.complete({ summary: "Verification passed." });
 ```
 
-This fragment checks the project in place. To check a prepared copy instead, supply its absolute directory as `cwd`; see [workspace setup](persistence.md#filesystem-boundaries).
+Use `logs.read(verification.stdoutLog)` to read the recorded stdout. This fragment checks the project in place. To check a prepared copy instead, supply its absolute directory as `cwd`; see [workspace setup](persistence.md#filesystem-boundaries).
 
 | Decision | GOOD | BAD |
 |---|---|---|

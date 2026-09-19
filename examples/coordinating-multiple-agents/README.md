@@ -20,7 +20,7 @@ const queue = await WorkQueue.open({
   createToken: randomUUID,
 });
 const queueTools = createQueueTools({ queue });
-const agentSession = await run.agents.createSession({
+const agentSession = await agents.createSession({
   label: "summary-1",
   cwd: paths.workspace,
   customTools: queueTools,

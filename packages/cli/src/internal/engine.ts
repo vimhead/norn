@@ -22,7 +22,7 @@ import { NornRunLease } from "./run-lease.ts";
 import { NornRunLogger } from "./run-log.ts";
 import { assertRunVersion, getRunInfo, mergeInterruptedWorkflowArgs, NornRunStateStore, resolveRunRoot, type NornRunState } from "./run-state.ts";
 import { NornRunStore, runCurrentRoot } from "./run-store.ts";
-import { NornRunContext } from "./run.ts";
+import { NornExecutionContext } from "./execution-context.ts";
 import { NornWorkflowRegistry, type NornRegisteredWorkflow, type NornWorkflowStepResult } from "./workflow-registry.ts";
 
 const RUNS_DIR_NAME = ".norn";
@@ -40,7 +40,7 @@ export type NornEngineInput = {
 type RunSession = {
 	readonly runRoot: string;
 	readonly cwd: string;
-	readonly run: NornRunContext;
+	readonly execution: NornExecutionContext;
 	readonly paths: NornWorkflowPaths;
 	readonly state: NornRunStateStore;
 	readonly lease: NornRunLease;
@@ -185,12 +185,12 @@ export class NornEngine {
 			for (let step = 1; step <= 1_000; step++) {
 				throwIfRunAborted(session.activeRun);
 				if (shouldPauseForGate(currentStep)) {
-					const description = await this.registry.describeGate({ workflow: currentStep.workflow, run: session.run, paths: session.paths, args: currentStep.args, configOverride: session.state.currentState().configOverride });
+					const description = await this.registry.describeGate({ workflow: currentStep.workflow, execution: session.execution, paths: session.paths, args: currentStep.args, configOverride: session.state.currentState().configOverride });
 					const interruption = { description, fields: currentStep.workflow.gate?.fields };
 					await session.state.interruptCurrent(currentStep.args, interruption);
 					await recordRunEvent(session, { type: "run.interrupted", workflowId: currentStep.workflow.id });
 					await commitRunBoundary(session, `run interrupted: ${currentStep.workflow.id}`);
-					return interruptedLaunchResult({ id: session.run.id, name: session.state.currentState().name, workspace: session.paths.workspace, cwd: session.cwd }, currentStep.workflow, currentStep.args, interruption);
+					return interruptedLaunchResult({ id: session.execution.run.id, name: session.state.currentState().name, workspace: session.paths.workspace, cwd: session.cwd }, currentStep.workflow, currentStep.args, interruption);
 				}
 				await session.state.startStep(toRunStateStep(currentStep));
 				const stepResult = await this.executeWorkflowStep(session, currentStep);
@@ -199,12 +199,12 @@ export class NornEngine {
 					await session.state.completeRun(stepResult.workflow.id, stepResult.metadata);
 					await recordRunEvent(session, { type: "run.completed", workflowId: stepResult.workflow.id, metadata: stepResult.metadata });
 					await commitRunBoundary(session, `run completed: ${stepResult.workflow.id}`);
-					return { status: "completed", id: session.run.id, name: session.state.currentState().name, workspace: session.paths.workspace, cwd: session.cwd, workflowId: stepResult.workflow.id, metadata: stepResult.metadata };
+					return { status: "completed", id: session.execution.run.id, name: session.state.currentState().name, workspace: session.paths.workspace, cwd: session.cwd, workflowId: stepResult.workflow.id, metadata: stepResult.metadata };
 				}
 				if (stepResult.type === "fail") {
 					await session.state.failRun(stepResult.workflow.id, stepResult.metadata);
 					await recordRunEvent(session, { type: "run.failed", workflowId: stepResult.workflow.id, metadata: stepResult.metadata });
-					return { status: "failed", id: session.run.id, name: session.state.currentState().name, workspace: session.paths.workspace, cwd: session.cwd, workflowId: stepResult.workflow.id, metadata: stepResult.metadata };
+					return { status: "failed", id: session.execution.run.id, name: session.state.currentState().name, workspace: session.paths.workspace, cwd: session.cwd, workflowId: stepResult.workflow.id, metadata: stepResult.metadata };
 				}
 				const nextStep = this.nextWorkflowStep(stepResult);
 				await session.state.completeWithNext(currentStep.workflow.id, toRunStateStep(nextStep));
@@ -217,7 +217,7 @@ export class NornEngine {
 			if (isRunStopped(session, error)) {
 				await session.state.stopCurrent();
 				await recordRunEvent(session, { type: "run.stopped", workflowId: currentStep.workflow.id });
-				return { status: "stopped", id: session.run.id, name: session.state.currentState().name, workspace: session.paths.workspace, cwd: session.cwd, workflowId: currentStep.workflow.id };
+				return { status: "stopped", id: session.execution.run.id, name: session.state.currentState().name, workspace: session.paths.workspace, cwd: session.cwd, workflowId: currentStep.workflow.id };
 			}
 			await session.state.failCurrent(errorMessage(error));
 			await recordRunEvent(session, { type: "run.failed", workflowId: currentStep.workflow.id, error: errorMessage(error) });
@@ -233,7 +233,7 @@ export class NornEngine {
 		try {
 			await assertWorkspaceBoundary(session, session.paths.workspace);
 			await recordRunEvent(session, { type: "workflow.started", workflowId: step.workflow.id });
-			const result = await this.registry.execute({ workflow: step.workflow, run: session.run, paths: session.paths, args: step.args, configOverride: session.state.currentState().configOverride });
+			const result = await this.registry.execute({ workflow: step.workflow, execution: session.execution, paths: session.paths, args: step.args, configOverride: session.state.currentState().configOverride });
 			await assertWorkspaceBoundary(session, session.paths.workspace);
 			const durationMs = Date.now() - startedAtMs;
 			if (result.type === "complete") await recordRunEvent(session, { type: "workflow.completed", workflowId: result.workflow.id, durationMs, metadata: result.metadata });
@@ -289,7 +289,7 @@ export class NornEngine {
 				initialCwd: cwd,
 				startedAt,
 			} });
-			const run = await this.buildRun({ id, currentRoot, paths, signal: activeRun.controller.signal, logger });
+			const execution = await this.buildExecutionContext({ id, currentRoot, paths, signal: activeRun.controller.signal, logger });
 			const state = await NornRunStateStore.create(runRoot, {
 				projectRoot: paths.project,
 				id,
@@ -303,7 +303,7 @@ export class NornEngine {
 				},
 				startedAt,
 			});
-			const session = { runRoot, cwd, run, paths, state, lease, runStore, logger, activeRun };
+			const session = { runRoot, cwd, execution, paths, state, lease, runStore, logger, activeRun };
 			await logger.record({ type: "run.started", workflowId: workflow.id, cwd, workspace });
 			await commitRunBoundary(session, `run started: ${workflow.id}`);
 			return session;
@@ -324,26 +324,26 @@ export class NornEngine {
 			const currentRoot = runCurrentRoot(runRoot);
 			const logger = await NornRunLogger.load(join(currentRoot, MANIFEST_FILE_NAME), createRunFileCoordinator(runRoot));
 			const paths: NornWorkflowPaths = { project: currentState.projectRoot ?? resolve(runRoot, "../../.."), workspace: currentState.workspace };
-			const run = await this.buildRun({ id: currentState.id, currentRoot, paths, signal: activeRun.controller.signal, logger });
-			return { runRoot, cwd: process.cwd(), run, paths, state, lease, runStore, logger, activeRun };
+			const execution = await this.buildExecutionContext({ id: currentState.id, currentRoot, paths, signal: activeRun.controller.signal, logger });
+			return { runRoot, cwd: process.cwd(), execution, paths, state, lease, runStore, logger, activeRun };
 		} catch (error) {
 			this.failActiveRun(runRoot, activeRun);
 			throw error;
 		}
 	}
 
-	private async buildRun(input: {
+	private async buildExecutionContext(input: {
 		readonly id: string;
 		readonly currentRoot: string;
 		readonly paths: NornWorkflowPaths;
 		readonly signal: AbortSignal;
 		readonly logger: NornRunLogger;
-	}): Promise<NornRunContext> {
+	}): Promise<NornExecutionContext> {
 		const logsRoot = join(input.currentRoot, "logs");
 		await mkdir(input.paths.workspace, { recursive: true });
 		await mkdir(logsRoot, { recursive: true });
 		const files = createRunFileCoordinator(dirname(input.currentRoot));
-		return new NornRunContext({
+		return new NornExecutionContext({
 			id: input.id,
 			runRoot: input.currentRoot,
 			signal: input.signal,

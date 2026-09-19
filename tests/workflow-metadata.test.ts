@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Type } from "typebox";
 import { test } from "vitest";
-import { workflow, type NornAnyWorkflowDeclaration, type NornRun } from "@vimhead.dev/norn";
+import { workflow, type NornAnyWorkflowDeclaration, type NornWorkflowContext } from "@vimhead.dev/norn";
 import { NornWorkflowRegistry } from "../packages/cli/src/internal/workflow-registry.ts";
 
 function createWorkflow({ instructions, isEntrypoint = true, gate }: { instructions?: unknown; isEntrypoint?: boolean; gate?: { enabled: true; describe?: () => string } }) {
@@ -12,9 +12,8 @@ function createWorkflow({ instructions, isEntrypoint = true, gate }: { instructi
 }
 function register(registry: NornWorkflowRegistry, workflow: NornAnyWorkflowDeclaration) { return registry.register({ workflow, config: {}, source: undefined }); }
 function unexpectedRunOperation(): never { throw new Error("These gate descriptions must not invoke run operations"); }
-const run: NornRun = {
-	id: "metadata",
-	next: unexpectedRunOperation, complete: unexpectedRunOperation, fail: unexpectedRunOperation,
+const execution: Pick<NornWorkflowContext, "run" | "agents" | "commands" | "logs"> = {
+	run: { id: "metadata", next: unexpectedRunOperation, complete: unexpectedRunOperation, fail: unexpectedRunOperation },
 	logs: { read: unexpectedRunOperation }, commands: { run: unexpectedRunOperation },
 	agents: { createSession: unexpectedRunOperation, prompt: unexpectedRunOperation },
 };
@@ -48,12 +47,12 @@ test("gate fallback is the workflow ID, not caller instructions", async () => {
 	const registry = new NornWorkflowRegistry();
 	const definition = createWorkflow({ instructions: "Use to collect records, not as a gate decision request.", gate: { enabled: true } });
 	register(registry, definition);
-	assert.equal(await registry.describeGate({ workflow: definition, run, paths: { project: "/project", workspace: "/workspace" }, args: {}, configOverride: undefined }), definition.id);
+	assert.equal(await registry.describeGate({ workflow: definition, execution, paths: { project: "/project", workspace: "/workspace" }, args: {}, configOverride: undefined }), definition.id);
 });
 test("gate descriptions remain independent from caller instructions", async () => {
 	const registry = new NornWorkflowRegistry();
 	const definition = createWorkflow({ instructions: "Use to collect records.", gate: { enabled: true, describe: () => "Check the collected evidence before proceeding." } });
 	register(registry, definition);
-	assert.equal(await registry.describeGate({ workflow: definition, run, paths: { project: "/project", workspace: "/workspace" }, args: {}, configOverride: undefined }), "Check the collected evidence before proceeding.");
+	assert.equal(await registry.describeGate({ workflow: definition, execution, paths: { project: "/project", workspace: "/workspace" }, args: {}, configOverride: undefined }), "Check the collected evidence before proceeding.");
 	assert.equal(registry.inspect(definition.id)?.instructions, "Use to collect records.");
 });

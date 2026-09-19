@@ -11,9 +11,9 @@ export const planningWorkflow = developmentLoopScope.workflow({
 	isEntrypoint: false,
 	instructions: "Create an implementation plan for a repository task.",
 	args: planningArgsSchema,
-	async execute({ args, paths, run }): Promise<WorkflowResult> {
+	async execute({ args, paths, agents }): Promise<WorkflowResult> {
 		const repositoryPath = resolve(paths.workspace, args.repositoryPath);
-		const planning = await run.agents.prompt({
+		const planning = await agents.prompt({
 			label: "planning",
 			cwd: repositoryPath,
 			tools: ["read", "grep", "find", "ls"],

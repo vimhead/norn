@@ -12,20 +12,20 @@ export const reviewWorkflow = developmentLoopScope.workflow({
 	isEntrypoint: false,
 	instructions: "Review the current repository boundary changes.",
 	args: reviewArgsSchema,
-	async execute({ args, paths, run }): Promise<WorkflowResult> {
+	async execute({ args, paths, agents, commands, logs }): Promise<WorkflowResult> {
 		const repositoryPath = resolve(paths.workspace, args.repositoryPath);
 		const implementationSummary = args.implementationSummary;
 		const plan = await readFile(join(paths.workspace, args.planPath), "utf8");
-		const diff = await run.commands.run({
+		const diff = await commands.run({
 			label: `review-${args.iteration}-diff`,
 			cwd: repositoryPath,
 			command: "git status --short && git diff --stat HEAD -- . && git diff HEAD -- .",
 		});
 		await ensureCommandSucceeded(diff);
-		const diffOutput = await run.logs.read(diff.stdoutLog);
+		const diffOutput = await logs.read(diff.stdoutLog);
 		await mkdir(join(paths.workspace, "review"), { recursive: true });
 		await writeFile(join(paths.workspace, `review/iteration-${args.iteration}-diff.txt`), diffOutput);
-		const review = await run.agents.prompt({
+		const review = await agents.prompt({
 			label: `review-${args.iteration}`,
 			cwd: repositoryPath,
 			tools: ["read", "grep", "find", "ls", "bash"],

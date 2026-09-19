@@ -9,8 +9,8 @@ id: "check",
 isEntrypoint: true,
 instructions: "Exercise a configured provider in a native worker.",
 args: Type.Object({}),
-async execute({ paths, run }) {
-				const result = await run.agents.prompt({ label: "check", cwd: paths.workspace, tools: [], prompt: "Return ok", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
+async execute({ paths, agents, run }) {
+				const result = await agents.prompt({ label: "check", cwd: paths.workspace, tools: [], prompt: "Return ok", response: Type.Object({ ok: Type.Boolean() }), maxAttempts: 1 });
 				const resultPath = "result.json";
 				await writeFile(join(paths.workspace, resultPath), JSON.stringify(result));
 				return run.complete({ data: { resultPath } });

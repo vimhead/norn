@@ -79,6 +79,9 @@ export type NornWorkflowContext<
 	readonly args: StaticDecode<ArgsSchema>;
 	readonly config: WorkflowConfig<ConfigSchema>;
 	readonly paths: NornWorkflowPaths;
+	readonly agents: NornAgents;
+	readonly commands: NornCommands;
+	readonly logs: NornLogs;
 	readonly run: NornRun;
 } & (Scope extends NornWorkflowScopeInfo ? {
 	readonly scope: { readonly id: Scope["id"]; readonly config: WorkflowConfig<Scope["config"]> };
@@ -467,16 +470,19 @@ export type NornRun = {
 	next(workflowId: string, args: unknown): NornRunNext;
 	complete(metadata?: NornRunOutcomeMetadata): NornRunComplete;
 	fail(metadata: NornRunOutcomeMetadata & { readonly summary: string }): NornRunFail;
-	logs: {
-		read(log: NornLogRef): Promise<string>;
-	};
-	commands: {
-		run(input: NornCommandRunInput): Promise<NornCommandRunResult>;
-	};
-	agents: {
-		createSession(input: NornAgentCreateSessionInput): Promise<NornAgentSession>;
-		prompt<ResponseSchema extends TSchema>(input: NornAgentSinglePromptInput<ResponseSchema>): Promise<StaticDecode<ResponseSchema>>;
-	};
+};
+
+export type NornLogs = {
+	read(log: NornLogRef): Promise<string>;
+};
+
+export type NornCommands = {
+	run(input: NornCommandRunInput): Promise<NornCommandRunResult>;
+};
+
+export type NornAgents = {
+	createSession(input: NornAgentCreateSessionInput): Promise<NornAgentSession>;
+	prompt<ResponseSchema extends TSchema>(input: NornAgentSinglePromptInput<ResponseSchema>): Promise<StaticDecode<ResponseSchema>>;
 };
 
 export type NornWorkflowSource = {

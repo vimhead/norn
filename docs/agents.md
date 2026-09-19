@@ -17,7 +17,7 @@ installs its Pi dependency automatically; no separate Pi installation is needed.
 
 ## One prompt or a retained session
 
-`run.agents.prompt({ label, cwd, prompt, response, ...sessionOptions })` creates a Pi session for one prompt and returns the value described by the response schema, including any codec transformations—not `{ response, raw }`. You do not need to dispose this one-prompt session. See [schema input/output types](schemas.md#codecs-and-inputoutput-types).
+Destructure `agents` from the [workflow context](workflows.md#define-a-workflow). `agents.prompt({ label, cwd, prompt, response, ...sessionOptions })` creates a Pi session for one prompt and returns the value described by the response schema, including any codec transformations—not `{ response, raw }`. You do not need to dispose this one-prompt session. See [schema input/output types](schemas.md#codecs-and-inputoutput-types).
 
 Both session creation and one-prompt calls require an absolute `cwd`; choose from the workflow's [paths](persistence.md#filesystem-boundaries) or supply another prepared directory. For follow-up turns in the same conversation:
 
@@ -25,7 +25,7 @@ Both session creation and one-prompt calls require an absolute `cwd`; choose fro
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const agentSession = await run.agents.createSession({
+const agentSession = await agents.createSession({
   label: "implementation",
   cwd: paths.workspace,
   tools: ["read", "bash", "edit", "write"],
@@ -70,7 +70,7 @@ Both session creation and one-shot prompting accept Pi `ToolDefinition` objects 
 `customTools` registers definitions; an explicit `tools` array selects enabled names across built-in, custom, and loaded extension tools. The response tool is always included. `tools: []` requests only that response tool, even when custom definitions are supplied. Omitting `tools` uses Pi's configured default tools (`read`, `bash`, `edit`, `write` when unconfigured), plus custom and extension tools.
 
 ```ts
-const result = await run.agents.prompt({
+const result = await agents.prompt({
   label: "lookup",
   cwd: paths.workspace,
   customTools: [lookupTool],
@@ -91,7 +91,7 @@ return run.complete({ summary: result.summary });
 
 ## Prompts, tools, and resource loading
 
-Each session loads resources for its `cwd` and [Norn configuration](providers.md#norn-configuration). Installed provider extensions register before default-model selection. Both `run.agents.createSession` and `run.agents.prompt` accept per-session `model` and `thinkingLevel` overrides; omitted values use Pi's configured selection and defaults. Discoverable settings, skills, context files, and extensions can therefore affect it. It does **not** inherit the outer conversation or its in-memory tool registrations. Loaded extensions may change active tools; the requested tool list alone is not an adversarial restriction.
+Each session loads resources for its `cwd` and [Norn configuration](providers.md#norn-configuration). Installed provider extensions register before default-model selection. Both `agents.createSession` and `agents.prompt` accept per-session `model` and `thinkingLevel` overrides; omitted values use Pi's configured selection and defaults. Discoverable settings, skills, context files, and extensions can therefore affect it. It does **not** inherit the outer conversation or its in-memory tool registrations. Loaded extensions may change active tools; the requested tool list alone is not an adversarial restriction.
 
 `systemPrompt` replaces the base prompt; `appendSystemPrompt` adds to resource-loader append content. Pi's default self-documentation block is absent with a custom base prompt. Context files and applicable skill advertisements can still be appended by Pi. Norn currently does not automatically inject a Norn authoring bootstrap.
 

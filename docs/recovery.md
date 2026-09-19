@@ -53,7 +53,7 @@ A workflow can declare:
 gate: { enabled: true, fields: ["decision", "notes"] }
 ```
 
-Its args schema must include those top-level fields. An optional `gate.describe({ args, config, scope, run })` callback explains the decision, with the same inferred context as `execute`; standalone workflows have no `scope` property. The CLI uses pause mode: a gate interrupts **before** execution, including direct starts of a gated workflow.
+Its args schema must include those top-level fields. An optional `gate.describe(context)` callback explains the decision, with the same inferred [workflow context](workflows.md#define-a-workflow) as `execute`; standalone workflows have no `scope` property. The CLI uses pause mode: a gate interrupts **before** execution, including direct starts of a gated workflow.
 
 Resume stdin has the form `{"args":{"decision":"accept","notes":"Evidence checked"}}`. With declared `fields`, the patch merges into saved object args and rejects non-gate keys; without `fields`, resume supplies replacement args. The merged/replacement value is schema-validated. A gate is a persisted control boundary, not an automatic human approval mechanism or an authorization system.
 

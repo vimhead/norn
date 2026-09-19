@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative } from "node:path";
 import { Type } from "typebox";
 import { test, type TestContext } from "vitest";
-import { workflow, workflowScope, type NornWorkflowPaths } from "@vimhead.dev/norn";
+import { workflow, workflowScope, type NornWorkflowPaths, type NornWorkflowContext } from "@vimhead.dev/norn";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
 
 async function createDirectory(context: TestContext) {
@@ -17,15 +17,30 @@ test("standalone execution, scoped gates, and resumed execution share absolute p
 	const project = await createDirectory(context);
 	await writeFile(join(project, "source.txt"), "original project");
 	const expectedPaths: NornWorkflowPaths = { project, workspace: join(project, ".norn/runs/paths/current/workspace") };
+	let firstExecution: Pick<NornWorkflowContext, "agents" | "commands" | "logs" | "run"> | undefined;
 	const scope = workflowScope({ id: "paths" });
 	const finish = scope.workflow({
 		id: "finish", isEntrypoint: false, args: Type.Object({}),
-		gate: { enabled: true, describe({ scope, paths }) {
+		gate: { enabled: true, async describe({ scope, paths, agents, commands, logs, run }) {
 			assert.equal(scope.id, "paths");
 			assert.deepEqual(paths, expectedPaths);
+			assert.ok(firstExecution);
+			assert.strictEqual(agents, firstExecution.agents);
+			assert.strictEqual(commands, firstExecution.commands);
+			assert.strictEqual(logs, firstExecution.logs);
+			assert.strictEqual(run, firstExecution.run);
+			const evidence = await commands.run({ label: "gate-evidence", cwd: paths.workspace, command: [process.execPath, "-e", 'process.stdout.write("Ready for review")'] });
+			assert.equal(evidence.exitCode, 0);
+			assert.equal(await logs.read(evidence.stdoutLog), "Ready for review");
 			return JSON.stringify(paths);
 		} },
-		async execute({ paths, run }) {
+		async execute({ paths, agents, commands, logs, run }) {
+			assert.deepEqual(Object.keys(run).sort(), ["complete", "fail", "id", "next"]);
+			assert.equal(typeof agents.createSession, "function");
+			assert.equal(typeof agents.prompt, "function");
+			assert.equal(typeof commands.run, "function");
+			assert.equal(typeof logs.read, "function");
+			assert.equal(run.id, "paths");
 			assert.deepEqual(paths, expectedPaths);
 			await writeFile(join(paths.project, "source.txt"), "changed project");
 			await writeFile(join(paths.workspace, "work.txt"), "changed workspace");
@@ -35,7 +50,9 @@ test("standalone execution, scoped gates, and resumed execution share absolute p
 	});
 	const start = workflow({
 		id: "start", isEntrypoint: false, args: Type.Object({}),
-		async execute({ paths }) {
+		async execute(context) {
+			firstExecution = context;
+			const { paths } = context;
 			assert.deepEqual(paths, expectedPaths);
 			assert.ok(isAbsolute(paths.project) && isAbsolute(paths.workspace));
 			assert.deepEqual(await readdir(paths.workspace), []);
@@ -67,12 +84,13 @@ test("one workflow chooses project, run, and external command directories explic
 	const external = await createDirectory(context);
 	const check = workflow({
 		id: "directories", isEntrypoint: false, args: Type.Object({}),
-		async execute({ paths, run }) {
+		async execute({ paths, commands, logs, run }) {
 			for (const cwd of [paths.project, paths.workspace, external]) {
-				const result = await run.commands.run({ label: "pwd", cwd, command: [process.execPath, "-e", "process.stdout.write(process.cwd())"] });
+				const result = await commands.run({ label: "pwd", cwd, command: [process.execPath, "-e", "process.stdout.write(process.cwd())"] });
 				assert.equal(result.exitCode, 0);
 				assert.equal(result.cwd, cwd);
 				assert.equal(result.stdoutTail, cwd);
+				assert.equal(await logs.read(result.stdoutLog), cwd);
 			}
 			return run.complete();
 		},
@@ -86,10 +104,10 @@ test("commands and agents reject missing or relative cwd rather than selecting a
 	const project = await createDirectory(context);
 	const check = workflow({
 		id: "explicit-cwd", isEntrypoint: false, args: Type.Object({}),
-		async execute({ run }) {
+		async execute({ agents, commands, run }) {
 			for (const cwd of [undefined, "", ".", "../other"]) {
-				await assert.rejects(Reflect.apply(run.commands.run, undefined, [{ label: "invalid", cwd, command: [process.execPath, "--version"] }]), /cwd.*must be an absolute path/);
-				await assert.rejects(Reflect.apply(run.agents.createSession, undefined, [{ label: "invalid", cwd }]), /cwd.*must be an absolute path/);
+				await assert.rejects(Reflect.apply(commands.run, undefined, [{ label: "invalid", cwd, command: [process.execPath, "--version"] }]), /cwd.*must be an absolute path/);
+				await assert.rejects(Reflect.apply(agents.createSession, undefined, [{ label: "invalid", cwd }]), /cwd.*must be an absolute path/);
 			}
 			return run.complete();
 		},

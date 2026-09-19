@@ -65,7 +65,7 @@ test("real npm tarballs provide public imports, exact dependencies, offline docs
 	assert.ok(intro.includes(JSON.stringify(documentation.paths.index)));
 	await assert.rejects(access(cacheRoot), { code: "ENOENT" });
 	await writeFile(join(consumer, "consumer.ts"), `
-import { workflow, workflowScope, workflowRefSchema, type NornRun } from "@vimhead.dev/norn";
+import { workflow, workflowScope, workflowRefSchema, type NornRun, type NornAgents, type NornCommands, type NornLogs } from "@vimhead.dev/norn";
 import { createNornClient } from "@vimhead.dev/norn-cli/client";
 import { Type } from "typebox";
 declare const run: NornRun;
@@ -78,7 +78,8 @@ args: Type.Object({
     count: Type.Decode(Type.String(), text => Number(text)),
     next: workflowRefSchema({ args: Type.Object({ report: Type.String() }) }),
   }),
-async execute({ args, scope, paths, run }) {
+async execute({ args, scope, paths, agents, commands, logs, run }) {
+  const capabilities: [NornAgents, NornCommands, NornLogs] = [agents, commands, logs];
   const project: string = paths.project;
   const workspace: string = paths.workspace;
   const count: number = args.count;
@@ -99,9 +100,9 @@ workflow({ id: "standalone", isEntrypoint: false, args: Type.Object({}), execute
   const project: string = context.paths.project;
   const workspace: string = context.paths.workspace;
   // @ts-expect-error Commands require cwd.
-  context.run.commands.run({ label: "check", command: ["pwd"] });
+  context.commands.run({ label: "check", command: ["pwd"] });
   // @ts-expect-error Agent sessions require cwd.
-  context.run.agents.createSession({ label: "check" });
+  context.agents.createSession({ label: "check" });
   return context.run.complete();
 } });
 const client = createNornClient({ spawnCwd: process.cwd() });

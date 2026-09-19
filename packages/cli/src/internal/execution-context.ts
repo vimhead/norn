@@ -1,5 +1,5 @@
 import type { CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
-import type { NornRunOutcomeMetadata, NornRun } from "@vimhead.dev/norn";
+import type { NornAgents, NornCommands, NornLogs, NornRun } from "@vimhead.dev/norn";
 import { createWorkflowTransition } from "@vimhead.dev/norn-core/workflow-transition";
 import type { NornAgentResponseCollector } from "./agent-response-tool.ts";
 import { NornAgentRunner } from "./agents.ts";
@@ -7,7 +7,7 @@ import { NornCommandRunner } from "./commands.ts";
 import type { NornRunLogs } from "./logs.ts";
 import type { NornRunLogger } from "./run-log.ts";
 
-type DefaultNornRunInput = {
+type NornExecutionContextInput = {
 	readonly id: string;
 	readonly runRoot: string;
 	readonly signal?: AbortSignal;
@@ -19,34 +19,38 @@ type DefaultNornRunInput = {
 	readonly logs: NornRunLogs;
 };
 
-export class NornRunContext implements NornRun {
-	readonly logs: NornRun["logs"];
-	readonly commands: NornRun["commands"];
-	readonly agents: NornRun["agents"];
-	readonly id: string;
+export class NornExecutionContext {
+	readonly run: NornRun;
+	readonly logs: NornLogs;
+	readonly commands: NornCommands;
+	readonly agents: NornAgents;
 
-	constructor(private readonly input: DefaultNornRunInput) {
-		this.id = input.id;
+	constructor(private readonly input: NornExecutionContextInput) {
+		this.run = {
+			id: input.id,
+			next: (workflowId, args) => createWorkflowTransition({ workflowId, args }),
+			complete: metadata => ({ type: "complete", metadata }),
+			fail: metadata => ({ type: "fail", metadata }),
+		};
 		this.logs = {
-			read: (log) => this.input.logs.read(log),
+			read: log => this.input.logs.read(log),
 		};
 		this.commands = {
-			run: (commandInput) =>
-				new NornCommandRunner({
-					signal: this.input.signal,
-					logs: this.input.logs,
-					logger: this.input.logger,
-				}).run(commandInput),
+			run: commandInput => new NornCommandRunner({
+				signal: this.input.signal,
+				logs: this.input.logs,
+				logger: this.input.logger,
+			}).run(commandInput),
 		};
 		this.agents = {
-			createSession: (agentInput) => this.createAgentRunner().createSession(agentInput),
-			prompt: (agentInput) => this.createAgentRunner().prompt(agentInput),
+			createSession: agentInput => this.createAgentRunner().createSession(agentInput),
+			prompt: agentInput => this.createAgentRunner().prompt(agentInput),
 		};
 	}
 
 	private createAgentRunner(): NornAgentRunner {
 		return new NornAgentRunner({
-			id: this.id,
+			id: this.input.id,
 			runRoot: this.input.runRoot,
 			signal: this.input.signal,
 			model: this.input.model,
@@ -56,17 +60,5 @@ export class NornRunContext implements NornRun {
 			logger: this.input.logger,
 			responseCollector: this.input.responseCollector,
 		});
-	}
-
-	next(workflowId: string, args: unknown): ReturnType<NornRun["next"]> {
-		return createWorkflowTransition({ workflowId, args });
-	}
-
-	complete(metadata?: NornRunOutcomeMetadata): ReturnType<NornRun["complete"]> {
-		return { type: "complete", metadata };
-	}
-
-	fail(metadata: NornRunOutcomeMetadata & { readonly summary: string }): ReturnType<NornRun["fail"]> {
-		return { type: "fail", metadata };
 	}
 }

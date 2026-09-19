@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Type, type StaticDecode, type StaticEncode } from "typebox";
 import { Value } from "typebox/value";
 import { expectTypeOf, test, type TestContext } from "vitest";
-import { workflow, workflowScope, workflowRefSchema, type NornRun, type NornWorkflowArgs, type NornWorkflowArgsInput, type WorkflowResult } from "@vimhead.dev/norn";
+import { workflow, workflowScope, workflowRefSchema, type NornRun, type NornAgents, type NornCommands, type NornLogs, type NornWorkflowArgs, type NornWorkflowArgsInput, type WorkflowResult } from "@vimhead.dev/norn";
 import { inspectSchema } from "@vimhead.dev/norn/schema";
 import { NornAgentResponseCollector } from "../packages/cli/src/internal/agent-response-tool.ts";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
@@ -19,6 +19,9 @@ const step = workflow({
 	execute(context) {
 		expectTypeOf(context.args).toEqualTypeOf<{ count: number }>();
 		expectTypeOf(context.config).toEqualTypeOf<undefined>();
+		expectTypeOf(context.agents).toEqualTypeOf<NornAgents>();
+		expectTypeOf(context.commands).toEqualTypeOf<NornCommands>();
+		expectTypeOf(context.logs).toEqualTypeOf<NornLogs>();
 		assert.equal("scope" in context, false);
 		return context.run.complete({ data: context.args });
 	},
@@ -57,9 +60,9 @@ function verifyAuthoringTypes(run: NornRun, reference: StaticDecode<typeof conti
 		expectTypeOf(context.paths.project).toEqualTypeOf<string>();
 		expectTypeOf(context.paths.workspace).toEqualTypeOf<string>();
 		// @ts-expect-error Commands require an explicit working directory.
-		context.run.commands.run({ label: "check", command: ["pwd"] });
+		context.commands.run({ label: "check", command: ["pwd"] });
 		// @ts-expect-error Agent sessions require an explicit working directory.
-		context.run.agents.createSession({ label: "check" });
+		context.agents.createSession({ label: "check" });
 		return context.run.complete();
 	} });
 	const scope = workflowScope({ id: "empty" });

@@ -14,7 +14,7 @@ export const copy = copyScope.workflow({
 	isEntrypoint: true,
 	instructions: "A Norn agent reads explicitly shared source and writes a copy, then a separate workflow verifies exact equality from a workspace SQLite database.",
 	args: Type.Object({ source: Type.String({ minLength: 1, maxLength: 500 }) }),
-	async execute({ args, paths, run }) {
+	async execute({ args, paths, agents }) {
 		const state = await SharedState.open({ path: join(paths.workspace, "state.sqlite"), create: true });
 		try {
 			await state.set(sourceField, args.source);
@@ -22,7 +22,7 @@ export const copy = copyScope.workflow({
 				{ field: sourceField, access: "read" },
 				{ field: copyField, access: "write" },
 			] });
-			await run.agents.prompt({
+			await agents.prompt({
 				label: "copy", cwd: paths.workspace,
 				customTools: stateTools,
 				tools: stateTools.map(tool => tool.name),

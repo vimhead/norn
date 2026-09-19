@@ -27,8 +27,8 @@ export const draft = scope.workflow({
 	isEntrypoint: true,
 	instructions: "Summarize a supplied source, save the draft, and independently assess its support and omissions. Returns workspace-relative draftPath and analysisPath plus an assessment; needs-revision is a completed assessment, not an approved summary.",
 	args: Type.Object({ source: Type.String({ minLength: 1 }) }),
-	async execute({ args, paths, run }) {
-		const draft = await run.agents.prompt({
+	async execute({ args, paths, agents }) {
+		const draft = await agents.prompt({
 			label: "draft",
 			cwd: paths.workspace,
 			tools: [],
@@ -49,7 +49,7 @@ export const analyze = scope.workflow({
 	id: "analyze",
 	isEntrypoint: false,
 	args: Type.Object({ draftPath: Type.String() }),
-	async execute({ args, paths, run }) {
+	async execute({ args, paths, agents, run }) {
 		const savedDraft = Value.Parse(savedDraftSchema, JSON.parse(await readFile(join(paths.workspace, args.draftPath), "utf8")));
 		const invalidQuotations = savedDraft.draft.quotations.filter(quotation => !savedDraft.source.includes(quotation));
 		if (invalidQuotations.length > 0) {
@@ -58,7 +58,7 @@ export const analyze = scope.workflow({
 				data: { draftPath: args.draftPath, invalidQuotations },
 			});
 		}
-		const analysis = await run.agents.prompt({
+		const analysis = await agents.prompt({
 			label: "analysis",
 			cwd: paths.workspace,
 			tools: [],

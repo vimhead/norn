@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { workflowScope, type NornAgentSession, type NornRun, type WorkflowResult } from "@vimhead.dev/norn";
+import { workflowScope, type NornAgentSession, type NornAgents, type WorkflowResult } from "@vimhead.dev/norn";
 import { Type, type StaticDecode } from "typebox";
 import { createQueueTools } from "./queue-tools.ts";
 import { noteSchema, WorkQueue } from "./work-queue.ts";
@@ -30,14 +30,14 @@ export const work = scope.workflow({
 	id: "work",
 	isEntrypoint: false,
 	args: Type.Object({ ...inputSchema.properties, round: Type.Integer({ minimum: 0, maximum: 12 }) }, { additionalProperties: false }),
-	async execute({ args, paths, run }): Promise<WorkflowResult> {
+	async execute({ args, paths, agents, run }): Promise<WorkflowResult> {
 		const queue = await openQueue({ workspace: paths.workspace, create: false });
 		try {
 			const before = await queue.inspect();
 			if (before.items.length !== args.notes.length) return run.fail({ summary: "Queue inventory differs from the supplied notes." });
 			if (before.acknowledged === args.notes.length) return verify({ notes: args.notes });
 			if (before.leased > 0 || args.round >= args.notes.length) return run.fail({ summary: "Unfinished claims or exhausted rounds; inspect queue and agent logs before recovery." });
-			const reports = await processRound({ run, cwd: paths.workspace, queue, round: args.round });
+			const reports = await processRound({ agents, cwd: paths.workspace, queue, round: args.round });
 			await mkdir(join(paths.workspace, "rounds"), { recursive: true });
 			await writeFile(join(paths.workspace, `rounds/${args.round}.json`), JSON.stringify(reports, null, 2));
 			const after = await queue.inspect();
@@ -81,14 +81,14 @@ function openQueue(input: { readonly workspace: string; readonly create: boolean
 	return WorkQueue.open({ path: join(input.workspace, "queue.sqlite"), create: input.create, leaseDurationMs: 300_000, now: Date.now, createToken: randomUUID });
 }
 
-async function processRound(input: { readonly run: NornRun; readonly cwd: string; readonly queue: WorkQueue; readonly round: number; }) {
+async function processRound(input: { readonly agents: NornAgents; readonly cwd: string; readonly queue: WorkQueue; readonly round: number; }) {
 	const sessions: NornAgentSession[] = [];
 	const reports: StaticDecode<typeof workerReportSchema>[] = [];
 	const errors: unknown[] = [];
 	try {
 		for (const worker of [1, 2]) {
 			const queueTools = createQueueTools({ queue: input.queue });
-			sessions.push(await input.run.agents.createSession({
+			sessions.push(await input.agents.createSession({
 				label: `round-${input.round}-worker-${worker}`,
 				cwd: input.cwd,
 				customTools: queueTools,

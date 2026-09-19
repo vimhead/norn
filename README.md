@@ -22,8 +22,8 @@ through the CLI from any harness. Agents run on the bundled
      isEntrypoint: true,
      instructions: "Summarize supplied text and save the result.",
      args: Type.Object({ text: Type.String() }),
-     async execute({ args, paths, run }) {
-       const summary = await run.agents.prompt({
+     async execute({ args, paths, agents, run }) {
+       const summary = await agents.prompt({
          label: "summarize",
          cwd: paths.workspace,
          tools: [],
