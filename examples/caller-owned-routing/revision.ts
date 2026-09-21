@@ -5,7 +5,7 @@ import { headingSchema, outlineContributionSchema } from "./contracts.ts";
 export const appendHeading = workflow({
 	name: "appendHeading",
 	entrypoint: {
-		instructions: "Append one empty level-two Markdown section named heading to outline, then pass the revised outline to the caller-selected next workflow. Does not assess the outline or select further work; no model or external service is used.",
+		instructions: "Use when a Markdown outline needs one additional empty section before further processing. Appends the requested level-two heading and passes the revised outline to your continuation; does not write section content or assess the result.",
 	},
 	args: Type.Object({
 		...outlineContributionSchema.properties,

@@ -29,7 +29,7 @@ import { Type } from "typebox";
 
 export const greet = workflow({
   name: "greet",
-  entrypoint: { instructions: "Return a greeting for the supplied name." },
+  entrypoint: { instructions: "Use when you need a personalized greeting returned as the run summary, without writing a file or calling a model." },
   args: Type.Object({ name: Type.String() }),
   execute({ args, run }) {
     return run.complete({ summary: `Hello, ${args.name}!` });
@@ -43,7 +43,13 @@ Supply `name`, `args`, `entrypoint`, and `execute` explicitly. Use `entrypoint: 
 
 Workflow and scope names must be nonempty and cannot contain dots. A standalone workflow's ID is its name; a scoped workflow's ID is `<scope name>.<workflow name>`. Declarations expose the resolved `id`; CLI commands, references, and `run.next` use that exact ID, without implicit scope lookup.
 
-`entrypoint.instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare args and config with [TypeBox schemas](schemas.md). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
+`entrypoint.instructions` is a short capability-selection description, like a skill's short description—not an execution plan, a Norn agent system prompt, or a gate decision.
+
+| Decision | GOOD | BAD |
+|---|---|---|
+| IF exposing an entrypoint, THEN lead with “Use when…” and the caller's need, followed by the useful result and only prerequisites, effects, or limits that affect selection. ELSE keep the step internal with `entrypoint: false`. | “Use when you need a source-grounded summary checked for unsupported claims. Saves a draft and an assessment; completion does not imply approval. Requires model access.” | “Call the draft agent, write JSON, then invoke the analysis workflow.” |
+
+Declare args and config with [TypeBox schemas](schemas.md) rather than listing their fields in the description. Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
 
 Destructure the properties needed by the step from `execute(context)`. Gate descriptions receive the same inferred context:
 

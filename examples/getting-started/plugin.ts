@@ -5,7 +5,7 @@ import { Type } from "typebox";
 
 export const summarize = workflow({
 	name: "summarize",
-	entrypoint: { instructions: "Summarize staged and unstaged tracked changes relative to HEAD in an absolute repositoryPath. Requires Git and an existing commit; untracked files are excluded. Saves workspace-relative summaryPath and retains the diff log. A nonempty diff is sent to the configured model; an empty diff needs no model call." },
+	entrypoint: { instructions: "Use when you need a saved summary of staged and unstaged tracked changes in a Git repository before review or handoff. Compares against HEAD, excludes untracked files, and does not edit the repository. Requires an existing commit and model access for nonempty diffs." },
 	args: Type.Object({ repositoryPath: Type.String({ minLength: 1 }) }),
 	async execute({ args, paths, commands, logs, agents, run }) {
 		const diff = await commands.run({

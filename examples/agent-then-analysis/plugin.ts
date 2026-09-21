@@ -24,7 +24,7 @@ const analysisSchema = Type.Object({
 const scope = workflowScope({ name: "sourceSummary" });
 export const draft = scope.workflow({
 	name: "draft",
-	entrypoint: { instructions: "Summarize a supplied source, save the draft, and independently assess its support and omissions. Returns workspace-relative draftPath and analysisPath plus an assessment; needs-revision is a completed assessment, not an approved summary." },
+	entrypoint: { instructions: "Use when you need a source-grounded summary checked for unsupported claims and omitted qualifications. Saves the draft and an independent assessment; a completed run may still report needs-revision. Requires model access." },
 	args: Type.Object({ source: Type.String({ minLength: 1 }) }),
 	async execute({ args, paths, agents }) {
 		const draft = await agents.prompt({

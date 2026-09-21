@@ -5,7 +5,7 @@ import { assessmentContributionSchema, headingsSchema, outlineContributionSchema
 export const assessOutline = workflow({
 	name: "assessOutline",
 	entrypoint: {
-		instructions: "Check an outline for exact, case-sensitive '## heading' lines from requiredHeadings. Pass outline, requiredHeadings, and missingHeadings to the caller-selected next workflow. Reports heading presence only, not content quality; no model or external service is used.",
+		instructions: "Use when you need to identify missing level-two headings in a Markdown outline before deciding whether to accept or revise it. Reports missing required headings to your continuation using exact, case-sensitive line matching; does not assess prose quality or decide acceptance.",
 	},
 	args: Type.Object({
 		...outlineContributionSchema.properties,

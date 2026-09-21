@@ -5,7 +5,7 @@ import { Type } from "typebox";
 
 export const write = workflow({
 	name: "greet",
-	entrypoint: { instructions: "Write a greeting file for the supplied name. Returns the greeting text and its workspace-relative greetingPath; no agent or external service is used." },
+	entrypoint: { instructions: "Use when you need a personalized greeting saved as a local file with no model or external service. Completes with the greeting text and workspace-relative file path." },
 	args: Type.Object({ name: Type.Decode(Type.String({ pattern: "\\S" }), value => value.trim()) }),
 	async execute({ args, paths, run }) {
 		const greeting = `Hello, ${args.name}!`;

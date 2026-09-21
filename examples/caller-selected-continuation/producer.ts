@@ -11,7 +11,7 @@ export const greetingContributionSchema = Type.Object({
 const scope = workflowScope({ name: "greetingProducer" });
 export const write = scope.workflow({
 	name: "write",
-	entrypoint: { instructions: "Write a greeting file for name, then invoke the caller-selected next workflow with workspace-relative resultPath and summary. The continuation owns completion; no model or external service is used." },
+	entrypoint: { instructions: "Use when a later workflow needs a personalized greeting file and should decide what happens next. Passes the workspace-relative file path and summary to your continuation instead of completing the run." },
 	args: Type.Object({
 		name: Type.String({ minLength: 1 }),
 		next: workflowRefSchema({ args: greetingContributionSchema }),
