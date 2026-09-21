@@ -8,7 +8,7 @@ import { ensureCommandSucceeded } from "../../shared/commands.ts";
 import { implementationAgentResponseSchema } from "./schema.ts";
 
 export const implementationWorkflow = developmentLoopScope.workflow({
-	id: "implementation",
+	name: "implementation",
 	isEntrypoint: false,
 	instructions: "Apply one implementation pass in the current repository.",
 	args: implementationArgsSchema,

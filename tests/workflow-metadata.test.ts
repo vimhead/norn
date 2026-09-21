@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { Type } from "typebox";
 import { test } from "vitest";
-import { workflow, type NornAnyWorkflowDeclaration, type NornWorkflowContext } from "@vimhead.dev/norn";
+import { workflowScope, type NornAnyWorkflowDeclaration, type NornWorkflowContext } from "@vimhead.dev/norn";
 import { NornWorkflowRegistry } from "../packages/cli/src/internal/workflow-registry.ts";
 
+const metadata = workflowScope({ name: "metadata" });
+
 function createWorkflow({ instructions, isEntrypoint = true, gate }: { instructions?: unknown; isEntrypoint?: boolean; gate?: { enabled: true; describe?: () => string } }) {
-	const definition = workflow({ id: "metadata.step", isEntrypoint: true, instructions: "Fixture instructions", args: Type.Object({}), gate, execute: ({ run }) => run.complete() });
+	const definition = metadata.workflow({ name: "step", isEntrypoint: true, instructions: "Fixture instructions", args: Type.Object({}), gate, execute: ({ run }) => run.complete() });
 	Reflect.set(definition, "isEntrypoint", isEntrypoint);
 	Reflect.set(definition, "instructions", instructions);
 	return definition;
@@ -33,9 +35,9 @@ test("internal steps may omit instructions but supplied instructions must be non
 });
 test("discovery sorts IDs and publishes caller instructions and config ownership", () => {
 	const definitions = [
-		workflow({ id: "metadata.zebra", isEntrypoint: true, instructions: "Alpha guidance for the last workflow.", args: Type.Object({}), execute: ({ run }) => run.complete() }),
-		workflow({ id: "metadata.middle", isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() }),
-		workflow({ id: "metadata.alpha", isEntrypoint: true, instructions: "Zebra guidance for the first workflow.", args: Type.Object({}), execute: ({ run }) => run.complete() }),
+		metadata.workflow({ name: "zebra", isEntrypoint: true, instructions: "Alpha guidance for the last workflow.", args: Type.Object({}), execute: ({ run }) => run.complete() }),
+		metadata.workflow({ name: "middle", isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() }),
+		metadata.workflow({ name: "alpha", isEntrypoint: true, instructions: "Zebra guidance for the first workflow.", args: Type.Object({}), execute: ({ run }) => run.complete() }),
 	];
 	const registry = new NornWorkflowRegistry();
 	for (const definition of definitions) register(registry, definition);

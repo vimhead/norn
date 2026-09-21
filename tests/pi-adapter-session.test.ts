@@ -147,15 +147,15 @@ test("Pi loads runtime-selected context before the first prompt and refreshes it
 	const invoke = <Output>(args: readonly string[]): Output => JSON.parse(execFileSync(invocation[0], [...invocation.slice(1), ...args], { cwd: fixture.cwd, encoding: "utf8", timeout: 30_000 }));
 	await writeFile(join(fixture.cwd, "norn.project.json"), JSON.stringify({ version: 1, workflows: [] }));
 	assert.deepEqual(invoke<NornWorkflowCatalogInfo>(["workflows", "list"]).workflows, []);
-	const plugin = (await readFile(join(packageRoot, "examples/minimal-workflow/plugin.ts"), "utf8")).replace('id: "greeting.write"', 'id: "fresh.write"');
+	const plugin = (await readFile(join(packageRoot, "examples/minimal-workflow/plugin.ts"), "utf8")).replace('name: "greet"', 'name: "freshGreeting"');
 	await writeFile(join(fixture.cwd, "plugin.ts"), plugin);
 	await writeFile(join(fixture.cwd, "norn.project.json"), JSON.stringify({ version: 1, workflows: ["./plugin.ts"] }));
-	assert.deepEqual(invoke<NornWorkflowCatalogInfo>(["workflows", "list"]).workflows.map(workflow => workflow.id), ["fresh.write"]);
-	const inspection = invoke<NornWorkflowInspection>(["workflows", "inspect", "fresh.write"]);
+	assert.deepEqual(invoke<NornWorkflowCatalogInfo>(["workflows", "list"]).workflows.map(workflow => workflow.id), ["freshGreeting"]);
+	const inspection = invoke<NornWorkflowInspection>(["workflows", "inspect", "freshGreeting"]);
 	assert.ok(inspection.workflow);
-	assert.equal(inspection.workflow.id, "fresh.write");
+	assert.equal(inspection.workflow.id, "freshGreeting");
 	assert.deepEqual(inspection.workflow.argsSchema.required, ["name"]);
-	assert.ok(!first.includes("fresh.write"));
+	assert.ok(!first.includes("freshGreeting"));
 
 	await session.prompt("Next ordinary task");
 	assert.ok(lastRequest(captured).systemPrompt.includes('Version: "9.9.9"'));

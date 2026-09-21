@@ -8,9 +8,9 @@ export const greetingContributionSchema = Type.Object({
 	summary: Type.String(),
 });
 
-const scope = workflowScope({ id: "greetingProducer" });
+const scope = workflowScope({ name: "greetingProducer" });
 export const write = scope.workflow({
-	id: "write",
+	name: "write",
 	isEntrypoint: true,
 	instructions: "Write a greeting file for name, then invoke the caller-selected next workflow with workspace-relative resultPath and summary. The continuation owns completion; no model or external service is used.",
 	args: Type.Object({

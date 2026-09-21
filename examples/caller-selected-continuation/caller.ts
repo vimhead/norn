@@ -9,9 +9,9 @@ const deliveryArgsSchema = Type.Object({
 	...greetingContributionSchema.properties,
 });
 
-const scope = workflowScope({ id: "greetingConsumer" });
+const scope = workflowScope({ name: "greetingConsumer" });
 export const saveJson = scope.workflow({
-	id: "saveJson",
+	name: "saveJson",
 	isEntrypoint: false,
 	args: deliveryArgsSchema,
 	async execute({ args, paths, run }) {
@@ -29,7 +29,7 @@ export const saveJson = scope.workflow({
 	}
 });
 export const saveText = scope.workflow({
-	id: "saveText",
+	name: "saveText",
 	isEntrypoint: false,
 	args: deliveryArgsSchema,
 	async execute({ args, paths, run }) {

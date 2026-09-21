@@ -77,7 +77,7 @@ test("compiled binary resolves complete offline docs without source and runs an 
 	await cp(join(documentation.paths.examples, "minimal-workflow"), projectRoot, { recursive: true });
 	assert.equal((await invoke(["project", "inspect"], projectRoot)).isComplete, true);
 	const launch = await new Promise<{ run: NornRunInfo }>((resolve, reject) => {
-		const child = execFile(binary, ["runs", "start", "greeting.write"], { cwd: projectRoot, env: environment, timeout: 30_000 }, (error, stdout) => {
+		const child = execFile(binary, ["runs", "start", "greet"], { cwd: projectRoot, env: environment, timeout: 30_000 }, (error, stdout) => {
 			if (error) reject(error);
 			else { try { resolve(JSON.parse(stdout)); } catch (parseError) { reject(parseError); } }
 		});
@@ -110,10 +110,10 @@ import { Value } from "typebox/value";
 import { Compile } from "typebox/compile";
 import { Check } from "typebox/schema";
 const result = Type.Object({ count: Type.Integer(), origin: Type.String() });
-const manifestScope = workflowScope({ id: "native" });
+const manifestScope = workflowScope({ name: "native" });
 const countField = { id: "count", schema: Type.Integer() };
 const manifest_check = manifestScope.workflow({
-id: "check",
+name: "check",
 isEntrypoint: true,
 instructions: "Exercise detached TypeBox imports and decoding.",
 args: Type.Object({
@@ -144,19 +144,19 @@ async execute({ args, paths }) {
   }
 });
 const manifest_finish = manifestScope.workflow({
-id: "finish",
+name: "finish",
 isEntrypoint: false,
 args: result,
 execute: ({ args: args, run: _run }) => manifest_dynamic(args)
 });
 const manifest_dynamic = manifestScope.workflow({
-id: "dynamic",
+name: "dynamic",
 isEntrypoint: false,
 args: result,
 execute: ({ args: args, run: run }) => run.next("native.done", args)
 });
 const manifest_done = manifestScope.workflow({
-id: "done",
+name: "done",
 isEntrypoint: false,
 args: result,
 execute: ({ args, paths, run }) => run.complete({ data: { ...args, paths, cwd: process.cwd() } })

@@ -88,12 +88,12 @@ export type NornWorkflowContext<
 } : {});
 
 export type NornWorkflowDefinition<
-	Id extends string = string,
+	Name extends string = string,
 	ArgsSchema extends TSchema = TSchema,
 	ConfigSchema extends TSchema | undefined = undefined,
 	Scope extends NornWorkflowScopeInfo | undefined = undefined,
 > = {
-	readonly id: Id;
+	readonly name: Name;
 	readonly args: ArgsSchema;
 	readonly config?: ConfigSchema;
 	readonly gate?: NornWorkflowGate<ArgsSchema> & {
@@ -107,48 +107,48 @@ export type NornWorkflowScopeInfo = {
 	readonly config?: TSchema;
 };
 
-export type NornWorkflowScope<Id extends string, ConfigSchema extends TSchema | undefined> = {
-	readonly id: Id;
+export type NornWorkflowScope<Name extends string, ConfigSchema extends TSchema | undefined> = {
+	readonly id: Name;
 	readonly config: ConfigSchema;
-	workflow<const LocalId extends string, ArgsSchema extends TSchema, LocalConfig extends TSchema | undefined = undefined>(
-		definition: NornWorkflowDefinition<LocalId, ArgsSchema, LocalConfig, { readonly id: Id; readonly config: ConfigSchema }>,
-	): NornWorkflowDeclaration<`${Id}.${LocalId}`, ArgsSchema, LocalConfig, { readonly id: Id; readonly config: ConfigSchema }>;
+	workflow<const LocalName extends string, ArgsSchema extends TSchema, LocalConfig extends TSchema | undefined = undefined>(
+		definition: NornWorkflowDefinition<LocalName, ArgsSchema, LocalConfig, { readonly id: Name; readonly config: ConfigSchema }>,
+	): NornWorkflowDeclaration<`${Name}.${LocalName}`, ArgsSchema, LocalConfig, { readonly id: Name; readonly config: ConfigSchema }>;
 };
 
 export function workflow<
-	const Id extends string,
+	const Name extends string,
 	ArgsSchema extends TSchema,
 	ConfigSchema extends TSchema | undefined = undefined,
->(definition: NornWorkflowDefinition<Id, ArgsSchema, ConfigSchema>): NornWorkflowDeclaration<Id, ArgsSchema, ConfigSchema, undefined> {
-	return createWorkflow({ definition, scope: undefined });
+>(definition: NornWorkflowDefinition<Name, ArgsSchema, ConfigSchema>): NornWorkflowDeclaration<Name, ArgsSchema, ConfigSchema, undefined> {
+	return createWorkflow({ definition, id: definition.name, scope: undefined });
 }
 
 function createWorkflow<Id extends string, ArgsSchema extends TSchema, ConfigSchema extends TSchema | undefined, Scope extends NornWorkflowScopeInfo | undefined>(
-	input: { readonly definition: NornWorkflowDefinition<Id, ArgsSchema, ConfigSchema, Scope>; readonly scope: Scope },
+	input: { readonly definition: NornWorkflowDefinition<string, ArgsSchema, ConfigSchema, Scope>; readonly id: Id; readonly scope: Scope },
 ): NornWorkflowDeclaration<Id, ArgsSchema, ConfigSchema, Scope> {
-	const { definition, scope } = input;
-	assertDeclarationId(definition.id);
-	const callable = (args: StaticEncode<ArgsSchema>): NornRunNext => createWorkflowTransition({ workflowId: definition.id, args });
-	const result = Object.assign(callable, definition, {
+	const { definition: { name, ...properties }, id, scope } = input;
+	assertDeclarationName(name);
+	const callable = (args: StaticEncode<ArgsSchema>): NornRunNext => createWorkflowTransition({ workflowId: id, args });
+	const result = Object.assign(callable, properties, {
 		kind: WORKFLOW_DECLARATION_KIND,
+		id,
 		scope,
 	}) as NornWorkflowDeclaration<Id, ArgsSchema, ConfigSchema, Scope>;
-	if (!isWorkflowDeclaration(result)) throw new Error(`Invalid workflow definition: ${definition.id}`);
+	if (!isWorkflowDeclaration(result)) throw new Error(`Invalid workflow definition: ${id}`);
 	assertWorkflowMetadata(result);
 	return result;
 }
 
-export function workflowScope<const Id extends string, ConfigSchema extends TSchema | undefined = undefined>(
-	input: { readonly id: Id; readonly config?: ConfigSchema },
-): NornWorkflowScope<Id, ConfigSchema> {
-	assertDeclarationId(input.id);
-	const scope = { id: input.id, config: input.config as ConfigSchema };
+export function workflowScope<const Name extends string, ConfigSchema extends TSchema | undefined = undefined>(
+	input: { readonly name: Name; readonly config?: ConfigSchema },
+): NornWorkflowScope<Name, ConfigSchema> {
+	assertDeclarationName(input.name);
+	const scope = { id: input.name, config: input.config as ConfigSchema };
 	return {
-		id: input.id,
-		config: input.config as ConfigSchema,
+		id: scope.id,
+		config: scope.config,
 		workflow(definition) {
-			assertDeclarationId(definition.id);
-			return createWorkflow({ definition: { ...definition, id: `${input.id}.${definition.id}` }, scope });
+			return createWorkflow({ definition, id: `${scope.id}.${definition.name}`, scope });
 		},
 	};
 }
@@ -558,8 +558,8 @@ export type NornProjectInfo = {
 	readonly modules: readonly NornWorkflowSource[];
 };
 
-function assertDeclarationId(id: string): void {
-	if (typeof id !== "string" || id.trim().length === 0 || id.split(".").some(segment => segment.length === 0)) throw new Error(`Invalid workflow or scope id: ${id}`);
+function assertDeclarationName(name: string): void {
+	if (typeof name !== "string" || name.trim().length === 0 || name.includes(".")) throw new Error(`Invalid workflow or scope name: ${name}; expected a nonempty name without dots`);
 }
 
 export function isWorkflowDeclaration(value: unknown): value is NornAnyWorkflowDeclaration {

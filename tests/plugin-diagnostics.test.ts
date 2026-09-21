@@ -25,10 +25,10 @@ function createPluginSource({ id, workflows = "{ step: { instructions: \"Use to 
 		.replaceAll("manifest.workflows", "steps");
 	return `import { workflowScope } from "@vimhead.dev/norn";
 import { Type } from "typebox";
-const scope = workflowScope({ id: ${JSON.stringify(id)}, config: ${configSchema} });
+const scope = workflowScope({ name: ${JSON.stringify(id)}, config: ${configSchema} });
 const declarations = ${workflows};
 const callbacks = ${callbacks};
-const steps = Object.fromEntries(Object.entries(declarations).map(([id, definition]) => [id, scope.workflow({ ...definition, ...callbacks.workflows[id], id })]));
+const steps = Object.fromEntries(Object.entries(declarations).map(([name, definition]) => [name, scope.workflow({ ...definition, ...callbacks.workflows[name], name })]));
 export default Object.values(steps);`;
 }
 

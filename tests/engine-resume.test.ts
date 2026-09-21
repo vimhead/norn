@@ -17,16 +17,16 @@ async function createInterruptedRun(context: TestContext) {
 	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	const controller = new AbortController();
 	const engine = new NornEngine({ cwd, gateMode: "pause", signal: controller.signal });
-	const manifestScope = workflowScope({ id: "resumeTest" });
+	const manifestScope = workflowScope({ name: "resumeTest" });
 const manifest_start = manifestScope.workflow({
-id: "start",
+name: "start",
 isEntrypoint: true,
 instructions: "Use to start a gated test run.",
 args: Type.Object({}),
 execute: () => manifest_decision({ decision: "reject", evidence: "original" })
 });
 const manifest_decision = manifestScope.workflow({
-id: "decision",
+name: "decision",
 isEntrypoint: false,
 args: Type.Object({ decision: Type.Enum(["accept", "reject"]), evidence: Type.String() }),
 gate: { enabled: true, fields: ["decision"] , describe: () => "Accept or reject the evidence." },

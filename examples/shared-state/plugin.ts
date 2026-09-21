@@ -5,12 +5,12 @@ import { Type } from "typebox";
 import { SharedState } from "./shared-state.ts";
 import { createStateTools } from "./state-tools.ts";
 
-const copyScope = workflowScope({ id: "sharedState" });
+const copyScope = workflowScope({ name: "sharedState" });
 const sourceField = { id: "source", schema: Type.String() };
 const copyField = { id: "copiedText", schema: Type.String() };
 
 export const copy = copyScope.workflow({
-	id: "copy",
+	name: "copy",
 	isEntrypoint: true,
 	instructions: "A Norn agent reads explicitly shared source and writes a copy, then a separate workflow verifies exact equality from a workspace SQLite database.",
 	args: Type.Object({ source: Type.String({ minLength: 1, maxLength: 500 }) }),
@@ -37,7 +37,7 @@ export const copy = copyScope.workflow({
 	},
 });
 export const verify = copyScope.workflow({
-	id: "verify", isEntrypoint: false, args: Type.Object({}),
+	name: "verify", isEntrypoint: false, args: Type.Object({}),
 	async execute({ paths, run }) {
 		const state = await SharedState.open({ path: join(paths.workspace, "state.sqlite"), create: false });
 		try {

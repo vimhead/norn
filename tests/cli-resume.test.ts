@@ -30,9 +30,9 @@ import { workflow, workflowScope } from "@vimhead.dev/norn";
 import { Type, type TSchema, type Static, type StaticEncode, type StaticDecode } from "typebox";
 import { Value } from "typebox/value";
 if (process.argv.includes("execute-run")) await new Promise(resolve => setTimeout(resolve, 1800));
-const manifestScope = workflowScope({ id: "cli" });
+const manifestScope = workflowScope({ name: "cli" });
 const manifest_decide = manifestScope.workflow({
-id: "decide",
+name: "decide",
 instructions: "Use to supply the test decision.",
 isEntrypoint: true,
 args: Type.Object({ answer: Type.Boolean() }),

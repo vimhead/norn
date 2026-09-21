@@ -71,7 +71,7 @@ async function verifyCwd(paths) {
   return cwd;
 }
 const start = workflow({
-  id: "start", isEntrypoint: true, instructions: "Check execution directories.", args: Type.Object({}),
+  name: "start", isEntrypoint: true, instructions: "Check execution directories.", args: Type.Object({}),
   async execute({ paths, run }) {
     const cwd = await verifyCwd(paths);
     await writeFile(join(paths.workspace, "start.txt"), cwd);
@@ -79,7 +79,7 @@ const start = workflow({
   },
 });
 const finish = workflow({
-  id: "finish", isEntrypoint: false, args: Type.Object({}),
+  name: "finish", isEntrypoint: false, args: Type.Object({}),
   gate: { enabled: true, async describe({ paths }) { return await verifyCwd(paths); } },
   async execute({ paths, run }) {
     const cwd = await verifyCwd(paths);

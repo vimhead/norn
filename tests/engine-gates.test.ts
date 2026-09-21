@@ -12,9 +12,9 @@ import { readOptionalRunResumeRequest, writeRunResumeRequest, type NornRunResume
 async function createFixture(context: TestContext, gateMode: "pause" | "auto" | undefined, isEntrypoint: boolean) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-gate-test-"));
 	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
-	const manifestScope = workflowScope({ id: "gates" });
+	const manifestScope = workflowScope({ name: "gates" });
 const manifest_decide = manifestScope.workflow({
-id: "decide",
+name: "decide",
 instructions: "Use to supply the test decision.",
 isEntrypoint,
 args: Type.Object({ answer: Type.Boolean() }),

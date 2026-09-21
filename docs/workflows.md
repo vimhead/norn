@@ -13,7 +13,7 @@ import { workflow } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 
 export const greet = workflow({
-  id: "greet",
+  name: "greet",
   isEntrypoint: true,
   instructions: "Return a greeting for the supplied name.",
   args: Type.Object({ name: Type.String() }),
@@ -25,7 +25,9 @@ export const greet = workflow({
 export default [greet];
 ```
 
-Supply `id`, `args`, `isEntrypoint`, and `execute` explicitly. Standalone IDs are used as-is. Entrypoints need nonempty caller-facing `instructions`; internal steps may omit them. `isEntrypoint` controls default catalogue visibility, not authorization: the CLI can start a known internal workflow ID directly.
+Supply `name`, `args`, `isEntrypoint`, and `execute` explicitly. Entrypoints need nonempty caller-facing `instructions`; internal steps may omit them. `isEntrypoint` controls default catalogue visibility, not authorization: the CLI can start a known internal workflow ID directly.
+
+Workflow and scope names must be nonempty and cannot contain dots. A standalone workflow's ID is its name; a scoped workflow's ID is `<scope name>.<workflow name>`. Declarations expose the resolved `id`; CLI commands, references, and `run.next` use that exact ID, without implicit scope lookup.
 
 `instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare args and config with [TypeBox schemas](schemas.md). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
 
@@ -71,12 +73,12 @@ import { workflowScope } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 
 export const reports = workflowScope({
-  id: "reports",
+  name: "reports",
   config: Type.Object({ path: Type.String() }),
 });
 
 export const save = reports.workflow({
-  id: "save",
+  name: "save",
   isEntrypoint: false,
   args: Type.Object({ text: Type.String() }),
   config: Type.Object({ filename: Type.String() }),
@@ -113,7 +115,7 @@ import { workflow, type WorkflowResult } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 
 const repeat = workflow({
-  id: "repeat",
+  name: "repeat",
   isEntrypoint: false,
   args: Type.Object({ remaining: Type.Integer() }),
   execute({ args, run }): WorkflowResult {

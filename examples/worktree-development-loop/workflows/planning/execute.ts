@@ -7,7 +7,7 @@ import { planningArgsSchema } from "./schema.ts";
 import { planningAgentResponseSchema } from "./schema.ts";
 
 export const planningWorkflow = developmentLoopScope.workflow({
-	id: "planning",
+	name: "planning",
 	isEntrypoint: false,
 	instructions: "Create an implementation plan for a repository task.",
 	args: planningArgsSchema,

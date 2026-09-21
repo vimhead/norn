@@ -8,7 +8,7 @@ import { ensureCommandSucceeded } from "../../shared/commands.ts";
 import { reviewAgentResponseSchema } from "./schema.ts";
 
 export const reviewWorkflow = developmentLoopScope.workflow({
-	id: "review",
+	name: "review",
 	isEntrypoint: false,
 	instructions: "Review the current repository boundary changes.",
 	args: reviewArgsSchema,

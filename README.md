@@ -18,7 +18,7 @@ through the CLI from any harness. Agents run on the bundled
    import { Type } from "typebox";
 
    const summarize = workflow({
-     id: "summary.write",
+     name: "summarize",
      isEntrypoint: true,
      instructions: "Summarize supplied text and save the result.",
      args: Type.Object({ text: Type.String() }),
@@ -45,7 +45,7 @@ through the CLI from any harness. Agents run on the bundled
 
    ```sh
    printf '%s\n' '{"args":{"text":"Norn workflows combine agents and code. They run from any harness through the CLI."}}' \
-     | norn runs start summary.write
+     | norn runs start summarize
 
    norn runs wait <run-id>
    ```

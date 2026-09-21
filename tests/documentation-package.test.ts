@@ -69,9 +69,9 @@ import { workflow, workflowScope, workflowRefSchema, type NornRun, type NornAgen
 import { createNornClient } from "@vimhead.dev/norn-cli/client";
 import { Type } from "typebox";
 declare const run: NornRun;
-const manifestScope = workflowScope({ id: "consumer", config: Type.Object({ label: Type.String() }) });
+const manifestScope = workflowScope({ name: "consumer", config: Type.Object({ label: Type.String() }) });
 const manifest_test = manifestScope.workflow({
-id: "test",
+name: "test",
 isEntrypoint: true,
 instructions: "Exercise package types.",
 args: Type.Object({
@@ -94,7 +94,7 @@ run.next("consumer.test", { count: "1", next: "consumer.test" });
 run.next(manifest_test, {});
 // @ts-expect-error Callers supply encoded inputs, not decoded values.
 manifest_test({ count: 1, next: "consumer.test" });
-workflow({ id: "standalone", isEntrypoint: false, args: Type.Object({}), execute(context) {
+workflow({ name: "standalone", isEntrypoint: false, args: Type.Object({}), execute(context) {
   // @ts-expect-error Standalone workflows do not have a scope.
   context.scope;
   const project: string = context.paths.project;
@@ -122,7 +122,7 @@ import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-codin
 assert.equal(typeof workflow, "function");
 assert.equal(typeof workflowScope, "function");
 const client = createNornClient({ spawnCwd: join(process.cwd(), "workflow") });
-const started = await client.runs.start({ workflowId: "greeting.write", args: { name: "Packed" } });
+const started = await client.runs.start({ workflowId: "greet", args: { name: "Packed" } });
 const finished = await client.runs.wait(started.id);
 assert.equal(finished.status, "completed", JSON.stringify(finished));
 assert.equal(await readFile(join(finished.paths.workspace, finished.outcome.metadata.data.greetingPath), "utf8"), "Hello, Packed!\\n");

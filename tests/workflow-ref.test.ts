@@ -1,12 +1,13 @@
-import { workflow, isWorkflowDeclaration, workflowRefSchema, type NornWorkflowRefSchemaOptions } from "@vimhead.dev/norn";
+import { workflowScope, isWorkflowDeclaration, workflowRefSchema, type NornWorkflowRefSchemaOptions } from "@vimhead.dev/norn";
 import { inspectSchema } from "@vimhead.dev/norn/schema";
 import assert from "node:assert/strict";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { expect, expectTypeOf, test } from "vitest";
 
-const target = workflow({
-	id: "refs.finish", isEntrypoint: false, args: Type.Object({ report: Type.String() }),
+const refs = workflowScope({ name: "refs" });
+const target = refs.workflow({
+	name: "finish", isEntrypoint: false, args: Type.Object({ report: Type.String() }),
 	execute() { throw new Error("A callable must select a transition, not execute it"); },
 });
 

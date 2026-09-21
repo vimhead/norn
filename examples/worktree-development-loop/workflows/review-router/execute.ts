@@ -7,7 +7,7 @@ import { reviewRouterArgsSchema } from "./schema.ts";
 import type { StoredReview } from "../review/schema.ts";
 
 export const reviewRouterWorkflow = developmentLoopScope.workflow({
-	id: "reviewRouter",
+	name: "reviewRouter",
 	isEntrypoint: false,
 	instructions: "Route implementation and review iterations based on the latest review decision.",
 	gate: {

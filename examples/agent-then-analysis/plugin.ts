@@ -21,9 +21,9 @@ const analysisSchema = Type.Object({
 	issues: Type.Array(Type.String({ minLength: 1 })),
 });
 
-const scope = workflowScope({ id: "sourceSummary" });
+const scope = workflowScope({ name: "sourceSummary" });
 export const draft = scope.workflow({
-	id: "draft",
+	name: "draft",
 	isEntrypoint: true,
 	instructions: "Summarize a supplied source, save the draft, and independently assess its support and omissions. Returns workspace-relative draftPath and analysisPath plus an assessment; needs-revision is a completed assessment, not an approved summary.",
 	args: Type.Object({ source: Type.String({ minLength: 1 }) }),
@@ -46,7 +46,7 @@ export const draft = scope.workflow({
 	}
 });
 export const analyze = scope.workflow({
-	id: "analyze",
+	name: "analyze",
 	isEntrypoint: false,
 	args: Type.Object({ draftPath: Type.String() }),
 	async execute({ args, paths, agents, run }) {

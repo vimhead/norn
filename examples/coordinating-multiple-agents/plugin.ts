@@ -10,9 +10,9 @@ const notesSchema = Type.Refine(Type.Array(noteSchema, { minItems: 2, maxItems: 
 const inputSchema = Type.Object({ notes: notesSchema }, { additionalProperties: false });
 const workerReportSchema = Type.Object({ status: Type.Enum(["acknowledged", "idle", "blocked"]), detail: Type.String({ maxLength: 300 }) }, { additionalProperties: false });
 
-const scope = workflowScope({ id: "coordinatingAgents" });
+const scope = workflowScope({ name: "coordinatingAgents" });
 export const start = scope.workflow({
-	id: "start",
+	name: "start",
 	isEntrypoint: true,
 	instructions: "Summarize 2–12 supplied notes using two concurrent Norn agents and a shared leased work queue. Checkpoint completed rounds, verify every persisted result and exact source quotation, and return workspace-relative summariesPath for summaries.json. Requires configured Norn agent authentication; modifies only this run's logs and workspace.",
 	args: inputSchema,
@@ -27,7 +27,7 @@ export const start = scope.workflow({
 	}
 });
 export const work = scope.workflow({
-	id: "work",
+	name: "work",
 	isEntrypoint: false,
 	args: Type.Object({ ...inputSchema.properties, round: Type.Integer({ minimum: 0, maximum: 12 }) }, { additionalProperties: false }),
 	async execute({ args, paths, agents, run }): Promise<WorkflowResult> {
@@ -53,7 +53,7 @@ export const work = scope.workflow({
 	}
 });
 export const verify = scope.workflow({
-	id: "verify",
+	name: "verify",
 	isEntrypoint: false,
 	args: inputSchema,
 	async execute({ args, paths, run }) {

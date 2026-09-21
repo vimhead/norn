@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { workflow, workflowScope } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 
-const manifestScope = workflowScope({ id: "provider" });
+const manifestScope = workflowScope({ name: "provider" });
 const manifest_check = manifestScope.workflow({
-id: "check",
+name: "check",
 isEntrypoint: true,
 instructions: "Exercise a configured provider in a native worker.",
 args: Type.Object({}),

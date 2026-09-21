@@ -14,7 +14,7 @@ import { initializeSharedState } from "./helpers/shared-state.ts";
 const incrementInput = Type.Decode(Type.Object({ count: Type.String() }), input => ({ count: Number(input.count) + 1 }));
 const continuation = workflowRefSchema({ args: Type.Object({ report: Type.String() }) });
 const step = workflow({
-	id: "native.step", isEntrypoint: true, instructions: "Exercise native TypeBox contracts.", args: incrementInput,
+	name: "step", isEntrypoint: true, instructions: "Exercise native TypeBox contracts.", args: incrementInput,
 	gate: { enabled: true, fields: ["count"], describe: ({ args }) => `Count ${args.count}` },
 	execute(context) {
 		expectTypeOf(context.args).toEqualTypeOf<{ count: number }>();
@@ -31,8 +31,8 @@ async function fixture(context: TestContext) {
 	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	return cwd;
 }
-test("native inference preserves encoded input, decoded output and explicit IDs", () => {
-	expectTypeOf(step.id).toEqualTypeOf<"native.step">();
+test("native inference preserves encoded input, decoded output and standalone IDs", () => {
+	expectTypeOf(step.id).toEqualTypeOf<"step">();
 	expectTypeOf<NornWorkflowArgsInput<typeof step>>().toEqualTypeOf<{ count: string }>();
 	expectTypeOf<NornWorkflowArgs<typeof step>>().toEqualTypeOf<{ count: number }>();
 });
@@ -50,11 +50,11 @@ function verifyAuthoringTypes(run: NornRun, reference: StaticDecode<typeof conti
 	reference({});
 	// @ts-expect-error Contributions retain their schema types.
 	reference({ report: 42 });
-	workflow({ id: "bad", isEntrypoint: false, args: incrementInput,
+	workflow({ name: "bad", isEntrypoint: false, args: incrementInput,
 		// @ts-expect-error Gate fields address encoded argument properties.
 		gate: { enabled: true, fields: ["missing"] }, execute: ({ run }) => run.complete(),
 	});
-	workflow({ id: "standalone", isEntrypoint: false, args: Type.Object({}), execute(context) {
+	workflow({ name: "standalone", isEntrypoint: false, args: Type.Object({}), execute(context) {
 		// @ts-expect-error Standalone contexts do not have a scope property.
 		context.scope;
 		expectTypeOf(context.paths.project).toEqualTypeOf<string>();
@@ -65,8 +65,8 @@ function verifyAuthoringTypes(run: NornRun, reference: StaticDecode<typeof conti
 		context.agents.createSession({ label: "check" });
 		return context.run.complete();
 	} });
-	const scope = workflowScope({ id: "empty" });
-	scope.workflow({ id: "project", isEntrypoint: false, args: Type.Object({}), execute({ config, scope, paths, run }) {
+	const scope = workflowScope({ name: "empty" });
+	scope.workflow({ name: "project", isEntrypoint: false, args: Type.Object({}), execute({ config, scope, paths, run }) {
 		expectTypeOf(config).toEqualTypeOf<undefined>();
 		expectTypeOf(scope.config).toEqualTypeOf<undefined>();
 		expectTypeOf(scope.id).toEqualTypeOf<"empty">();
@@ -78,7 +78,7 @@ function verifyAuthoringTypes(run: NornRun, reference: StaticDecode<typeof conti
 void verifyAuthoringTypes;
 
 test("recursive workflows retain inferred context with a result annotation", async context => {
-	const repeat = workflow({ id: "repeat", isEntrypoint: false, args: Type.Object({ count: Type.Integer() }),
+	const repeat = workflow({ name: "repeat", isEntrypoint: false, args: Type.Object({ count: Type.Integer() }),
 		execute({ args, run }): WorkflowResult { return args.count ? repeat({ count: args.count - 1 }) : run.complete(); },
 	});
 	const engine = new NornEngine({ cwd: await fixture(context) });
@@ -118,7 +118,7 @@ test("gates and resumed executions decode inputs without persisting transformed 
 });
 
 test("workflow arguments use conversion, defaults and cleaning", async context => {
-	const decode = workflow({ id: "decode", isEntrypoint: false, args: Type.Object({ count: Type.Integer({ default: 3 }) }, { additionalProperties: false }), execute: ({ args, run }) => run.complete({ data: args }) });
+	const decode = workflow({ name: "decode", isEntrypoint: false, args: Type.Object({ count: Type.Integer({ default: 3 }) }, { additionalProperties: false }), execute: ({ args, run }) => run.complete({ data: args }) });
 	const engine = new NornEngine({ cwd: await fixture(context) });
 	engine.registerWorkflows([decode]);
 	for (const [input, expected] of [[{}, 3], [{ count: "4", extra: "removed" }, 4]] as const) {
@@ -130,8 +130,8 @@ test("workflow arguments use conversion, defaults and cleaning", async context =
 
 test("workflow and scope configurations decode and override independently, including gates", async context => {
 	const schema = Type.Object({ count: Type.Decode(Type.String(), text => Number(text) + 1), label: Type.String() });
-	const reports = workflowScope({ id: "reports", config: schema });
-	const summarize = reports.workflow({ id: "summarize", isEntrypoint: false, args: Type.Object({ approved: Type.Boolean() }), config: schema,
+	const reports = workflowScope({ name: "reports", config: schema });
+	const summarize = reports.workflow({ name: "summarize", isEntrypoint: false, args: Type.Object({ approved: Type.Boolean() }), config: schema,
 		gate: { enabled: true, fields: ["approved"], describe({ config, scope }) {
 			expectTypeOf(config.count).toEqualTypeOf<number>();
 			expectTypeOf(scope.config.count).toEqualTypeOf<number>();

@@ -32,14 +32,14 @@ async function writePluginFixture({ projectRoot, relativePath, pluginId, revisio
 import { workflowScope } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 const scope = workflowScope({
-	id: ${JSON.stringify(pluginId)},
+	name: ${JSON.stringify(pluginId)},
 	config: Type.Object({
 		greeting: Type.String({ default: "hello" }),
 		options: Type.Optional(Type.Object({ keep: Type.String(), replace: Type.String() })),
 	}),
 });
 export default [scope.workflow({
- id: "echo", instructions: "Use to echo the provided value.", isEntrypoint: true, args: Type.Object({ value: Type.String() }),
+ name: "echo", instructions: "Use to echo the provided value.", isEntrypoint: true, args: Type.Object({ value: Type.String() }),
  execute: ({ args, run }) => run.complete({ data: { value: args.value, revision: ${JSON.stringify(revision)} } }),
 })];
 `);

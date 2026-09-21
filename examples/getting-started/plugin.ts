@@ -4,7 +4,7 @@ import { workflow } from "@vimhead.dev/norn";
 import { Type } from "typebox";
 
 export const summarize = workflow({
-	id: "summary.write",
+	name: "summarize",
 	isEntrypoint: true,
 	instructions: "Summarize supplied text and save the result.",
 	args: Type.Object({ text: Type.String() }),

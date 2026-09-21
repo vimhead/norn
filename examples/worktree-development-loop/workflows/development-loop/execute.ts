@@ -5,7 +5,7 @@ import { developmentLoopArgsSchema } from "./schema.ts";
 import { materializeWorkspaceRepository } from "./repository.ts";
 
 export const developmentLoopWorkflow = developmentLoopScope.workflow({
-	id: "developmentLoop",
+	name: "developmentLoop",
 	isEntrypoint: true,
 	instructions: "Plan once, then loop implementation and review in a workspace repository copy. Call this when a repository task should run through planning, implementation, and review.",
 	args: developmentLoopArgsSchema,

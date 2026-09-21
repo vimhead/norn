@@ -121,7 +121,7 @@ Commands and schemas from the invoked executable are authoritative when a checko
 From inside the target project:
 
 ```bash
-printf '%s\n' '{"args":{"name":"Ada"}}' | norn runs start greeting.write
+printf '%s\n' '{"args":{"name":"Ada"}}' | norn runs start greet
 norn runs wait <run>
 norn runs inspect <run>
 norn runs metrics <run>
@@ -136,7 +136,7 @@ Start stdin accepts `args` and optional `config`, with config overrides keyed in
 | Decision | GOOD | BAD |
 |---|---|---|
 | IF start returns a run ID, THEN retain it and inspect the terminal outcome. ELSE handle the launch error. | Wait, then verify `status === "completed"` and expected file content. | Report task success from `runs start` alone. |
-| IF a new capability is written or registered, THEN query the current catalogue and schema. ELSE use the inspected contract. | `workflows inspect greeting.write` after editing. | Rely on a cached session-start list that cannot contain the new workflow. |
+| IF a new capability is written or registered, THEN query the current catalogue and schema. ELSE use the inspected contract. | `workflows inspect greet` after editing. | Rely on a cached session-start list that cannot contain the new workflow. |
 
 For live monitoring and explicit lifecycle control:
 
@@ -166,7 +166,7 @@ import { createNornClient } from "@vimhead.dev/norn-cli/client";
 
 const client = createNornClient({ spawnCwd: "/absolute/path/to/project" });
 const started = await client.runs.start({
-  workflowId: "greeting.write",
+  workflowId: "greet",
   args: { name: "Ada" },
 });
 const finished = await client.runs.wait(started.id);

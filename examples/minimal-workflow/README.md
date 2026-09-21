@@ -21,8 +21,8 @@ project's `workflows` array rather than replacing the project configuration.
 ```bash
 norn project inspect
 norn workflows list
-norn workflows inspect greeting.write
-printf '%s\n' '{"args":{"name":"Ada"}}' | norn runs start greeting.write
+norn workflows inspect greet
+printf '%s\n' '{"args":{"name":"Ada"}}' | norn runs start greet
 ```
 
 Discovery should report `isComplete: true`. Inspection describes the required
