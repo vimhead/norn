@@ -39,7 +39,7 @@ const scope = workflowScope({
 	}),
 });
 export default [scope.workflow({
- name: "echo", instructions: "Use to echo the provided value.", isEntrypoint: true, args: Type.Object({ value: Type.String() }),
+ name: "echo", entrypoint: { instructions: "Use to echo the provided value." }, args: Type.Object({ value: Type.String() }),
  execute: ({ args, run }) => run.complete({ data: { value: args.value, revision: ${JSON.stringify(revision)} } }),
 })];
 `);

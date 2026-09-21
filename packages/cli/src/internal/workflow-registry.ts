@@ -105,7 +105,7 @@ export class NornWorkflowRegistry {
 		].map(({ configuration, scopeId }) => ({ key: configuration.key, scopeId, configSchema: configuration.schema ? inspectSchema(configuration.schema) : null, config: configuration.value }));
 	}
 
-	launchableEntries(): NornRegisteredWorkflow[] { return this.sortedEntries().filter(({ workflow }) => workflow.isEntrypoint); }
+	launchableEntries(): NornRegisteredWorkflow[] { return this.sortedEntries().filter(({ workflow }) => workflow.entrypoint !== false); }
 	workflowById(workflowId: string): NornAnyWorkflowDeclaration | undefined { return this.entries.get(workflowId)?.workflow; }
 
 	async describeGate(input: NornWorkflowExecutionInput): Promise<string> {
@@ -189,7 +189,9 @@ function assertGateWorkflow(workflow: NornAnyWorkflowDeclaration): void {
 
 function workflowInfo(entry: NornRegisteredWorkflow): NornRegisteredWorkflowInfo {
 	return {
-		id: entry.workflow.id, instructions: entry.workflow.instructions, isEntrypoint: entry.workflow.isEntrypoint,
+		id: entry.workflow.id,
+		instructions: entry.workflow.entrypoint === false ? undefined : entry.workflow.entrypoint.instructions,
+		isEntrypoint: entry.workflow.entrypoint !== false,
 		source: entry.source,
 		configKey: entry.workflow.id,
 		scope: entry.scopeId ? { id: entry.scopeId } : undefined,

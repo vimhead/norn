@@ -11,8 +11,7 @@ import { NornEngine } from "../packages/cli/src/internal/engine.ts";
 const declarationsScope = workflowScope({ name: "callables" });
 const declarations_source = declarationsScope.workflow({
 name: "source",
-isEntrypoint: true,
-instructions: "Choose a result handler or a direct target.",
+entrypoint: { instructions: "Choose a result handler or a direct target." },
 gate: { enabled: true, fields: ["outcome"] , describe: ({ args: args, run: _run }) => `Handle ${args.outcome} with ${typeof args.next.success}` },
 args: Type.Object({
 			outcome: Type.Enum(["success", "failure", "custom", "dynamic", "throw", "leak"]),
@@ -34,25 +33,25 @@ execute: ({ args: args, run: run }) => {
 });
 const declarations_success = declarationsScope.workflow({
 name: "success",
-isEntrypoint: false,
+entrypoint: false,
 args: Type.Object({ batchId: Type.String(), count: Type.Decode(Type.String(), text => Number(text) + 1) }),
 execute: ({ args: args, run: run }) => run.complete({ data: { route: "success", ...args } })
 });
 const declarations_failure = declarationsScope.workflow({
 name: "failure",
-isEntrypoint: false,
+entrypoint: false,
 args: Type.Object({ batchId: Type.String(), reason: Type.String() }),
 execute: ({ args: args, run: run }) => run.complete({ data: { route: "failure", ...args } })
 });
 const declarations_custom = declarationsScope.workflow({
 name: "custom",
-isEntrypoint: false,
+entrypoint: false,
 args: Type.Object({ reason: Type.String() }),
 execute: ({ args, run }) => run.complete({ data: { route: "custom", ...args } })
 });
 const declarations_sink = declarationsScope.workflow({
 name: "sink",
-isEntrypoint: false,
+entrypoint: false,
 args: Type.Unknown(),
 execute: ({ run: run }) => run.complete()
 });

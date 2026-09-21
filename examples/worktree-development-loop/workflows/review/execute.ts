@@ -9,8 +9,7 @@ import { reviewAgentResponseSchema } from "./schema.ts";
 
 export const reviewWorkflow = developmentLoopScope.workflow({
 	name: "review",
-	isEntrypoint: false,
-	instructions: "Review the current repository boundary changes.",
+	entrypoint: false,
 	args: reviewArgsSchema,
 	async execute({ args, paths, agents, commands, logs }): Promise<WorkflowResult> {
 		const repositoryPath = resolve(paths.workspace, args.repositoryPath);

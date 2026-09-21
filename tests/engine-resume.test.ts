@@ -20,14 +20,13 @@ async function createInterruptedRun(context: TestContext) {
 	const manifestScope = workflowScope({ name: "resumeTest" });
 const manifest_start = manifestScope.workflow({
 name: "start",
-isEntrypoint: true,
-instructions: "Use to start a gated test run.",
+entrypoint: { instructions: "Use to start a gated test run." },
 args: Type.Object({}),
 execute: () => manifest_decision({ decision: "reject", evidence: "original" })
 });
 const manifest_decision = manifestScope.workflow({
 name: "decision",
-isEntrypoint: false,
+entrypoint: false,
 args: Type.Object({ decision: Type.Enum(["accept", "reject"]), evidence: Type.String() }),
 gate: { enabled: true, fields: ["decision"] , describe: () => "Accept or reject the evidence." },
 execute: ({ args: args, run: run }) => {

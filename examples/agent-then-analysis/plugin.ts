@@ -24,8 +24,7 @@ const analysisSchema = Type.Object({
 const scope = workflowScope({ name: "sourceSummary" });
 export const draft = scope.workflow({
 	name: "draft",
-	isEntrypoint: true,
-	instructions: "Summarize a supplied source, save the draft, and independently assess its support and omissions. Returns workspace-relative draftPath and analysisPath plus an assessment; needs-revision is a completed assessment, not an approved summary.",
+	entrypoint: { instructions: "Summarize a supplied source, save the draft, and independently assess its support and omissions. Returns workspace-relative draftPath and analysisPath plus an assessment; needs-revision is a completed assessment, not an approved summary." },
 	args: Type.Object({ source: Type.String({ minLength: 1 }) }),
 	async execute({ args, paths, agents }) {
 		const draft = await agents.prompt({
@@ -47,7 +46,7 @@ export const draft = scope.workflow({
 });
 export const analyze = scope.workflow({
 	name: "analyze",
-	isEntrypoint: false,
+	entrypoint: false,
 	args: Type.Object({ draftPath: Type.String() }),
 	async execute({ args, paths, agents, run }) {
 		const savedDraft = Value.Parse(savedDraftSchema, JSON.parse(await readFile(join(paths.workspace, args.draftPath), "utf8")));

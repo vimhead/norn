@@ -142,7 +142,7 @@ test("workflows reopen their own workspace state across transitions and gate res
 	const scope = workflowScope({ name: "storedState" });
 	const field = { id: "value", schema: Type.Number() };
 	const start = scope.workflow({
-		name: "start", isEntrypoint: true, instructions: "Persist a value before a gate.", args: Type.Object({}),
+		name: "start", entrypoint: { instructions: "Persist a value before a gate." }, args: Type.Object({}),
 		async execute({ paths }) {
 			const store = await SharedState.open({ path: join(paths.workspace, "state.sqlite"), create: true });
 			try { await store.set(field, 7); return finish({ decision: "reject" }); }
@@ -150,7 +150,7 @@ test("workflows reopen their own workspace state across transitions and gate res
 		},
 	});
 	const finish = scope.workflow({
-		name: "finish", isEntrypoint: false, args: Type.Object({ decision: Type.Enum(["accept", "reject"]) }),
+		name: "finish", entrypoint: false, args: Type.Object({ decision: Type.Enum(["accept", "reject"]) }),
 		gate: { enabled: true, fields: ["decision"], describe: () => "Accept the persisted value." },
 		async execute({ paths, run }) {
 			const store = await SharedState.open({ path: join(paths.workspace, "state.sqlite"), create: false });

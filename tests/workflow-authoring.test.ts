@@ -22,24 +22,24 @@ export const reports = workflowScope({ name: "reports", config: Type.Object({ pa
 const summarizeSource = `import { reports } from "./scope.ts";
 import { Type } from "typebox";
 import { save } from "./save.ts";
-export const summarize = reports.workflow({ name: "summarize", isEntrypoint: true, instructions: "Summarize a report.", args: Type.Object({}), config: Type.Object({ path: Type.String() }),
+export const summarize = reports.workflow({ name: "summarize", entrypoint: { instructions: "Summarize a report." }, args: Type.Object({}), config: Type.Object({ path: Type.String() }),
 execute({ config, scope }) { return save({ path: config.path + ":" + scope.config.path }); } });
 export default [summarize];`;
 const saveSource = `import { reports } from "./scope.ts";
 import { Type } from "typebox";
-export const save = reports.workflow({ name: "save", isEntrypoint: false, args: Type.Object({ path: Type.String() }), execute({ args, config, scope, run }) {
+export const save = reports.workflow({ name: "save", entrypoint: false, args: Type.Object({ path: Type.String() }), execute({ args, config, scope, run }) {
 if (config !== undefined) throw new Error("Scope config leaked into local config");
 return run.complete({ data: { path: args.path, shared: scope.config.path } }); } });
 export default [save];`;
 
 test("authoring names produce literal IDs and string transitions use exact IDs", async context => {
 	const root = await project(context, {}, []);
-	const standalone = workflow({ name: "save", isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete({ summary: "standalone" }) });
+	const standalone = workflow({ name: "save", entrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete({ summary: "standalone" }) });
 	const reports = workflowScope({ name: "reports" });
 	const audits = workflowScope({ name: "audits" });
-	const report = reports.workflow({ name: "save", isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete({ summary: "report" }) });
-	const audit = audits.workflow({ name: "save", isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete({ summary: "audit" }) });
-	const route = reports.workflow({ name: "route", isEntrypoint: false, args: Type.Object({ next: Type.String() }), execute: ({ args, run }) => run.next(args.next, {}) });
+	const report = reports.workflow({ name: "save", entrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete({ summary: "report" }) });
+	const audit = audits.workflow({ name: "save", entrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete({ summary: "audit" }) });
+	const route = reports.workflow({ name: "route", entrypoint: false, args: Type.Object({ next: Type.String() }), execute: ({ args, run }) => run.next(args.next, {}) });
 	expectTypeOf(standalone.id).toEqualTypeOf<"save">();
 	expectTypeOf(reports.id).toEqualTypeOf<"reports">();
 	expectTypeOf(report.id).toEqualTypeOf<"reports.save">();
@@ -63,22 +63,22 @@ test("authoring names produce literal IDs and string transitions use exact IDs",
 for (const name of [undefined, null, 42, "", " \n\t ", ".", "reports.save", ".save", "save.", "reports..save"]) {
 	test(`workflow and scope names reject empty, non-string, or dotted values: ${JSON.stringify(name)}`, () => {
 		assert.throws(() => workflowScope({ name: name as string }), /Invalid workflow or scope name/);
-		assert.throws(() => workflow({ name: name as string, isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() }), /Invalid workflow or scope name/);
+		assert.throws(() => workflow({ name: name as string, entrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() }), /Invalid workflow or scope name/);
 		const reports = workflowScope({ name: "reports" });
-		assert.throws(() => reports.workflow({ name: name as string, isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() }), /Invalid workflow or scope name/);
+		assert.throws(() => reports.workflow({ name: name as string, entrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() }), /Invalid workflow or scope name/);
 	});
 }
 
 for (const invalid of [
 	'workflowScope({ name: "reports.archive" })',
-	'workflow({ name: "reports.save", isEntrypoint: false, args: Type.Object({}), execute })',
-	'workflowScope({ name: "reports" }).workflow({ name: "archive.save", isEntrypoint: false, args: Type.Object({}), execute })',
+	'workflow({ name: "reports.save", entrypoint: false, args: Type.Object({}), execute })',
+	'workflowScope({ name: "reports" }).workflow({ name: "archive.save", entrypoint: false, args: Type.Object({}), execute })',
 ]) {
 	test(`discovery isolates invalid authoring names: ${invalid}`, async context => {
 		const prelude = 'import { workflow, workflowScope } from "@vimhead.dev/norn"; import { Type } from "typebox"; const execute = ({ run }) => run.complete();';
 		const root = await project(context, {
-			"invalid.ts": `${prelude} const valid = workflow({ name: "excluded", isEntrypoint: false, args: Type.Object({}), execute }); export default [valid, ${invalid}];`,
-			"valid.ts": `${prelude} export default [workflow({ name: "valid", isEntrypoint: true, instructions: "Complete without effects.", args: Type.Object({}), execute })];`,
+			"invalid.ts": `${prelude} const valid = workflow({ name: "excluded", entrypoint: false, args: Type.Object({}), execute }); export default [valid, ${invalid}];`,
+			"valid.ts": `${prelude} export default [workflow({ name: "valid", entrypoint: { instructions: "Complete without effects." }, args: Type.Object({}), execute })];`,
 		}, ["./invalid.ts", "./valid.ts"]);
 		const found = await discoverNornProject(root);
 		assert.equal(found.isComplete, false);
@@ -132,7 +132,7 @@ test("discovery does not invoke execution or gate callbacks and mixed arrays are
 	const root = await project(context, { "mixed.ts": `import { workflow, workflowScope } from "@vimhead.dev/norn"; import { Type } from "typebox";
 const scope = workflowScope({ name: "other" });
 const execute = () => { throw new Error("must not execute during discovery"); };
-export default [workflow({ name: "direct", isEntrypoint: false, args: Type.Object({}), execute }), scope.workflow({ name: "gate", isEntrypoint: false, args: Type.Object({}), gate: { enabled: true, describe: execute }, execute })];` }, ["./mixed.ts"]);
+export default [workflow({ name: "direct", entrypoint: false, args: Type.Object({}), execute }), scope.workflow({ name: "gate", entrypoint: false, args: Type.Object({}), gate: { enabled: true, describe: execute }, execute })];` }, ["./mixed.ts"]);
 	const found = await discoverNornProject(root);
 	assert.equal(found.isComplete, true);
 	assert.deepEqual(found.workflows.map(entry => entry.id), ["direct", "other.gate"]);
@@ -141,7 +141,7 @@ export default [workflow({ name: "direct", isEntrypoint: false, args: Type.Objec
 
 for (const malformed of ['[valid, {}]', '[valid, ,]', '{ valid }']) {
 	test(`malformed registration excludes the entire module: ${malformed}`, async context => {
-		const root = await project(context, { "invalid.ts": `import { workflow } from "@vimhead.dev/norn"; import { Type } from "typebox"; const valid = workflow({ name: "valid", isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() }); export default ${malformed};` }, ["./invalid.ts"]);
+		const root = await project(context, { "invalid.ts": `import { workflow } from "@vimhead.dev/norn"; import { Type } from "typebox"; const valid = workflow({ name: "valid", entrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() }); export default ${malformed};` }, ["./invalid.ts"]);
 		const found = await discoverNornProject(root);
 		assert.equal(found.isComplete, false);
 		assert.deepEqual(found.workflows, []);
@@ -153,14 +153,14 @@ test("configuration ownership collisions and independent scope declarations fail
 	const root = await project(context, {}, []);
 	const reports = workflowScope({ name: "reports", config: Type.Object({ path: Type.String() }) });
 	const wrong = workflowScope({ name: "reports", config: Type.Object({ count: Type.Number() }) });
-	const first = reports.workflow({ name: "first", isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() });
-	const second = wrong.workflow({ name: "second", isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() });
-	const standalone = workflow({ name: "reports", isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() });
+	const first = reports.workflow({ name: "first", entrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() });
+	const second = wrong.workflow({ name: "second", entrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() });
+	const standalone = workflow({ name: "reports", entrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() });
 	const engine = new NornEngine({ cwd: root, config: { reports: { path: "shared" } } });
 	assert.throws(() => engine.registerWorkflows([first, second]), /Duplicate workflow scope id/);
 	assert.deepEqual(engine.listWorkflows(), []);
 	const duplicate = workflowScope({ name: "reports", config: reports.config });
-	const identical = duplicate.workflow({ name: "identical", isEntrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() });
+	const identical = duplicate.workflow({ name: "identical", entrypoint: false, args: Type.Object({}), execute: ({ run }) => run.complete() });
 	assert.throws(() => engine.registerWorkflows([first, identical]), /Duplicate workflow scope id/);
 	assert.deepEqual(engine.listWorkflows(), []);
 	assert.throws(() => engine.registerWorkflows([first, standalone]), /Ambiguous configuration key/);
@@ -169,7 +169,7 @@ test("configuration ownership collisions and independent scope declarations fail
 
 test("incompatible saved runs fail resume and rollback without modifying saved files", async context => {
 	const root = await project(context, {}, []);
-	const gated = workflow({ name: "gate", isEntrypoint: false, args: Type.Object({ approved: Type.Boolean() }), gate: { enabled: true, fields: ["approved"] }, execute: ({ run }) => run.complete() });
+	const gated = workflow({ name: "gate", entrypoint: false, args: Type.Object({ approved: Type.Boolean() }), gate: { enabled: true, fields: ["approved"] }, execute: ({ run }) => run.complete() });
 	const engine = new NornEngine({ cwd: root, gateMode: "pause" });
 	engine.registerWorkflows([gated]);
 	const result = await engine.runWorkflow(gated, { approved: false }, undefined);

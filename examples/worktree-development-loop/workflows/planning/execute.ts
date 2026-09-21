@@ -8,8 +8,7 @@ import { planningAgentResponseSchema } from "./schema.ts";
 
 export const planningWorkflow = developmentLoopScope.workflow({
 	name: "planning",
-	isEntrypoint: false,
-	instructions: "Create an implementation plan for a repository task.",
+	entrypoint: false,
 	args: planningArgsSchema,
 	async execute({ args, paths, agents }): Promise<WorkflowResult> {
 		const repositoryPath = resolve(paths.workspace, args.repositoryPath);

@@ -12,7 +12,7 @@ const deliveryArgsSchema = Type.Object({
 const scope = workflowScope({ name: "greetingConsumer" });
 export const saveJson = scope.workflow({
 	name: "saveJson",
-	isEntrypoint: false,
+	entrypoint: false,
 	args: deliveryArgsSchema,
 	async execute({ args, paths, run }) {
 		const greeting = await readFile(join(paths.workspace, args.resultPath), "utf8");
@@ -30,7 +30,7 @@ export const saveJson = scope.workflow({
 });
 export const saveText = scope.workflow({
 	name: "saveText",
-	isEntrypoint: false,
+	entrypoint: false,
 	args: deliveryArgsSchema,
 	async execute({ args, paths, run }) {
 		const greeting = await readFile(join(paths.workspace, args.resultPath), "utf8");

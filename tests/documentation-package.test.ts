@@ -72,8 +72,7 @@ declare const run: NornRun;
 const manifestScope = workflowScope({ name: "consumer", config: Type.Object({ label: Type.String() }) });
 const manifest_test = manifestScope.workflow({
 name: "test",
-isEntrypoint: true,
-instructions: "Exercise package types.",
+entrypoint: { instructions: "Exercise package types." },
 args: Type.Object({
     count: Type.Decode(Type.String(), text => Number(text)),
     next: workflowRefSchema({ args: Type.Object({ report: Type.String() }) }),
@@ -94,7 +93,7 @@ run.next("consumer.test", { count: "1", next: "consumer.test" });
 run.next(manifest_test, {});
 // @ts-expect-error Callers supply encoded inputs, not decoded values.
 manifest_test({ count: 1, next: "consumer.test" });
-workflow({ name: "standalone", isEntrypoint: false, args: Type.Object({}), execute(context) {
+workflow({ name: "standalone", entrypoint: false, args: Type.Object({}), execute(context) {
   // @ts-expect-error Standalone workflows do not have a scope.
   context.scope;
   const project: string = context.paths.project;

@@ -15,8 +15,7 @@ async function createFixture(context: TestContext, gateMode: "pause" | "auto" | 
 	const manifestScope = workflowScope({ name: "gates" });
 const manifest_decide = manifestScope.workflow({
 name: "decide",
-instructions: "Use to supply the test decision.",
-isEntrypoint,
+entrypoint: isEntrypoint ? { instructions: "Use to supply the test decision." } : false,
 args: Type.Object({ answer: Type.Boolean() }),
 gate: { enabled: true, fields: ["answer"] , describe: () => "Choose the answer before execution." },
 execute: ({ args: args, run: run }) => { executionCount++; return run.complete({ data: args }); }

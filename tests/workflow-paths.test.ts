@@ -20,7 +20,7 @@ test("standalone execution, scoped gates, and resumed execution share absolute p
 	let firstExecution: Pick<NornWorkflowContext, "agents" | "commands" | "logs" | "run"> | undefined;
 	const scope = workflowScope({ name: "paths" });
 	const finish = scope.workflow({
-		name: "finish", isEntrypoint: false, args: Type.Object({}),
+		name: "finish", entrypoint: false, args: Type.Object({}),
 		gate: { enabled: true, async describe({ scope, paths, agents, commands, logs, run }) {
 			assert.equal(scope.id, "paths");
 			assert.deepEqual(paths, expectedPaths);
@@ -49,7 +49,7 @@ test("standalone execution, scoped gates, and resumed execution share absolute p
 		},
 	});
 	const start = workflow({
-		name: "start", isEntrypoint: false, args: Type.Object({}),
+		name: "start", entrypoint: false, args: Type.Object({}),
 		async execute(context) {
 			firstExecution = context;
 			const { paths } = context;
@@ -83,7 +83,7 @@ test("one workflow chooses project, run, and external command directories explic
 	const project = await createDirectory(context);
 	const external = await createDirectory(context);
 	const check = workflow({
-		name: "directories", isEntrypoint: false, args: Type.Object({}),
+		name: "directories", entrypoint: false, args: Type.Object({}),
 		async execute({ paths, commands, logs, run }) {
 			for (const cwd of [paths.project, paths.workspace, external]) {
 				const result = await commands.run({ label: "pwd", cwd, command: [process.execPath, "-e", "process.stdout.write(process.cwd())"] });
@@ -103,7 +103,7 @@ test("one workflow chooses project, run, and external command directories explic
 test("commands and agents reject missing or relative cwd rather than selecting an implicit directory", async context => {
 	const project = await createDirectory(context);
 	const check = workflow({
-		name: "explicit-cwd", isEntrypoint: false, args: Type.Object({}),
+		name: "explicit-cwd", entrypoint: false, args: Type.Object({}),
 		async execute({ agents, commands, run }) {
 			for (const cwd of [undefined, "", ".", "../other"]) {
 				await assert.rejects(Reflect.apply(commands.run, undefined, [{ label: "invalid", cwd, command: [process.execPath, "--version"] }]), /cwd.*must be an absolute path/);

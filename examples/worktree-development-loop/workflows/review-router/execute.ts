@@ -8,8 +8,7 @@ import type { StoredReview } from "../review/schema.ts";
 
 export const reviewRouterWorkflow = developmentLoopScope.workflow({
 	name: "reviewRouter",
-	isEntrypoint: false,
-	instructions: "Route implementation and review iterations based on the latest review decision.",
+	entrypoint: false,
 	gate: {
 		enabled: true,
 		describe: ({ args }) => `Review iteration ${args.iteration}. Confirm or edit the automated decision before continuing. Plan: ${args.planPath}.`,

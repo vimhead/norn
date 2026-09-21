@@ -32,8 +32,7 @@ export type NornWorkflowDeclaration<
 	(args: StaticEncode<ArgsSchema>): NornRunNext;
 	readonly kind: typeof WORKFLOW_DECLARATION_KIND;
 	readonly id: Id;
-	readonly isEntrypoint: boolean;
-	readonly instructions?: string;
+	readonly entrypoint: NornWorkflowEntrypoint;
 	readonly args: ArgsSchema;
 	readonly gate?: NornWorkflowGate<ArgsSchema> & {
 		describe?(context: NornWorkflowContext<ArgsSchema, ConfigSchema, Scope>): MaybePromise<string>;
@@ -65,9 +64,7 @@ export type NornWorkflowGate<ArgsSchema extends TSchema> = unknown extends Stati
 			readonly fields?: never;
 		};
 
-type NornWorkflowInstructions =
-	| { readonly isEntrypoint: true; readonly instructions: string }
-	| { readonly isEntrypoint: false; readonly instructions?: string };
+export type NornWorkflowEntrypoint = false | { readonly instructions: string };
 
 type WorkflowConfig<Schema extends TSchema | undefined> = Schema extends TSchema ? StaticDecode<Schema> : undefined;
 
@@ -94,13 +91,14 @@ export type NornWorkflowDefinition<
 	Scope extends NornWorkflowScopeInfo | undefined = undefined,
 > = {
 	readonly name: Name;
+	readonly entrypoint: NornWorkflowEntrypoint;
 	readonly args: ArgsSchema;
 	readonly config?: ConfigSchema;
 	readonly gate?: NornWorkflowGate<ArgsSchema> & {
 		describe?(context: NornWorkflowContext<ArgsSchema, ConfigSchema, Scope>): MaybePromise<string>;
 	};
 	execute(context: NornWorkflowContext<ArgsSchema, ConfigSchema, Scope>): MaybePromise<WorkflowResult>;
-} & NornWorkflowInstructions;
+};
 
 export type NornWorkflowScopeInfo = {
 	readonly id: string;
@@ -134,8 +132,8 @@ function createWorkflow<Id extends string, ArgsSchema extends TSchema, ConfigSch
 		id,
 		scope,
 	}) as NornWorkflowDeclaration<Id, ArgsSchema, ConfigSchema, Scope>;
-	if (!isWorkflowDeclaration(result)) throw new Error(`Invalid workflow definition: ${id}`);
 	assertWorkflowMetadata(result);
+	if (!isWorkflowDeclaration(result)) throw new Error(`Invalid workflow definition: ${id}`);
 	return result;
 }
 
@@ -564,13 +562,12 @@ function assertDeclarationName(name: string): void {
 
 export function isWorkflowDeclaration(value: unknown): value is NornAnyWorkflowDeclaration {
 	if (typeof value !== "function") return false;
-	const candidate = value as { kind?: unknown; id?: unknown; instructions?: unknown; isEntrypoint?: unknown; args?: unknown; execute?: unknown };
+	const candidate = value as { kind?: unknown; id?: unknown; entrypoint?: unknown; args?: unknown; execute?: unknown };
 	return (
 		candidate.kind === WORKFLOW_DECLARATION_KIND &&
 		typeof candidate.id === "string" &&
 		candidate.id.length > 0 &&
-		(candidate.instructions === undefined || typeof candidate.instructions === "string") &&
-		typeof candidate.isEntrypoint === "boolean" &&
+		(candidate.entrypoint === false || (isPlainObject(candidate.entrypoint) && typeof candidate.entrypoint.instructions === "string")) &&
 		Boolean(candidate.args) &&
 		typeof candidate.execute === "function"
 	);

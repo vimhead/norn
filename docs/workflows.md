@@ -14,8 +14,7 @@ import { Type } from "typebox";
 
 export const greet = workflow({
   name: "greet",
-  isEntrypoint: true,
-  instructions: "Return a greeting for the supplied name.",
+  entrypoint: { instructions: "Return a greeting for the supplied name." },
   args: Type.Object({ name: Type.String() }),
   execute({ args, run }) {
     return run.complete({ summary: `Hello, ${args.name}!` });
@@ -25,11 +24,11 @@ export const greet = workflow({
 export default [greet];
 ```
 
-Supply `name`, `args`, `isEntrypoint`, and `execute` explicitly. Entrypoints need nonempty caller-facing `instructions`; internal steps may omit them. `isEntrypoint` controls default catalogue visibility, not authorization: the CLI can start a known internal workflow ID directly.
+Supply `name`, `args`, `entrypoint`, and `execute` explicitly. Use `entrypoint: { instructions: "..." }` with nonempty caller-facing instructions, or `entrypoint: false` for an internal step. This controls default catalogue visibility, not authorization: the CLI can start a known internal workflow ID directly. Discovery exposes the derived `isEntrypoint` boolean and `instructions` string; internal steps have no caller instructions.
 
 Workflow and scope names must be nonempty and cannot contain dots. A standalone workflow's ID is its name; a scoped workflow's ID is `<scope name>.<workflow name>`. Declarations expose the resolved `id`; CLI commands, references, and `run.next` use that exact ID, without implicit scope lookup.
 
-`instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare args and config with [TypeBox schemas](schemas.md). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
+`entrypoint.instructions` describe selection, inputs, effects, and outputs. They are neither a Norn agent system prompt nor a gate decision. Declare args and config with [TypeBox schemas](schemas.md). Workflow inputs must be JSON data; `execute` receives the values after schema defaults and conversions. Public schemas must support `workflows inspect`.
 
 Destructure the properties needed by the step from `execute(context)`. Gate descriptions receive the same inferred context:
 
@@ -79,7 +78,7 @@ export const reports = workflowScope({
 
 export const save = reports.workflow({
   name: "save",
-  isEntrypoint: false,
+  entrypoint: false,
   args: Type.Object({ text: Type.String() }),
   config: Type.Object({ filename: Type.String() }),
   async execute({ args, config, scope, paths, run }) {
@@ -116,7 +115,7 @@ import { Type } from "typebox";
 
 const repeat = workflow({
   name: "repeat",
-  isEntrypoint: false,
+  entrypoint: false,
   args: Type.Object({ remaining: Type.Integer() }),
   execute({ args, run }): WorkflowResult {
     return args.remaining > 0

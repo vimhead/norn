@@ -43,11 +43,11 @@ function assertWorkflowReferenceAnnotations(schema: unknown): void {
 }
 
 export function assertWorkflowMetadata(workflow: NornAnyWorkflowDeclaration): void {
-	if (workflow.instructions !== undefined && (typeof workflow.instructions !== "string" || workflow.instructions.trim().length === 0)) {
-		throw new Error(`Workflow instructions must be a nonempty string: ${workflow.id}`);
-	}
-	if (workflow.isEntrypoint && workflow.instructions === undefined) {
-		throw new Error(`Entrypoint workflow requires instructions: ${workflow.id}`);
+	const { entrypoint } = workflow;
+	if (entrypoint === false) return;
+	if (!isPlainObject(entrypoint)) throw new Error(`Workflow entrypoint must be false or an object with instructions: ${workflow.id}`);
+	if (typeof entrypoint.instructions !== "string" || entrypoint.instructions.trim().length === 0) {
+		throw new Error(`Workflow entrypoint.instructions must be a nonempty string: ${workflow.id}`);
 	}
 }
 

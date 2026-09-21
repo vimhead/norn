@@ -13,8 +13,7 @@ const workerReportSchema = Type.Object({ status: Type.Enum(["acknowledged", "idl
 const scope = workflowScope({ name: "coordinatingAgents" });
 export const start = scope.workflow({
 	name: "start",
-	isEntrypoint: true,
-	instructions: "Summarize 2–12 supplied notes using two concurrent Norn agents and a shared leased work queue. Checkpoint completed rounds, verify every persisted result and exact source quotation, and return workspace-relative summariesPath for summaries.json. Requires configured Norn agent authentication; modifies only this run's logs and workspace.",
+	entrypoint: { instructions: "Summarize 2–12 supplied notes using two concurrent Norn agents and a shared leased work queue. Checkpoint completed rounds, verify every persisted result and exact source quotation, and return workspace-relative summariesPath for summaries.json. Requires configured Norn agent authentication; modifies only this run's logs and workspace." },
 	args: inputSchema,
 	async execute({ args, paths }) {
 		const queue = await openQueue({ workspace: paths.workspace, create: true });
@@ -28,7 +27,7 @@ export const start = scope.workflow({
 });
 export const work = scope.workflow({
 	name: "work",
-	isEntrypoint: false,
+	entrypoint: false,
 	args: Type.Object({ ...inputSchema.properties, round: Type.Integer({ minimum: 0, maximum: 12 }) }, { additionalProperties: false }),
 	async execute({ args, paths, agents, run }): Promise<WorkflowResult> {
 		const queue = await openQueue({ workspace: paths.workspace, create: false });
@@ -54,7 +53,7 @@ export const work = scope.workflow({
 });
 export const verify = scope.workflow({
 	name: "verify",
-	isEntrypoint: false,
+	entrypoint: false,
 	args: inputSchema,
 	async execute({ args, paths, run }) {
 		const queue = await openQueue({ workspace: paths.workspace, create: false });

@@ -7,7 +7,7 @@ import { expect, expectTypeOf, test } from "vitest";
 
 const refs = workflowScope({ name: "refs" });
 const target = refs.workflow({
-	name: "finish", isEntrypoint: false, args: Type.Object({ report: Type.String() }),
+	name: "finish", entrypoint: false, args: Type.Object({ report: Type.String() }),
 	execute() { throw new Error("A callable must select a transition, not execute it"); },
 });
 

@@ -33,8 +33,7 @@ if (process.argv.includes("execute-run")) await new Promise(resolve => setTimeou
 const manifestScope = workflowScope({ name: "cli" });
 const manifest_decide = manifestScope.workflow({
 name: "decide",
-instructions: "Use to supply the test decision.",
-isEntrypoint: true,
+entrypoint: { instructions: "Use to supply the test decision." },
 args: Type.Object({ answer: Type.Boolean() }),
 gate: { enabled: true, fields: ["answer"] , describe: () => "Choose" },
 execute: ({ args: args, run: run }) => run.complete({ data: args })

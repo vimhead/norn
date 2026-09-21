@@ -20,8 +20,9 @@ through the CLI from any harness. Agents run on the bundled
 
    const summarize = workflow({
      name: "summarize",
-     isEntrypoint: true,
-     instructions: "Summarize staged and unstaged tracked changes relative to HEAD in an absolute repositoryPath. Requires Git and an existing commit; untracked files are excluded. Saves workspace-relative summaryPath and retains the diff log. A nonempty diff is sent to the configured model; an empty diff needs no model call.",
+     entrypoint: {
+       instructions: "Summarize staged and unstaged tracked changes relative to HEAD in an absolute repositoryPath. Requires Git and an existing commit; untracked files are excluded. Saves workspace-relative summaryPath and retains the diff log. A nonempty diff is sent to the configured model; an empty diff needs no model call.",
+     },
      args: Type.Object({ repositoryPath: Type.String({ minLength: 1 }) }),
      async execute({ args, paths, commands, logs, agents, run }) {
        const diff = await commands.run({

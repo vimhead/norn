@@ -114,8 +114,7 @@ const manifestScope = workflowScope({ name: "native" });
 const countField = { id: "count", schema: Type.Integer() };
 const manifest_check = manifestScope.workflow({
 name: "check",
-isEntrypoint: true,
-instructions: "Exercise detached TypeBox imports and decoding.",
+entrypoint: { instructions: "Exercise detached TypeBox imports and decoding." },
 args: Type.Object({
     count: Type.Decode(Type.String({ default: "41" }), value => Number(value) + 1),
     next: workflowRefSchema({ args: Type.Object({ count: Type.Integer() }) }),
@@ -145,19 +144,19 @@ async execute({ args, paths }) {
 });
 const manifest_finish = manifestScope.workflow({
 name: "finish",
-isEntrypoint: false,
+entrypoint: false,
 args: result,
 execute: ({ args: args, run: _run }) => manifest_dynamic(args)
 });
 const manifest_dynamic = manifestScope.workflow({
 name: "dynamic",
-isEntrypoint: false,
+entrypoint: false,
 args: result,
 execute: ({ args: args, run: run }) => run.next("native.done", args)
 });
 const manifest_done = manifestScope.workflow({
 name: "done",
-isEntrypoint: false,
+entrypoint: false,
 args: result,
 execute: ({ args, paths, run }) => run.complete({ data: { ...args, paths, cwd: process.cwd() } })
 });

@@ -9,8 +9,7 @@ import { implementationAgentResponseSchema } from "./schema.ts";
 
 export const implementationWorkflow = developmentLoopScope.workflow({
 	name: "implementation",
-	isEntrypoint: false,
-	instructions: "Apply one implementation pass in the current repository.",
+	entrypoint: false,
 	args: implementationArgsSchema,
 	async execute({ args, paths, agents, commands, logs }): Promise<WorkflowResult> {
 		const repositoryPath = resolve(paths.workspace, args.repositoryPath);
