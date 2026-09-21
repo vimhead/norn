@@ -14,7 +14,7 @@ Norn capabilities are ordinary TypeScript workflows: an agent can write one duri
 | Supply tools or tool wrappers to agents | [Custom tools](agents.md#custom-tools) | [Explicit shared state](../examples/shared-state/README.md) |
 | Persist application state or coordinate concurrent mutations | [Workflow-owned storage](persistence.md#workflow-owned-storage) | [Explicit shared state](../examples/shared-state/README.md), [Example-local work queue](../examples/coordinating-multiple-agents/README.md) |
 | Retain evidence or choose a filesystem boundary | [Persistence, files, and workspaces](persistence.md) | [Norn agent → saved file → analysis](../examples/agent-then-analysis/README.md) |
-| Reuse a workflow with a caller-selected continuation | [Composition](composition.md) | [Caller-selected continuation](../examples/caller-selected-continuation/README.md) |
+| Reuse workflows with caller-selected continuations and routing policy | [Composition](composition.md) | [Caller-selected continuation](../examples/caller-selected-continuation/README.md), [Caller-owned routing](../examples/caller-owned-routing/README.md) |
 | Repair a failed run without repeating earlier work | [Recovery and gates](recovery.md) | [Analysis-only repair](../examples/agent-then-analysis/README.md#repair-only-the-analysis-step) |
 
 [Public types](../packages/sdk/src/api.ts) define the Norn SDK's authoring interface. CLI discovery exposes the currently loaded project, not a documentation-time workflow catalogue. See [installation](../README.md#installation) for runtime setup.

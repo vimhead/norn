@@ -70,6 +70,21 @@ Contributions must be JSON objects matching the declared input type. Object-valu
 
 When passing a reference as input to another workflow, supply its JSON form shown above, not the function received in `args.next`.
 
+## Caller-owned routing policy
+
+A continuation can be a caller-owned router rather than the final consumer. The
+[caller-owned routing example](../examples/caller-owned-routing/README.md) combines
+assessment and revision workflows: assessment reports findings, revision produces
+an updated outline, and the router owns the acceptance threshold, next action,
+and iteration limit. Neither reusable capability knows the caller's policy.
+
+Task-level findings and run-level completion are separate: a caller may accept
+some findings, request more work, or fail when its revision budget is exhausted.
+
+| Decision | GOOD | BAD |
+|---|---|---|
+| IF callers need different acceptance or follow-up policies, THEN supply a caller-owned router as the continuation. ELSE use a direct continuation. | Route the same assessment to completion or revision using caller thresholds. | Embed one caller's revision budget in a reusable assessment, or add a router to unconditional delivery. |
+
 ## Multiple outcomes and direct targets
 
 References can be nested under ordinary author-selected names with independent contribution schemas:
