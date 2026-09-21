@@ -4,6 +4,21 @@ The Norn SDK is the TypeScript interface for building reusable workflows. A work
 
 Start with the complete [minimal workflow](../examples/minimal-workflow/plugin.ts) and its [write/run/change exercise](../examples/minimal-workflow/README.md).
 
+## Develop agent workflows through execution
+
+For agent-driven workflows, trial and error in native Norn runs is the default development method, starting with the first runnable step—not a final smoke test after implementation:
+
+**Author → execute real agents → inspect saved evidence → repair → rollback and restore a valid checkpoint → resume → repeat.**
+
+| Decision | GOOD | BAD |
+|---|---|---|
+| IF a workflow depends on agent behavior, THEN execute it early and frequently through Norn with bounded, representative inputs, using the loop above as the primary development process. ELSE deterministic workflows and helpers can be developed and validated with automated tests. | Exercise a real agent step before building the remaining orchestration; retain unit tests for scoring mathematics. | Build the whole agent workflow around mocked responses and postpone actual execution until the end. |
+| IF inspecting an agent run, THEN compare retained outputs and evidence against the task requirements. ELSE do not claim the workflow works from status or test results alone. | Check a generated report against its source evidence and requested deliverable. | Treat `completed`, schema-valid JSON, or a passing deterministic suite as proof of task correctness. |
+| IF repairing or iterating on an agent workflow, THEN use rollback, checkpoint restoration, and resume frequently to exercise the changed step while preserving valid earlier work. ELSE retain the inspected run as evidence for the unchanged behavior. | Restore the boundary after a valid assessment, repair delivery, and verify the assessment survives the resumed execution. | Restart every agent from scratch, simulate recovery only in tests, or assume restored files are correct without inspecting them. |
+| IF credentials, inputs, access, or authorization block native execution, THEN report the blocker and mark agent behavior unvalidated. ELSE report the actual runs, inspected artifacts, and recovery exercised. | Distinguish passing deterministic checks from a blocked live agent run. | Substitute mocked success for execution or imply an unperformed recovery cycle passed. |
+
+Use [source repair and rollback](recovery.md#source-repair-and-rollback) for checkpoint selection and external-effect precautions. The [agent → saved file → analysis repair exercise](../examples/agent-then-analysis/README.md#repair-only-the-analysis-step) demonstrates this loop with a real agent result retained across failure and recovery.
+
 ## Define a workflow
 
 `workflow` declares a complete, typed callable workflow:
