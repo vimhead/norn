@@ -9,6 +9,7 @@
 		"node": ">=22.19.0"
 	},
 	"scripts": {
+		"prepare": "husky",
 		"build": "pnpm --filter @vimhead.dev/norn build && pnpm pi:assets && pnpm documentation:generate && pnpm --filter @vimhead.dev/norn-cli build && pnpm --filter @vimhead.dev/pi-norn build",
 		"documentation:generate": "node scripts/generate-documentation-assets.ts",
 		"pi:assets": "node scripts/generate-pi-assets.ts",
@@ -22,6 +23,9 @@
 		"release:publish": "node scripts/publish-packages.ts",
 		"build:binary": "pnpm check && bun build --compile ./packages/cli/src/bun/cli.ts --outfile dist/norn"
 	},
+	"lint-staged": {
+		"*.{ts,tsx,js,mjs,cjs,json,jsonc,md,yaml,yml}": "prettier --write"
+	},
 	"devDependencies": {
 		"@earendil-works/pi-ai": "0.85.1",
 		"@earendil-works/pi-coding-agent": "0.85.1",
@@ -30,7 +34,9 @@
 		"@vimhead.dev/norn-core": "workspace:*",
 		"bun": "1.4.0",
 		"esbuild": "^0.28.1",
+		"husky": "9.1.7",
 		"jiti": "^2.7.0",
+		"lint-staged": "17.5.1",
 		"prettier": "3.9.8",
 		"typebox": "^1.3.34",
 		"typescript": "^7.0.2",

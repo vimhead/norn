@@ -201,6 +201,10 @@ Run `pnpm format` to format source, examples, and supported fenced code in Markd
 Prettier targets 80 columns and preserves Markdown prose wrapping. Generated files,
 build output, dependencies, and the lockfile are excluded.
 
+`pnpm install` enables the Husky pre-commit hook. Commits run lint-staged to format
+staged files with Prettier and stage the formatting changes, preserving unstaged
+edits. CI checks formatting across the repository.
+
 Use the pnpm version pinned in `package.json`. The private root coordinates three
 published workspaces: `packages/sdk`, `packages/cli`, and `packages/pi-norn`.
 `packages/core` is private source shared through consumer builds, not a fourth
