@@ -34,7 +34,7 @@ through the CLI from any harness. Agents run on the bundled
          prompt: args.text,
          response: Type.Object({ summary: Type.String() }),
        });
-       return saveSummary({ ...draft, isApproved: false });
+       return saveSummary({ summary: draft.summary, isApproved: false });
      },
    });
 
