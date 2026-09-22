@@ -9,33 +9,53 @@ through the CLI from any harness. Agents run on the bundled
 
 1. [Install Norn](#installation), including agent authentication.
 
-2. **Write a workflow.** Save this as `summarize.ts` in a new directory:
+2. **Draft → review → save.** Save this as `summarize.ts` in a new directory.
+   An agent drafts a summary; a second workflow pauses for approval before code
+   writes the reviewed text to a file.
 
    ```ts
+   import { writeFile } from "node:fs/promises";
+   import { join } from "node:path";
    import { workflow } from "@vimhead.dev/norn";
    import { Type } from "typebox";
 
-   const summarize = workflow({
-     name: "summarize",
+   const draftSummary = workflow({
+     name: "draftSummary",
      entrypoint: {
-       instructions: "Use when you need a concise summary of supplied text.",
+       instructions: "Use when you need a reviewed summary saved to a file.",
      },
      args: Type.Object({ text: Type.String({ minLength: 1 }) }),
-     async execute({ args, paths, agents, run }) {
-       const result = await agents.prompt({
-         label: "summarize",
+     async execute({ args, paths, agents }) {
+       const draft = await agents.prompt({
+         label: "draft",
          cwd: paths.workspace,
          tools: [],
          systemPrompt: "Summarize the supplied text concisely.",
          prompt: args.text,
          response: Type.Object({ summary: Type.String() }),
        });
-       return run.complete(result);
+       return saveSummary({ ...draft, isApproved: false });
      },
    });
 
-   export default [summarize];
+   const saveSummary = workflow({
+     name: "saveSummary",
+     entrypoint: false,
+     args: Type.Object({ summary: Type.String(), isApproved: Type.Boolean() }),
+     gate: { enabled: true, fields: ["summary", "isApproved"] },
+     async execute({ args, paths, run }) {
+       if (!args.isApproved) return run.fail({ summary: "Summary rejected." });
+       const summaryPath = "summary.txt";
+       await writeFile(join(paths.workspace, summaryPath), args.summary);
+       return run.complete({ summary: args.summary, data: { summaryPath } });
+     },
+   });
+
+   export default [draftSummary, saveSummary];
    ```
+
+   `return saveSummary(...)` selects the next workflow, rather than executing it
+   inline. Norn checkpoints the draft and pauses at the gate before writing.
 
 3. **Register and run it.** Create `norn.project.json` alongside the workflow:
 
@@ -50,15 +70,30 @@ through the CLI from any harness. Agents run on the bundled
 
    ```sh
    printf '%s\n' '{"args":{"text":"The launch moved to Friday."}}' \
-     | norn runs start summarize
+     | norn runs start draftSummary
 
+   norn runs wait <run-id>
+   norn runs inspect <run-id>
+   ```
+
+   Replace `<run-id>` with the ID returned by `start`. The run should be
+   `interrupted` at `saveSummary`; inspect the saved draft before approving it.
+
+4. **Edit and approve.** Resume with the reviewed summary:
+
+   ```sh
+   printf '%s\n' \
+     '{"args":{"summary":"Launch is now Friday.","isApproved":true}}' \
+     | norn runs resume <run-id>
    norn runs wait <run-id>
    ```
 
-   Replace `<run-id>` with the ID returned by `start`. On completion, read the
-   summary from `run.outcome.metadata.summary`.
+   Resume uses the saved draft boundary without calling the agent again. On
+   completion, `summary.txt` is in `run.paths.workspace`. See
+   [gates and recovery](docs/recovery.md) for rejecting, retrying, and restoring
+   earlier checkpoints.
 
-For a fuller example combining a Git command, an agent, and a saved file, see
+For another example combining a Git command, an agent, and a saved file, see
 [the Git summary workflow](examples/getting-started/README.md).
 
 See the [documentation index](docs/README.md) for focused references and the
