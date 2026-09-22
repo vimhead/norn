@@ -69,7 +69,9 @@ function buildReviewPrompt(
 ): string {
 	return [
 		"Review the current repository changes against the task and plan.",
-		"Use accept only when the work is ready. Use revise for fixable issues. Use blocked when manual input is needed. Include review details in the summary.",
+		`Use accept only when the work is ready. Use revise for fixable issues.
+Use blocked when manual input is needed. Include review details in the
+summary.`,
 		"",
 		"Task:",
 		task,

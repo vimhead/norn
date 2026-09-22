@@ -41,8 +41,8 @@ export function createStateTools(input: {
 		defineTool({
 			name: "norn_state_list",
 			label: "Attached workflow state",
-			description:
-				"List only attached workflow-state field IDs, permissions and value schemas. JSON is paginated; use nextOffset until null.",
+			description: `List only attached workflow-state field IDs, permissions and
+value schemas. JSON is paginated; use nextOffset until null.`,
 			parameters: Type.Object(pageParameters),
 			async execute(_id, args) {
 				return serializePage({
@@ -58,8 +58,9 @@ export function createStateTools(input: {
 		defineTool({
 			name: "norn_state_get",
 			label: "Read workflow state",
-			description:
-				"Read a selected workflow-state field. Unset fields return isSet:false. JSON is paginated; concurrent writes can change later pages, so compare revision before combining pages.",
+			description: `Read a selected workflow-state field.
+Unset fields return isSet:false. JSON is paginated; concurrent writes can
+change later pages, so compare revision before combining pages.`,
 			parameters: Type.Object({ key: Type.String(), ...pageParameters }),
 			async execute(_id, args) {
 				const value = await input.state.getOptional(
@@ -75,8 +76,9 @@ export function createStateTools(input: {
 		defineTool({
 			name: "norn_state_set",
 			label: "Write workflow state",
-			description:
-				"Set an explicitly writable workflow-state field. Validate the value against its schema from norn_state_list. A get followed by set is not a transaction.",
+			description: `Set an explicitly writable workflow-state field.
+Validate the value against its schema from norn_state_list.
+A get followed by set is not a transaction.`,
 			parameters: Type.Object({ key: Type.String(), value: Type.Unknown() }),
 			async execute(_id, args, signal) {
 				signal?.throwIfAborted();

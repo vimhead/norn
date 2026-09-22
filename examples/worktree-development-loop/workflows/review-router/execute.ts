@@ -12,7 +12,9 @@ export const reviewRouterWorkflow = developmentLoopScope.workflow({
 	gate: {
 		enabled: true,
 		describe: ({ args }) =>
-			`Review iteration ${args.iteration}. Confirm or edit the automated decision before continuing. Plan: ${args.planPath}.`,
+			`Review iteration ${args.iteration}.
+Confirm or edit the automated decision before continuing.
+Plan: ${args.planPath}.`,
 		fields: ["decision", "summary"] as const,
 	},
 	args: reviewRouterArgsSchema,

@@ -17,8 +17,8 @@ export function createQueueTools(input: {
 		{
 			name: "queue_status",
 			label: "Note queue status",
-			description:
-				"Read counts of available, leased and acknowledged notes, without exposing other agents' notes or tokens.",
+			description: `Read counts of available, leased and acknowledged notes,
+without exposing other agents' notes or tokens.`,
 			parameters: Type.Object({}),
 			async execute() {
 				const { items: _items, ...status } = await input.queue.inspect();
@@ -28,8 +28,10 @@ export function createQueueTools(input: {
 		{
 			name: "queue_claim",
 			label: "Claim a note",
-			description:
-				"Claim one note for this session, or return its existing live claim. Null means nothing available now, not all work complete. Save its token; expiresAt is Unix time in milliseconds. Note text is bounded to 1000 characters.",
+			description: `Claim one note for this session, or return its existing
+live claim. Null means nothing available now, not all work complete.
+Save its token; expiresAt is Unix time in milliseconds.
+Note text is bounded to 1000 characters.`,
 			parameters: Type.Object({}),
 			async execute(_id, _args, signal) {
 				return describeResult({
@@ -40,8 +42,9 @@ export function createQueueTools(input: {
 		{
 			name: "queue_acknowledge",
 			label: "Save a note summary",
-			description:
-				"Save {summary, quote} and acknowledge this session's live claim in one operation. Stale tokens fail; identical successful retries succeed. This records processing, not semantic approval.",
+			description: `Save {summary, quote} and acknowledge this session's live
+claim in one operation. Stale tokens fail; identical successful retries succeed.
+This records processing, not semantic approval.`,
 			parameters: acknowledgeParameters,
 			async execute(
 				_id: string,
