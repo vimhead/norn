@@ -7,7 +7,16 @@ import {
 	type CreateAgentSessionOptions,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { NornAgentCreateSessionInput, NornAgentPromptInput, NornAgentRunRawAttempt, NornAgentRunResult, NornAgentSession, NornAgentSessionEvents, NornAgentSinglePromptInput, NornAgentUsage } from "@vimhead.dev/norn";
+import type {
+	NornAgentCreateSessionInput,
+	NornAgentPromptInput,
+	NornAgentRunRawAttempt,
+	NornAgentRunResult,
+	NornAgentSession,
+	NornAgentSessionEvents,
+	NornAgentSinglePromptInput,
+	NornAgentUsage,
+} from "@vimhead.dev/norn";
 import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
 import { inspectSchema } from "@vimhead.dev/norn/schema";
 import { randomUUID } from "node:crypto";
@@ -26,7 +35,11 @@ import { errorMessage } from "./errors.ts";
 import { safeFileName } from "./file-names.ts";
 import type { NornRunLogs } from "./logs.ts";
 import type { NornRunLogger } from "./run-log.ts";
-import { agentUsageFromValue, emptyAgentUsage, totalAgentUsage } from "./usage.ts";
+import {
+	agentUsageFromValue,
+	emptyAgentUsage,
+	totalAgentUsage,
+} from "./usage.ts";
 
 const DEFAULT_AGENT_ATTEMPTS = 3;
 
@@ -53,16 +66,22 @@ export class NornAgentRunner {
 	private readonly responseToolFactory: NornAgentResponseToolFactory;
 
 	constructor(private readonly input: NornAgentRunnerInput) {
-		this.responseToolFactory = new NornAgentResponseToolFactory(input.responseCollector);
+		this.responseToolFactory = new NornAgentResponseToolFactory(
+			input.responseCollector,
+		);
 	}
 
-	async createSession(agentInput: NornAgentCreateSessionInput): Promise<NornAgentSession> {
+	async createSession(
+		agentInput: NornAgentCreateSessionInput,
+	): Promise<NornAgentSession> {
 		const cwd = requireAbsoluteWorkingDirectory(agentInput.cwd);
 		const sessionDir = resolve(this.input.runRoot, "sessions");
 		await mkdir(sessionDir, { recursive: true });
 
 		const eventBus = createEventBus();
-		const agentDir = this.input.agentDir ?? resolveNornAgentDirectory({ home: homedir(), environment: process.env });
+		const agentDir =
+			this.input.agentDir ??
+			resolveNornAgentDirectory({ home: homedir(), environment: process.env });
 		const services = await createAgentSessionServices({
 			cwd,
 			agentDir,
@@ -74,15 +93,33 @@ export class NornAgentRunner {
 		});
 		const loader = services.resourceLoader;
 		const errors = [
-			...services.diagnostics.filter(diagnostic => diagnostic.type === "error").map(diagnostic => diagnostic.message),
-			...loader.getExtensions().errors.map(error => `Failed to load extension ${error.path}: ${error.error}`),
+			...services.diagnostics
+				.filter((diagnostic) => diagnostic.type === "error")
+				.map((diagnostic) => diagnostic.message),
+			...loader
+				.getExtensions()
+				.errors.map(
+					(error) => `Failed to load extension ${error.path}: ${error.error}`,
+				),
 		];
 		if (errors.length > 0) throw new Error(errors.join("\n"));
 		const customTools = agentInput.customTools ?? [];
 		assertCustomToolNames({
 			tools: customTools,
-			reservedNames: ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell", AGENT_RESPONSE_TOOL_NAME,
-				...loader.getExtensions().extensions.flatMap((extension) => [...extension.tools.keys()])],
+			reservedNames: [
+				"read",
+				"bash",
+				"edit",
+				"write",
+				"grep",
+				"find",
+				"ls",
+				"powershell",
+				AGENT_RESPONSE_TOOL_NAME,
+				...loader
+					.getExtensions()
+					.extensions.flatMap((extension) => [...extension.tools.keys()]),
+			],
 		});
 		let session: AgentSession | undefined;
 		try {
@@ -96,19 +133,34 @@ export class NornAgentRunner {
 			}));
 			await agentInput.beforeSessionStart?.({ events: eventBus });
 			await session.bindExtensions({});
-			await this.input.logger.record({ type: "agent.spawned", label: agentInput.label, cwd });
+			await this.input.logger.record({
+				type: "agent.spawned",
+				label: agentInput.label,
+				cwd,
+			});
 			return new CreatedNornAgentSession({
-				...this.input, label: agentInput.label, cwd, session, events: eventBus,
+				...this.input,
+				label: agentInput.label,
+				cwd,
+				session,
+				events: eventBus,
 			});
 		} catch (error) {
 			const errors = [error];
-			try { session?.dispose(); } catch (cleanupError) { errors.push(cleanupError); }
-			if (errors.length > 1) throw new AggregateError(errors, "Agent creation and cleanup failed");
+			try {
+				session?.dispose();
+			} catch (cleanupError) {
+				errors.push(cleanupError);
+			}
+			if (errors.length > 1)
+				throw new AggregateError(errors, "Agent creation and cleanup failed");
 			throw error;
 		}
 	}
 
-	async prompt<ResponseSchema extends TSchema>(agentInput: NornAgentSinglePromptInput<ResponseSchema>): Promise<StaticDecode<ResponseSchema>> {
+	async prompt<ResponseSchema extends TSchema>(
+		agentInput: NornAgentSinglePromptInput<ResponseSchema>,
+	): Promise<StaticDecode<ResponseSchema>> {
 		const agent = await this.createSession(agentInput);
 		try {
 			return await agent.prompt(agentInput);
@@ -118,14 +170,20 @@ export class NornAgentRunner {
 	}
 }
 
-function systemPromptOverride(agentInput: NornAgentCreateSessionInput): (() => string) | undefined {
+function systemPromptOverride(
+	agentInput: NornAgentCreateSessionInput,
+): (() => string) | undefined {
 	const systemPrompt = agentInput.systemPrompt;
 	return systemPrompt === undefined ? undefined : () => systemPrompt;
 }
 
-function appendSystemPromptOverride(agentInput: NornAgentCreateSessionInput): ((base: string[]) => string[]) | undefined {
+function appendSystemPromptOverride(
+	agentInput: NornAgentCreateSessionInput,
+): ((base: string[]) => string[]) | undefined {
 	const appendSystemPrompt = agentInput.appendSystemPrompt;
-	return appendSystemPrompt === undefined ? undefined : (base) => [...base, ...appendSystemPrompt];
+	return appendSystemPrompt === undefined
+		? undefined
+		: (base) => [...base, ...appendSystemPrompt];
 }
 
 class CreatedNornAgentSession implements NornAgentSession {
@@ -140,29 +198,53 @@ class CreatedNornAgentSession implements NornAgentSession {
 		this.events = input.events;
 	}
 
-	async prompt<ResponseSchema extends TSchema>(agentInput: NornAgentPromptInput<ResponseSchema>): Promise<StaticDecode<ResponseSchema>> {
+	async prompt<ResponseSchema extends TSchema>(
+		agentInput: NornAgentPromptInput<ResponseSchema>,
+	): Promise<StaticDecode<ResponseSchema>> {
 		return (await this.promptWithResult(agentInput)).response;
 	}
 
-	private async promptWithResult<ResponseSchema extends TSchema>(agentInput: NornAgentPromptInput<ResponseSchema>): Promise<NornAgentRunResult<ResponseSchema>> {
-		if (this.isDisposed) throw new Error(`Workflow agent session is disposed: ${this.label}`);
-		const maxAttempts = Math.max(1, Math.floor(agentInput.maxAttempts ?? DEFAULT_AGENT_ATTEMPTS));
+	private async promptWithResult<ResponseSchema extends TSchema>(
+		agentInput: NornAgentPromptInput<ResponseSchema>,
+	): Promise<NornAgentRunResult<ResponseSchema>> {
+		if (this.isDisposed)
+			throw new Error(`Workflow agent session is disposed: ${this.label}`);
+		const maxAttempts = Math.max(
+			1,
+			Math.floor(agentInput.maxAttempts ?? DEFAULT_AGENT_ATTEMPTS),
+		);
 		const attempts: NornAgentRunRawAttempt[] = [];
 		const startedAtMs = Date.now();
 		let isTerminalEventRecorded = false;
-		await this.input.logger.record({ type: "agent.started", label: this.label, cwd: this.cwd, maxAttempts });
+		await this.input.logger.record({
+			type: "agent.started",
+			label: this.label,
+			cwd: this.cwd,
+			maxAttempts,
+		});
 
 		try {
 			for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-				await this.input.logger.record({ type: "agent.attempt.started", label: this.label, attempt });
-				const raw = await this.runAttempt(agentInput, attempt, attempts.at(-1)?.error);
+				await this.input.logger.record({
+					type: "agent.attempt.started",
+					label: this.label,
+					attempt,
+				});
+				const raw = await this.runAttempt(
+					agentInput,
+					attempt,
+					attempts.at(-1)?.error,
+				);
 				const rawAttempt: NornAgentRunRawAttempt = { attempt, ...raw };
 				attempts.push(rawAttempt);
 
 				try {
-					if (!raw.responseToolCalled) throw new Error(`Agent did not call ${AGENT_RESPONSE_TOOL_NAME}`);
+					if (!raw.responseToolCalled)
+						throw new Error(`Agent did not call ${AGENT_RESPONSE_TOOL_NAME}`);
 					const response = raw.toolResponse as StaticDecode<ResponseSchema>;
-					const usage = totalAgentUsage(attempts.map((candidate) => candidate.usage));
+					const usage = totalAgentUsage(
+						attempts.map((candidate) => candidate.usage),
+					);
 					const result: NornAgentRunResult<ResponseSchema> = {
 						label: this.label,
 						cwd: this.cwd,
@@ -170,22 +252,49 @@ class CreatedNornAgentSession implements NornAgentSession {
 						usage,
 						raw: { ...raw, usage, attempts },
 					};
-					await this.input.logs.write(`agents/${safeFileName(this.label)}.json`, JSON.stringify(result, null, 2));
+					await this.input.logs.write(
+						`agents/${safeFileName(this.label)}.json`,
+						JSON.stringify(result, null, 2),
+					);
 					isTerminalEventRecorded = true;
-					await this.input.logger.record({ type: "agent.completed", label: this.label, attempts: attempt, durationMs: Date.now() - startedAtMs, usage });
+					await this.input.logger.record({
+						type: "agent.completed",
+						label: this.label,
+						attempts: attempt,
+						durationMs: Date.now() - startedAtMs,
+						usage,
+					});
 					return result;
 				} catch (error) {
 					const message = errorMessage(error);
 					attempts[attempts.length - 1] = { ...rawAttempt, error: message };
 					await this.input.logs.write(
 						`agents/${safeFileName(this.label)}.attempt-${attempt}.raw.json`,
-						JSON.stringify({ label: this.label, cwd: this.cwd, raw: attempts.at(-1) }, null, 2),
+						JSON.stringify(
+							{ label: this.label, cwd: this.cwd, raw: attempts.at(-1) },
+							null,
+							2,
+						),
 					);
-					await this.input.logger.record({ type: "agent.attempt.failed", label: this.label, attempt, error: message });
+					await this.input.logger.record({
+						type: "agent.attempt.failed",
+						label: this.label,
+						attempt,
+						error: message,
+					});
 					if (attempt === maxAttempts) {
-						const usage = totalAgentUsage(attempts.map((candidate) => candidate.usage));
+						const usage = totalAgentUsage(
+							attempts.map((candidate) => candidate.usage),
+						);
 						isTerminalEventRecorded = true;
-						await this.input.logger.record({ type: "agent.failed", label: this.label, attempts: attempt, durationMs: Date.now() - startedAtMs, usage, error: message });
+						await this.input.logger.record({
+							type: "agent.failed",
+							label: this.label,
+							attempts: attempt,
+							durationMs: Date.now() - startedAtMs,
+							usage,
+							error: message,
+						});
 						throw new Error(
 							`Agent ${this.label} did not return a valid structured response after ${attempt} attempt(s). Raw output saved to logs/agents/${safeFileName(this.label)}.attempt-${attempt}.raw.json: ${message}`,
 						);
@@ -213,10 +322,22 @@ class CreatedNornAgentSession implements NornAgentSession {
 		if (this.isDisposed) return;
 		this.isDisposed = true;
 		const errors: unknown[] = [];
-		try { await this.input.session.abort(); } catch (error) { errors.push(error); }
-		try { this.input.session.dispose(); } catch (error) { errors.push(error); }
-		if (errors.length) throw new AggregateError(errors, "Agent disposal failed");
-		await this.input.logger.record({ type: "agent.disposed", label: this.label });
+		try {
+			await this.input.session.abort();
+		} catch (error) {
+			errors.push(error);
+		}
+		try {
+			this.input.session.dispose();
+		} catch (error) {
+			errors.push(error);
+		}
+		if (errors.length)
+			throw new AggregateError(errors, "Agent disposal failed");
+		await this.input.logger.record({
+			type: "agent.disposed",
+			label: this.label,
+		});
 	}
 
 	private async runAttempt<ResponseSchema extends TSchema>(
@@ -227,29 +348,54 @@ class CreatedNornAgentSession implements NornAgentSession {
 		const responseRunId = `${this.input.id}:${attempt}:${randomUUID()}`;
 		const messages: unknown[] = [];
 		let text = "";
-		const releaseResponseSlot = this.input.responseCollector.begin(responseRunId, this.label, agentInput.response);
+		const releaseResponseSlot = this.input.responseCollector.begin(
+			responseRunId,
+			this.label,
+			agentInput.response,
+		);
 		const unsubscribe = this.input.session.subscribe((event) => {
-			if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+			if (
+				event.type === "message_update" &&
+				event.assistantMessageEvent.type === "text_delta"
+			) {
 				text += event.assistantMessageEvent.delta;
 			}
-			if (event.type === "message_end" && event.message) messages.push(event.message);
+			if (event.type === "message_end" && event.message)
+				messages.push(event.message);
 		});
 		const abortNestedSession = () => {
 			void this.input.session.abort();
 		};
-		this.input.signal?.addEventListener("abort", abortNestedSession, { once: true });
+		this.input.signal?.addEventListener("abort", abortNestedSession, {
+			once: true,
+		});
 
 		let capturedResponse: NornCapturedAgentResponse = { called: false };
 		try {
 			this.input.signal?.throwIfAborted();
-			await this.input.session.prompt(withResponseToolInstruction(agentInput.prompt, agentInput.response, this.label, responseRunId, attempt, previousError), {
-				...agentInput.options,
-				source: agentInput.options?.source ?? "extension",
-			});
+			await this.input.session.prompt(
+				withResponseToolInstruction(
+					agentInput.prompt,
+					agentInput.response,
+					this.label,
+					responseRunId,
+					attempt,
+					previousError,
+				),
+				{
+					...agentInput.options,
+					source: agentInput.options?.source ?? "extension",
+				},
+			);
 			this.input.signal?.throwIfAborted();
 			capturedResponse = this.input.responseCollector.get(responseRunId);
 			if (!capturedResponse.called) {
-				await this.promptForStructuredResponse(agentInput, responseRunId, attempt, previousError);
+				await this.promptForStructuredResponse(
+					agentInput,
+					responseRunId,
+					attempt,
+					previousError,
+				);
 				this.input.signal?.throwIfAborted();
 				capturedResponse = this.input.responseCollector.get(responseRunId);
 			}
@@ -276,16 +422,38 @@ class CreatedNornAgentSession implements NornAgentSession {
 		previousError: string | undefined,
 	): Promise<void> {
 		const activeToolNames = this.input.session.getActiveToolNames();
-		await this.input.logger.record({ type: "agent.response-finalization.started", label: this.label, attempt });
+		await this.input.logger.record({
+			type: "agent.response-finalization.started",
+			label: this.label,
+			attempt,
+		});
 		this.input.session.setActiveToolsByName([AGENT_RESPONSE_TOOL_NAME]);
 		try {
-			await this.input.session.prompt(withResponseToolFinalizationInstruction(agentInput.response, this.label, responseRunId, attempt, previousError), {
-				...agentInput.options,
-				source: agentInput.options?.source ?? "extension",
+			await this.input.session.prompt(
+				withResponseToolFinalizationInstruction(
+					agentInput.response,
+					this.label,
+					responseRunId,
+					attempt,
+					previousError,
+				),
+				{
+					...agentInput.options,
+					source: agentInput.options?.source ?? "extension",
+				},
+			);
+			await this.input.logger.record({
+				type: "agent.response-finalization.completed",
+				label: this.label,
+				attempt,
 			});
-			await this.input.logger.record({ type: "agent.response-finalization.completed", label: this.label, attempt });
 		} catch (error) {
-			await this.input.logger.record({ type: "agent.response-finalization.failed", label: this.label, attempt, error: errorMessage(error) });
+			await this.input.logger.record({
+				type: "agent.response-finalization.failed",
+				label: this.label,
+				attempt,
+				error: errorMessage(error),
+			});
 			throw error;
 		} finally {
 			this.input.session.setActiveToolsByName(activeToolNames);
@@ -294,12 +462,20 @@ class CreatedNornAgentSession implements NornAgentSession {
 }
 
 function usageFromMessages(messages: readonly unknown[]): NornAgentUsage {
-	return totalAgentUsage(messages.map(usageFromMessage).filter((usage): usage is NornAgentUsage => usage !== undefined));
+	return totalAgentUsage(
+		messages
+			.map(usageFromMessage)
+			.filter((usage): usage is NornAgentUsage => usage !== undefined),
+	);
 }
 
 function usageFromMessage(message: unknown): NornAgentUsage | undefined {
-	if (!message || typeof message !== "object" || !("usage" in message)) return undefined;
-	return agentUsageFromValue((message as { usage?: unknown }).usage) ?? emptyAgentUsage();
+	if (!message || typeof message !== "object" || !("usage" in message))
+		return undefined;
+	return (
+		agentUsageFromValue((message as { usage?: unknown }).usage) ??
+		emptyAgentUsage()
+	);
 }
 
 function withResponseToolInstruction(
@@ -321,7 +497,9 @@ function withResponseToolInstruction(
 		"Pass the structured workflow response in the tool's response argument.",
 		"The response argument must match this JSON Schema:",
 		JSON.stringify(inspectSchema(responseSchema), null, 2),
-		...(attempt > 1 && previousError ? ["", `Previous structured response attempt failed: ${previousError}`] : []),
+		...(attempt > 1 && previousError
+			? ["", `Previous structured response attempt failed: ${previousError}`]
+			: []),
 	].join("\n");
 }
 
@@ -341,18 +519,28 @@ function withResponseToolFinalizationInstruction(
 		"Pass the structured workflow response in the tool's response argument, based on the work you already completed in this session.",
 		"The response argument must match this JSON Schema:",
 		JSON.stringify(inspectSchema(responseSchema), null, 2),
-		...(attempt > 1 && previousError ? ["", `Previous structured response attempt failed: ${previousError}`] : []),
+		...(attempt > 1 && previousError
+			? ["", `Previous structured response attempt failed: ${previousError}`]
+			: []),
 	].join("\n");
 }
 
-function withAgentResponseTool(tools: readonly string[] | undefined): string[] | undefined {
-	return tools === undefined ? undefined : Array.from(new Set([...tools, AGENT_RESPONSE_TOOL_NAME]));
+function withAgentResponseTool(
+	tools: readonly string[] | undefined,
+): string[] | undefined {
+	return tools === undefined
+		? undefined
+		: Array.from(new Set([...tools, AGENT_RESPONSE_TOOL_NAME]));
 }
 
-function assertCustomToolNames(input: { readonly tools: readonly ToolDefinition[]; readonly reservedNames: readonly string[] }): void {
+function assertCustomToolNames(input: {
+	readonly tools: readonly ToolDefinition[];
+	readonly reservedNames: readonly string[];
+}): void {
 	const names = new Set(input.reservedNames);
 	for (const tool of input.tools) {
-		if (names.has(tool.name)) throw new Error(`Custom tool name collision: ${tool.name}`);
+		if (names.has(tool.name))
+			throw new Error(`Custom tool name collision: ${tool.name}`);
 		names.add(tool.name);
 	}
 }

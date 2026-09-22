@@ -24,7 +24,7 @@ const agentSession = await agents.createSession({
   label: "summary-1",
   cwd: paths.workspace,
   customTools: queueTools,
-  tools: queueTools.map(tool => tool.name),
+  tools: queueTools.map((tool) => tool.name),
 });
 ```
 
@@ -59,8 +59,8 @@ Use the [recovery procedure](../../docs/recovery.md#source-repair-and-rollback) 
 
 Completed earlier rounds survive that boundary. Work after it is rolled back and can repeat, including a successful peer's work from a failed round. Fresh tool sets get new owners. Restoring a snapshot containing live claims retains their original expiry; tokens do not fence arbitrary rollback or external effects. The supplied workflow closes its sessions and checks for unfinished claims before taking a round boundary.
 
-| Decision | GOOD | BAD |
-|---|---|---|
-| IF adapting this example, THEN change its local schemas, instructions and verification together. ELSE keep the supplied note contract. | Replace quotation checks with the new task's evidence checks. | Treat any acknowledged JSON as a correct domain result. |
-| IF fixing an invalid result, THEN choose a checkpoint before the producing round. ELSE preserve earlier valid rounds. | Repair the instruction and retry the affected suffix. | Overwrite an acknowledged result with its old token. |
-| IF work has external effects, THEN reconcile them or provide effect-owned idempotency before retry. ELSE keep results in the atomic acknowledgment. | Look up an external delivery by its stable operation ID. | Assume queue rollback also undoes a remote delivery. |
+| Decision                                                                                                                                            | GOOD                                                          | BAD                                                     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------- |
+| IF adapting this example, THEN change its local schemas, instructions and verification together. ELSE keep the supplied note contract.              | Replace quotation checks with the new task's evidence checks. | Treat any acknowledged JSON as a correct domain result. |
+| IF fixing an invalid result, THEN choose a checkpoint before the producing round. ELSE preserve earlier valid rounds.                               | Repair the instruction and retry the affected suffix.         | Overwrite an acknowledged result with its old token.    |
+| IF work has external effects, THEN reconcile them or provide effect-owned idempotency before retry. ELSE keep results in the atomic acknowledgment. | Look up an external delivery by its stable operation ID.      | Assume queue rollback also undoes a remote delivery.    |

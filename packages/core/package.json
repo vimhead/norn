@@ -1,12 +1,12 @@
 {
-  "name": "@vimhead.dev/norn-core",
-  "version": "0.0.0",
-  "private": true,
-  "type": "module",
-  "exports": {
-    "./agent-protocol": "./src/agent-protocol.ts",
-    "./atomic-files": "./src/atomic-files.ts",
-    "./errors": "./src/errors.ts",
-    "./workflow-transition": "./src/workflow-transition.ts"
-  }
+	"name": "@vimhead.dev/norn-core",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		"./agent-protocol": "./src/agent-protocol.ts",
+		"./atomic-files": "./src/atomic-files.ts",
+		"./errors": "./src/errors.ts",
+		"./workflow-transition": "./src/workflow-transition.ts"
+	}
 }

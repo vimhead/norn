@@ -11,15 +11,28 @@ export const implementationWorkflow = developmentLoopScope.workflow({
 	name: "implementation",
 	entrypoint: false,
 	args: implementationArgsSchema,
-	async execute({ args, paths, agents, commands, logs }): Promise<WorkflowResult> {
+	async execute({
+		args,
+		paths,
+		agents,
+		commands,
+		logs,
+	}): Promise<WorkflowResult> {
 		const repositoryPath = resolve(paths.workspace, args.repositoryPath);
 		const plan = await readFile(join(paths.workspace, args.planPath), "utf8");
-		const previousReview = args.previousReviewPath ? await readFile(join(paths.workspace, args.previousReviewPath), "utf8") : undefined;
+		const previousReview = args.previousReviewPath
+			? await readFile(join(paths.workspace, args.previousReviewPath), "utf8")
+			: undefined;
 		const implementation = await agents.prompt({
 			label: `implementation-${args.iteration}`,
 			cwd: repositoryPath,
 			tools: ["read", "grep", "find", "ls", "edit", "write", "bash"],
-			prompt: buildImplementationPrompt(args.task, plan, args.iteration, previousReview),
+			prompt: buildImplementationPrompt(
+				args.task,
+				plan,
+				args.iteration,
+				previousReview,
+			),
 			response: implementationAgentResponseSchema,
 		});
 		const status = await commands.run({
@@ -30,17 +43,33 @@ export const implementationWorkflow = developmentLoopScope.workflow({
 		await ensureCommandSucceeded(status);
 		const statusOutput = await logs.read(status.stdoutLog);
 		await mkdir(join(paths.workspace, "implementation"), { recursive: true });
-		await writeFile(join(paths.workspace, `implementation/iteration-${args.iteration}-status.txt`), statusOutput);
-		return reviewWorkflow({ ...args, implementationSummary: implementation.summary });
-	}
+		await writeFile(
+			join(
+				paths.workspace,
+				`implementation/iteration-${args.iteration}-status.txt`,
+			),
+			statusOutput,
+		);
+		return reviewWorkflow({
+			...args,
+			implementationSummary: implementation.summary,
+		});
+	},
 });
 
-function buildImplementationPrompt(task: string, plan: string, iteration: number, previousReview: string | undefined): string {
+function buildImplementationPrompt(
+	task: string,
+	plan: string,
+	iteration: number,
+	previousReview: string | undefined,
+): string {
 	return [
 		`Implement iteration ${iteration} for this repository task.`,
 		"Modify files as needed in the current repository.",
 		"Keep changes focused and run a cheap relevant check when possible.",
-		previousReview ? "Address the previous review before making new changes." : undefined,
+		previousReview
+			? "Address the previous review before making new changes."
+			: undefined,
 		"",
 		"Task:",
 		task,
@@ -50,6 +79,7 @@ function buildImplementationPrompt(task: string, plan: string, iteration: number
 		previousReview ? "" : undefined,
 		previousReview ? "Previous review:" : undefined,
 		previousReview,
-	].filter((line): line is string => line !== undefined).join("\n");
+	]
+		.filter((line): line is string => line !== undefined)
+		.join("\n");
 }
-

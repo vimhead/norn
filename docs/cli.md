@@ -65,9 +65,9 @@ with access to the same user's cache. Old build entries are not automatically
 removed. The extracted tree is a documentation snapshot, not a separate runtime
 installation.
 
-| Decision | GOOD | BAD |
-|---|---|---|
-| IF an example will be edited or run, THEN copy it into the task workspace first. ELSE read the cached asset in place. | Copy `paths.examples/minimal-workflow` before starting a run. | Modify the verified cache or put `.norn/` state inside it. |
+| Decision                                                                                                                                                                  | GOOD                                                          | BAD                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| IF an example will be edited or run, THEN copy it into the task workspace first. ELSE read the cached asset in place.                                                     | Copy `paths.examples/minimal-workflow` before starting a run. | Modify the verified cache or put `.norn/` state inside it.                 |
 | IF inspection reports a modified/incomplete cache, THEN preserve any wanted edits elsewhere, remove only the named cache entry, and retry. ELSE reuse the returned paths. | Remove the reported `v1-...` directory after preserving work. | Delete every build's cache or accept modified docs as matching the binary. |
 
 The same resolver is available from [`@vimhead.dev/norn-cli/documentation`](../packages/cli/src/documentation.ts),
@@ -133,10 +133,10 @@ Run results expose `run.paths.project` and `run.paths.workspace` as absolute dir
 
 Start stdin accepts `args` and optional `config`, with config overrides keyed independently by workflow ID or scope ID. Args are JSON, not CLI flags or TOON. For display, a JSON viewer can format a finite result; keep machine artifacts and JSONL events in their native format.
 
-| Decision | GOOD | BAD |
-|---|---|---|
-| IF start returns a run ID, THEN retain it and inspect the terminal outcome. ELSE handle the launch error. | Wait, then verify `status === "completed"` and expected file content. | Report task success from `runs start` alone. |
-| IF a new capability is written or registered, THEN query the current catalogue and schema. ELSE use the inspected contract. | `workflows inspect greet` after editing. | Rely on a cached session-start list that cannot contain the new workflow. |
+| Decision                                                                                                                    | GOOD                                                                  | BAD                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| IF start returns a run ID, THEN retain it and inspect the terminal outcome. ELSE handle the launch error.                   | Wait, then verify `status === "completed"` and expected file content. | Report task success from `runs start` alone.                              |
+| IF a new capability is written or registered, THEN query the current catalogue and schema. ELSE use the inspected contract. | `workflows inspect greet` after editing.                              | Rely on a cached session-start list that cannot contain the new workflow. |
 
 For live monitoring and explicit lifecycle control:
 
@@ -171,7 +171,9 @@ const started = await client.runs.start({
 });
 const finished = await client.runs.wait(started.id);
 if (finished.status !== "completed" || finished.health !== "healthy") {
-  throw new Error(`Run ${finished.id}: ${finished.status} (${finished.health})`);
+  throw new Error(
+    `Run ${finished.id}: ${finished.status} (${finished.health})`,
+  );
 }
 console.log(finished.outcome?.metadata);
 ```

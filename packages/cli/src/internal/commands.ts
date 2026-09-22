@@ -2,7 +2,11 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { requireAbsoluteWorkingDirectory } from "./working-directory.ts";
 import type { WriteStream } from "node:fs";
-import type { NornCommandRunInput, NornCommandRunResult, NornLogRef } from "@vimhead.dev/norn";
+import type {
+	NornCommandRunInput,
+	NornCommandRunResult,
+	NornLogRef,
+} from "@vimhead.dev/norn";
 import { errorMessage } from "./errors.ts";
 import { safeFileName } from "./file-names.ts";
 import type { NornRunLogs } from "./logs.ts";
@@ -21,9 +25,25 @@ export class NornCommandRunner {
 		const cwd = requireAbsoluteWorkingDirectory(commandInput.cwd);
 		const startedAtMs = Date.now();
 		const invocationId = randomUUID();
-		const stdoutRef = commandLog({ label: commandInput.label, invocationId, stream: "stdout" });
-		const stderrRef = commandLog({ label: commandInput.label, invocationId, stream: "stderr" });
-		await this.input.logger.record({ type: "command.started", invocationId, label: commandInput.label, command: commandInput.command, cwd, stdoutLogId: stdoutRef.id, stderrLogId: stderrRef.id });
+		const stdoutRef = commandLog({
+			label: commandInput.label,
+			invocationId,
+			stream: "stdout",
+		});
+		const stderrRef = commandLog({
+			label: commandInput.label,
+			invocationId,
+			stream: "stderr",
+		});
+		await this.input.logger.record({
+			type: "command.started",
+			invocationId,
+			label: commandInput.label,
+			command: commandInput.command,
+			cwd,
+			stdoutLogId: stdoutRef.id,
+			stderrLogId: stderrRef.id,
+		});
 		let result: SpawnCommandResult;
 		const stdoutLog = await this.input.logs.createWriteStream(stdoutRef);
 		const stderrLog = await this.input.logs.createWriteStream(stderrRef);
@@ -38,7 +58,13 @@ export class NornCommandRunner {
 				stderrStream: stderrLog.stream,
 			});
 		} catch (error) {
-			await this.input.logger.record({ type: "command.failed", invocationId, label: commandInput.label, durationMs: Date.now() - startedAtMs, error: errorMessage(error) });
+			await this.input.logger.record({
+				type: "command.failed",
+				invocationId,
+				label: commandInput.label,
+				durationMs: Date.now() - startedAtMs,
+				error: errorMessage(error),
+			});
 			throw error;
 		}
 		const commandResult = {
@@ -83,15 +109,24 @@ type SpawnCommandResult = {
 	killed: boolean;
 };
 
-async function spawnCommand(input: SpawnCommandInput): Promise<SpawnCommandResult> {
+async function spawnCommand(
+	input: SpawnCommandInput,
+): Promise<SpawnCommandResult> {
 	const command = typeof input.command === "string" ? "bash" : input.command[0];
-	const args = typeof input.command === "string" ? ["-c", input.command] : input.command.slice(1);
+	const args =
+		typeof input.command === "string"
+			? ["-c", input.command]
+			: input.command.slice(1);
 	let killed = false;
 	const stdout = new BoundedTextBuffer();
 	const stderr = new BoundedTextBuffer();
 
 	return new Promise((resolvePromise, reject) => {
-		const child = spawn(command, args, { cwd: input.cwd, env: input.env, shell: false });
+		const child = spawn(command, args, {
+			cwd: input.cwd,
+			env: input.env,
+			shell: false,
+		});
 		let timeout: ReturnType<typeof setTimeout> | undefined;
 		let escalation: ReturnType<typeof setTimeout> | undefined;
 		let isSettled = false;
@@ -104,25 +139,33 @@ async function spawnCommand(input: SpawnCommandInput): Promise<SpawnCommandResul
 			if (isSettled) return;
 			isSettled = true;
 			cleanup();
-			void closeStreams(input.stdoutStream, input.stderrStream).then(() => resolvePromise(result), reject);
+			void closeStreams(input.stdoutStream, input.stderrStream).then(
+				() => resolvePromise(result),
+				reject,
+			);
 		};
 		const fail = (error: Error) => {
 			if (isSettled) return;
 			isSettled = true;
 			cleanup();
-			void closeStreams(input.stdoutStream, input.stderrStream).then(() => reject(error), reject);
+			void closeStreams(input.stdoutStream, input.stderrStream).then(
+				() => reject(error),
+				reject,
+			);
 		};
 		const killChild = () => {
 			if (isSettled || killed) return;
 			killed = true;
 			child.kill("SIGTERM");
 			escalation = setTimeout(() => {
-				if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+				if (child.exitCode === null && child.signalCode === null)
+					child.kill("SIGKILL");
 			}, 5_000);
 			escalation.unref?.();
 		};
 
-		if (input.timeoutMs !== undefined) timeout = setTimeout(killChild, input.timeoutMs);
+		if (input.timeoutMs !== undefined)
+			timeout = setTimeout(killChild, input.timeoutMs);
 		if (input.signal?.aborted) killChild();
 		input.signal?.addEventListener("abort", killChild, { once: true });
 
@@ -137,12 +180,25 @@ async function spawnCommand(input: SpawnCommandInput): Promise<SpawnCommandResul
 			input.stderrStream.write(text);
 		});
 		child.on("error", fail);
-		child.on("close", (code) => finish({ exitCode: code, stdoutTail: stdout.value(), stderrTail: stderr.value(), killed }));
+		child.on("close", (code) =>
+			finish({
+				exitCode: code,
+				stdoutTail: stdout.value(),
+				stderrTail: stderr.value(),
+				killed,
+			}),
+		);
 	});
 }
 
-function commandLog(input: { readonly label: string; readonly invocationId: string; readonly stream: "stdout" | "stderr" }): NornLogRef {
-	return { id: `commands/${safeFileName(input.label)}-${input.invocationId}.${input.stream}` };
+function commandLog(input: {
+	readonly label: string;
+	readonly invocationId: string;
+	readonly stream: "stdout" | "stderr";
+}): NornLogRef {
+	return {
+		id: `commands/${safeFileName(input.label)}-${input.invocationId}.${input.stream}`,
+	};
 }
 
 class BoundedTextBuffer {
@@ -152,7 +208,8 @@ class BoundedTextBuffer {
 
 	append(value: string): void {
 		this.text += value;
-		if (this.text.length > this.maxChars) this.text = this.text.slice(this.text.length - this.maxChars);
+		if (this.text.length > this.maxChars)
+			this.text = this.text.slice(this.text.length - this.maxChars);
 	}
 
 	value(): string {
@@ -161,8 +218,13 @@ class BoundedTextBuffer {
 }
 
 async function closeStreams(...streams: WriteStream[]): Promise<void> {
-	await Promise.all(streams.map((stream) => new Promise<void>((resolvePromise, reject) => {
-		stream.on("error", reject);
-		stream.end(resolvePromise);
-	})));
+	await Promise.all(
+		streams.map(
+			(stream) =>
+				new Promise<void>((resolvePromise, reject) => {
+					stream.on("error", reject);
+					stream.end(resolvePromise);
+				}),
+		),
+	);
 }

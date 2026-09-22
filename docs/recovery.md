@@ -12,12 +12,12 @@ norn runs checkpoints <run>
 
 Checkpoints are taken at run start, successful transitions, gate interruptions, and completion. Failure/stopping does not create a new successful boundary. A transition snapshot contains the saved preceding work and the next step's args.
 
-| Observed state | Action | GOOD | BAD |
-|---|---|---|---|
-| `failed` or `stopped` | IF execution must continue, THEN repair the cause, select an earlier active checkpoint, rollback, and resume without args. ELSE leave the run inactive. | Retry delivery from the transition after assessment. | Resume a failed run directly or restart all assessments. |
-| `interrupted` | IF the declared decision is available within authorization, THEN resume with the permitted argument patch. ELSE retain the interruption and identify the missing input. | An authorized agent evaluates evidence and supplies the decision. | Assume every gate requires a human or edit protected evidence fields. |
-| `pendingResume` | IF retry is intended, THEN resume with no args. ELSE leave the restored boundary untouched. | `norn runs resume <run> </dev/null`. | Try to override arbitrary saved inputs through resume. |
-| `running` with unhealthy inspection | IF the executor is no longer healthy, THEN inspect ownership and reconcile effects before recovery. ELSE monitor active execution. | Check run health and command evidence before retry. | Start a competing executor or equate stale status with successful delivery. |
+| Observed state                      | Action                                                                                                                                                                  | GOOD                                                              | BAD                                                                         |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `failed` or `stopped`               | IF execution must continue, THEN repair the cause, select an earlier active checkpoint, rollback, and resume without args. ELSE leave the run inactive.                 | Retry delivery from the transition after assessment.              | Resume a failed run directly or restart all assessments.                    |
+| `interrupted`                       | IF the declared decision is available within authorization, THEN resume with the permitted argument patch. ELSE retain the interruption and identify the missing input. | An authorized agent evaluates evidence and supplies the decision. | Assume every gate requires a human or edit protected evidence fields.       |
+| `pendingResume`                     | IF retry is intended, THEN resume with no args. ELSE leave the restored boundary untouched.                                                                             | `norn runs resume <run> </dev/null`.                              | Try to override arbitrary saved inputs through resume.                      |
+| `running` with unhealthy inspection | IF the executor is no longer healthy, THEN inspect ownership and reconcile effects before recovery. ELSE monitor active execution.                                      | Check run health and command evidence before retry.               | Start a competing executor or equate stale status with successful delivery. |
 
 ## Source repair and rollback
 
@@ -34,10 +34,10 @@ Use the actual `cp_...` ID from checkpoint listing, not an index or invented nam
 
 Rollback restores only [snapshotted files](persistence.md). It does not undo project-root edits, remote deliveries, or other external effects. Re-execution is not an exactly-once guarantee.
 
-| Decision | GOOD | BAD |
-|---|---|---|
-| IF retry can repeat an external effect, THEN reconcile its evidence or use an idempotent effect contract before resuming. ELSE re-execute the saved step. | Look up the existing delivery receipt by operation ID. | Assume an interrupted HTTP call did nothing. |
-| IF the defect is in analysis only, THEN choose the draft-to-analysis transition. ELSE choose a boundary before the invalid producer and regenerate its output. | Preserve a valid draft while repairing the analyzer. | Repeatedly analyze a draft whose evidence is itself invalid. |
+| Decision                                                                                                                                                       | GOOD                                                   | BAD                                                          |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------ |
+| IF retry can repeat an external effect, THEN reconcile its evidence or use an idempotent effect contract before resuming. ELSE re-execute the saved step.      | Look up the existing delivery receipt by operation ID. | Assume an interrupted HTTP call did nothing.                 |
+| IF the defect is in analysis only, THEN choose the draft-to-analysis transition. ELSE choose a boundary before the invalid producer and regenerate its output. | Preserve a valid draft while repairing the analyzer.   | Repeatedly analyze a draft whose evidence is itself invalid. |
 
 The [agent example's repair exercise](../examples/agent-then-analysis/README.md#repair-only-the-analysis-step) demonstrates preserving a live Norn agent result through analysis failure and source repair.
 

@@ -18,12 +18,23 @@ export const routeAssessment = workflow({
 	async execute({ args, paths, run }): Promise<WorkflowResult> {
 		const outlinePath = "outline.md";
 		await writeFile(join(paths.workspace, outlinePath), args.outline);
-		const data = { outlinePath, missingHeadings: args.missingHeadings, revisionsUsed: args.revisionsUsed };
+		const data = {
+			outlinePath,
+			missingHeadings: args.missingHeadings,
+			revisionsUsed: args.revisionsUsed,
+		};
 		if (args.missingHeadings.length <= args.maxMissingHeadings) {
-			return run.complete({ summary: "Outline meets the caller's heading threshold.", data });
+			return run.complete({
+				summary: "Outline meets the caller's heading threshold.",
+				data,
+			});
 		}
 		if (args.revisionsUsed >= args.maxRevisions) {
-			return run.fail({ summary: "Revision limit reached before the outline met the caller's heading threshold.", data });
+			return run.fail({
+				summary:
+					"Revision limit reached before the outline met the caller's heading threshold.",
+				data,
+			});
 		}
 		return appendHeading({
 			outline: args.outline,

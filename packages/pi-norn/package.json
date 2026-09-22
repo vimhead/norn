@@ -1,21 +1,47 @@
 {
-  "name": "@vimhead.dev/pi-norn",
-  "version": "0.1.0-tip.0",
-  "description": "Deliver installed Norn runtime documentation to outer Pi agent sessions.",
-  "type": "module",
-  "license": "MIT",
-  "keywords": ["pi-package"],
-  "repository": { "type": "git", "url": "git+https://github.com/vimhead/norn.git", "directory": "packages/pi-norn" },
-  "homepage": "https://github.com/vimhead/norn#readme",
-  "engines": { "node": ">=22.19.0" },
-  "publishConfig": { "access": "public", "tag": "tip" },
-  "files": ["dist", "README.md"],
-  "pi": { "extensions": ["./dist/index.js"] },
-  "scripts": { "build": "node ../../scripts/build-package.ts" },
-  "peerDependencies": { "@earendil-works/pi-coding-agent": "*" },
-  "peerDependenciesMeta": { "@earendil-works/pi-coding-agent": { "optional": true } },
-  "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.85.1",
-    "@vimhead.dev/norn-core": "workspace:*"
-  }
+	"name": "@vimhead.dev/pi-norn",
+	"version": "0.1.0-tip.0",
+	"description": "Deliver installed Norn runtime documentation to outer Pi agent sessions.",
+	"type": "module",
+	"license": "MIT",
+	"keywords": [
+		"pi-package"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/vimhead/norn.git",
+		"directory": "packages/pi-norn"
+	},
+	"homepage": "https://github.com/vimhead/norn#readme",
+	"engines": {
+		"node": ">=22.19.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"tag": "tip"
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"pi": {
+		"extensions": [
+			"./dist/index.js"
+		]
+	},
+	"scripts": {
+		"build": "node ../../scripts/build-package.ts"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"peerDependenciesMeta": {
+		"@earendil-works/pi-coding-agent": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "0.85.1",
+		"@vimhead.dev/norn-core": "workspace:*"
+	}
 }

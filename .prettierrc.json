@@ -1,0 +1,12 @@
+{
+	"printWidth": 80,
+	"useTabs": true,
+	"proseWrap": "preserve",
+	"embeddedLanguageFormatting": "auto",
+	"overrides": [
+		{
+			"files": "*.md",
+			"options": { "useTabs": false }
+		}
+	]
+}

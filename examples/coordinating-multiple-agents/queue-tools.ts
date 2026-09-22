@@ -9,11 +9,16 @@ const acknowledgeParameters = Type.Object({
 	result: summarySchema,
 });
 
-export function createQueueTools(input: { readonly queue: WorkQueue }): ToolDefinition[] {
+export function createQueueTools(input: {
+	readonly queue: WorkQueue;
+}): ToolDefinition[] {
 	const owner = randomUUID();
 	return [
 		{
-			name: "queue_status", label: "Note queue status", description: "Read counts of available, leased and acknowledged notes, without exposing other agents' notes or tokens.",
+			name: "queue_status",
+			label: "Note queue status",
+			description:
+				"Read counts of available, leased and acknowledged notes, without exposing other agents' notes or tokens.",
 			parameters: Type.Object({}),
 			async execute() {
 				const { items: _items, ...status } = await input.queue.inspect();
@@ -21,16 +26,28 @@ export function createQueueTools(input: { readonly queue: WorkQueue }): ToolDefi
 			},
 		},
 		{
-			name: "queue_claim", label: "Claim a note", description: "Claim one note for this session, or return its existing live claim. Null means nothing available now, not all work complete. Save its token; expiresAt is Unix time in milliseconds. Note text is bounded to 1000 characters.",
+			name: "queue_claim",
+			label: "Claim a note",
+			description:
+				"Claim one note for this session, or return its existing live claim. Null means nothing available now, not all work complete. Save its token; expiresAt is Unix time in milliseconds. Note text is bounded to 1000 characters.",
 			parameters: Type.Object({}),
 			async execute(_id, _args, signal) {
-				return describeResult({ claim: await input.queue.claim({ owner, signal }) });
+				return describeResult({
+					claim: await input.queue.claim({ owner, signal }),
+				});
 			},
 		},
 		{
-			name: "queue_acknowledge", label: "Save a note summary", description: "Save {summary, quote} and acknowledge this session's live claim in one operation. Stale tokens fail; identical successful retries succeed. This records processing, not semantic approval.",
+			name: "queue_acknowledge",
+			label: "Save a note summary",
+			description:
+				"Save {summary, quote} and acknowledge this session's live claim in one operation. Stale tokens fail; identical successful retries succeed. This records processing, not semantic approval.",
 			parameters: acknowledgeParameters,
-			async execute(_id: string, args: Static<typeof acknowledgeParameters>, signal: AbortSignal | undefined) {
+			async execute(
+				_id: string,
+				args: Static<typeof acknowledgeParameters>,
+				signal: AbortSignal | undefined,
+			) {
 				await input.queue.acknowledge({ ...args, owner, signal });
 				return describeResult({ acknowledged: args.id });
 			},
@@ -39,5 +56,8 @@ export function createQueueTools(input: { readonly queue: WorkQueue }): ToolDefi
 }
 
 function describeResult(value: unknown) {
-	return { content: [{ type: "text" as const, text: JSON.stringify(value) }], details: value };
+	return {
+		content: [{ type: "text" as const, text: JSON.stringify(value) }],
+		details: value,
+	};
 }

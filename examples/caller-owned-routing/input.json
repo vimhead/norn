@@ -1,14 +1,14 @@
 {
-  "args": {
-    "outline": "# Release notes\n\n## Summary\n",
-    "requiredHeadings": ["Summary", "Changes", "Verification"],
-    "next": {
-      "workflow": "routeAssessment",
-      "forwardArgs": {
-        "maxMissingHeadings": 0,
-        "maxRevisions": 2,
-        "revisionsUsed": 0
-      }
-    }
-  }
+	"args": {
+		"outline": "# Release notes\n\n## Summary\n",
+		"requiredHeadings": ["Summary", "Changes", "Verification"],
+		"next": {
+			"workflow": "routeAssessment",
+			"forwardArgs": {
+				"maxMissingHeadings": 0,
+				"maxRevisions": 2,
+				"revisionsUsed": 0
+			}
+		}
+	}
 }

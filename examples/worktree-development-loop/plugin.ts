@@ -4,4 +4,10 @@ import { implementationWorkflow } from "./workflows/implementation/execute.ts";
 import { reviewWorkflow } from "./workflows/review/execute.ts";
 import { reviewRouterWorkflow } from "./workflows/review-router/execute.ts";
 
-export default [developmentLoopWorkflow, planningWorkflow, implementationWorkflow, reviewWorkflow, reviewRouterWorkflow];
+export default [
+	developmentLoopWorkflow,
+	planningWorkflow,
+	implementationWorkflow,
+	reviewWorkflow,
+	reviewRouterWorkflow,
+];

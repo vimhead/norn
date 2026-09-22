@@ -31,7 +31,10 @@ export class NornRunLease {
 		private readonly processOwner: NornRunProcessOwner,
 	) {}
 
-	static async acquire(runRoot: string, processOwner: NornRunProcessOwner = currentRunProcessOwner()): Promise<NornRunLease> {
+	static async acquire(
+		runRoot: string,
+		processOwner: NornRunProcessOwner = currentRunProcessOwner(),
+	): Promise<NornRunLease> {
 		const lockRoot = join(runRoot, LOCK_DIR_NAME);
 		for (let attempt = 1; attempt <= ACQUIRE_ATTEMPTS; attempt++) {
 			try {
@@ -48,7 +51,9 @@ export class NornRunLease {
 			} catch (error) {
 				if (!isNodeError(error) || error.code !== "EEXIST") throw error;
 				const owner = await readRunLeaseOwner(join(lockRoot, OWNER_FILE_NAME));
-				const isStale = owner ? isRunLeaseStale(owner) : await isRunLeaseDirectoryStale(lockRoot);
+				const isStale = owner
+					? isRunLeaseStale(owner)
+					: await isRunLeaseDirectoryStale(lockRoot);
 				if (!isStale) throw new Error(`Run is already active: ${runRoot}`);
 				await rm(lockRoot, { recursive: true, force: true });
 			}
@@ -59,7 +64,8 @@ export class NornRunLease {
 	async assertOwned(): Promise<void> {
 		if (this.isReleased) throw new Error("Run lease has been released");
 		const owner = await readRunLeaseOwner(this.ownerPath);
-		if (!owner || owner.token !== this.token) throw new Error("Run lease was lost");
+		if (!owner || owner.token !== this.token)
+			throw new Error("Run lease was lost");
 	}
 
 	async release(): Promise<void> {
@@ -68,7 +74,8 @@ export class NornRunLease {
 		if (this.heartbeat) clearInterval(this.heartbeat);
 		await this.heartbeatChain.catch(() => undefined);
 		const owner = await readRunLeaseOwner(this.ownerPath);
-		if (owner?.token === this.token) await rm(this.lockRoot, { recursive: true, force: true });
+		if (owner?.token === this.token)
+			await rm(this.lockRoot, { recursive: true, force: true });
 	}
 
 	private get ownerPath(): string {
@@ -77,10 +84,12 @@ export class NornRunLease {
 
 	private startHeartbeat(): void {
 		this.heartbeat = setInterval(() => {
-			this.heartbeatChain = this.heartbeatChain.then(() => this.refreshHeartbeat()).catch(() => {
-				this.isReleased = true;
-				if (this.heartbeat) clearInterval(this.heartbeat);
-			});
+			this.heartbeatChain = this.heartbeatChain
+				.then(() => this.refreshHeartbeat())
+				.catch(() => {
+					this.isReleased = true;
+					if (this.heartbeat) clearInterval(this.heartbeat);
+				});
 		}, HEARTBEAT_INTERVAL_MS);
 		this.heartbeat.unref?.();
 	}
@@ -88,13 +97,21 @@ export class NornRunLease {
 	private async refreshHeartbeat(): Promise<void> {
 		if (this.isReleased) return;
 		const owner = await readRunLeaseOwner(this.ownerPath);
-		if (!owner || owner.token !== this.token) throw new Error("Run lease was lost");
+		if (!owner || owner.token !== this.token)
+			throw new Error("Run lease was lost");
 		await this.writeOwner({ acquiredAt: owner.acquiredAt });
 	}
 
-	private async writeOwner(input: { readonly acquiredAt: string }): Promise<void> {
+	private async writeOwner(input: {
+		readonly acquiredAt: string;
+	}): Promise<void> {
 		const now = new Date().toISOString();
-		await writeJsonAtomically(this.ownerPath, { token: this.token, acquiredAt: input.acquiredAt, heartbeatAt: now, ...this.processOwner });
+		await writeJsonAtomically(this.ownerPath, {
+			token: this.token,
+			acquiredAt: input.acquiredAt,
+			heartbeatAt: now,
+			...this.processOwner,
+		});
 	}
 }
 
@@ -104,14 +121,18 @@ export type NornRunProcessOwner = {
 	readonly command: readonly string[];
 };
 
-export async function getRunLeaseHealth(runRoot: string): Promise<NornRunHealth> {
+export async function getRunLeaseHealth(
+	runRoot: string,
+): Promise<NornRunHealth> {
 	const lockRoot = join(runRoot, LOCK_DIR_NAME);
 	const owner = await readRunLeaseOwner(join(lockRoot, OWNER_FILE_NAME));
 	if (owner) return isRunLeaseStale(owner) ? "unhealthy" : "healthy";
-	return await isRunLeaseDirectoryStale(lockRoot) ? "unhealthy" : "healthy";
+	return (await isRunLeaseDirectoryStale(lockRoot)) ? "unhealthy" : "healthy";
 }
 
-export async function getRunLeaseOwner(runRoot: string): Promise<NornRunLeaseOwner | undefined> {
+export async function getRunLeaseOwner(
+	runRoot: string,
+): Promise<NornRunLeaseOwner | undefined> {
 	return readRunLeaseOwner(join(runRoot, LOCK_DIR_NAME, OWNER_FILE_NAME));
 }
 
@@ -123,7 +144,9 @@ function currentRunProcessOwner(): NornRunProcessOwner {
 	};
 }
 
-async function readRunLeaseOwner(path: string): Promise<NornRunLeaseOwner | undefined> {
+async function readRunLeaseOwner(
+	path: string,
+): Promise<NornRunLeaseOwner | undefined> {
 	try {
 		return parseRunLeaseOwner(JSON.parse(await readFile(path, "utf8")));
 	} catch (error) {
@@ -135,13 +158,40 @@ async function readRunLeaseOwner(path: string): Promise<NornRunLeaseOwner | unde
 function parseRunLeaseOwner(value: unknown): NornRunLeaseOwner | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const owner = value as Partial<NornRunLeaseOwner>;
-	if (typeof owner.token !== "string" || owner.token.length === 0) return undefined;
-	if (typeof owner.acquiredAt !== "string" || Number.isNaN(Date.parse(owner.acquiredAt))) return undefined;
-	if (typeof owner.heartbeatAt !== "string" || Number.isNaN(Date.parse(owner.heartbeatAt))) return undefined;
-	const pid = typeof owner.pid === "number" && Number.isInteger(owner.pid) ? owner.pid : 0;
-	const processGroupId = typeof owner.processGroupId === "number" && Number.isInteger(owner.processGroupId) ? owner.processGroupId : pid;
-	const command = Array.isArray(owner.command) ? owner.command.filter((value): value is string => typeof value === "string") : [];
-	return { token: owner.token, acquiredAt: owner.acquiredAt, heartbeatAt: owner.heartbeatAt, pid, processGroupId, command };
+	if (typeof owner.token !== "string" || owner.token.length === 0)
+		return undefined;
+	if (
+		typeof owner.acquiredAt !== "string" ||
+		Number.isNaN(Date.parse(owner.acquiredAt))
+	)
+		return undefined;
+	if (
+		typeof owner.heartbeatAt !== "string" ||
+		Number.isNaN(Date.parse(owner.heartbeatAt))
+	)
+		return undefined;
+	const pid =
+		typeof owner.pid === "number" && Number.isInteger(owner.pid)
+			? owner.pid
+			: 0;
+	const processGroupId =
+		typeof owner.processGroupId === "number" &&
+		Number.isInteger(owner.processGroupId)
+			? owner.processGroupId
+			: pid;
+	const command = Array.isArray(owner.command)
+		? owner.command.filter(
+				(value): value is string => typeof value === "string",
+			)
+		: [];
+	return {
+		token: owner.token,
+		acquiredAt: owner.acquiredAt,
+		heartbeatAt: owner.heartbeatAt,
+		pid,
+		processGroupId,
+		command,
+	};
 }
 
 function isRunLeaseStale(owner: NornRunLeaseOwner): boolean {

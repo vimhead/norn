@@ -15,32 +15,58 @@ export const saveJson = scope.workflow({
 	entrypoint: false,
 	args: deliveryArgsSchema,
 	async execute({ args, paths, run }) {
-		const greeting = await readFile(join(paths.workspace, args.resultPath), "utf8");
+		const greeting = await readFile(
+			join(paths.workspace, args.resultPath),
+			"utf8",
+		);
 		const deliveryPath = "delivery.json";
-		await writeFile(join(paths.workspace, deliveryPath), JSON.stringify({
-			batchId: args.batchId,
-			summary: args.summary,
-			greeting,
-		}, null, 2));
+		await writeFile(
+			join(paths.workspace, deliveryPath),
+			JSON.stringify(
+				{
+					batchId: args.batchId,
+					summary: args.summary,
+					greeting,
+				},
+				null,
+				2,
+			),
+		);
 		return run.complete({
 			summary: args.summary,
-			data: { batchId: args.batchId, format: "json", greetingPath: args.resultPath, deliveryPath },
+			data: {
+				batchId: args.batchId,
+				format: "json",
+				greetingPath: args.resultPath,
+				deliveryPath,
+			},
 		});
-	}
+	},
 });
 export const saveText = scope.workflow({
 	name: "saveText",
 	entrypoint: false,
 	args: deliveryArgsSchema,
 	async execute({ args, paths, run }) {
-		const greeting = await readFile(join(paths.workspace, args.resultPath), "utf8");
+		const greeting = await readFile(
+			join(paths.workspace, args.resultPath),
+			"utf8",
+		);
 		const deliveryPath = "delivery.txt";
-		await writeFile(join(paths.workspace, deliveryPath), `${args.batchId}: ${greeting}\n`);
+		await writeFile(
+			join(paths.workspace, deliveryPath),
+			`${args.batchId}: ${greeting}\n`,
+		);
 		return run.complete({
 			summary: args.summary,
-			data: { batchId: args.batchId, format: "text", greetingPath: args.resultPath, deliveryPath },
+			data: {
+				batchId: args.batchId,
+				format: "text",
+				greetingPath: args.resultPath,
+				deliveryPath,
+			},
 		});
-	}
+	},
 });
 
 export default [saveJson, saveText];

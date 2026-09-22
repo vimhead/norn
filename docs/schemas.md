@@ -13,30 +13,30 @@ type Person = Static<typeof Person>;
 
 Schemas are runtime values; `Static` derives the TypeScript type. In the table, `S`, `A` and `B` are schemas, with corresponding inferred types `T`, `TA` and `TB`.
 
-| TypeScript type | TypeBox schema |
-|---|---|
-| `string` | `Type.String()` |
-| `number` | `Type.Number()` |
-| `boolean` | `Type.Boolean()` |
-| `null` | `Type.Null()` |
-| `undefined` | `Type.Undefined()` |
-| `unknown` | `Type.Unknown()` |
-| `any` | `Type.Any()` |
-| `never` | `Type.Never()` |
-| `"ready"` | `Type.Literal("ready")` |
-| `string[]` | `Type.Array(Type.String())` |
-| `[string, number]` | `Type.Tuple([Type.String(), Type.Number()])` |
-| `{ name: string }` | `Type.Object({ name: Type.String() })` |
-| `{ name?: string }` | `Type.Object({ name: Type.Optional(Type.String()) })` |
+| TypeScript type             | TypeBox schema                                        |
+| --------------------------- | ----------------------------------------------------- |
+| `string`                    | `Type.String()`                                       |
+| `number`                    | `Type.Number()`                                       |
+| `boolean`                   | `Type.Boolean()`                                      |
+| `null`                      | `Type.Null()`                                         |
+| `undefined`                 | `Type.Undefined()`                                    |
+| `unknown`                   | `Type.Unknown()`                                      |
+| `any`                       | `Type.Any()`                                          |
+| `never`                     | `Type.Never()`                                        |
+| `"ready"`                   | `Type.Literal("ready")`                               |
+| `string[]`                  | `Type.Array(Type.String())`                           |
+| `[string, number]`          | `Type.Tuple([Type.String(), Type.Number()])`          |
+| `{ name: string }`          | `Type.Object({ name: Type.String() })`                |
+| `{ name?: string }`         | `Type.Object({ name: Type.Optional(Type.String()) })` |
 | `{ readonly name: string }` | `Type.Object({ name: Type.Readonly(Type.String()) })` |
-| `string \| null` | `Type.Union([Type.String(), Type.Null()])` |
-| `TA \| TB` | `Type.Union([A, B])` |
-| `TA & TB` | `Type.Intersect([A, B])` |
-| `Record<string, number>` | `Type.Record(Type.String(), Type.Number())` |
-| `Partial<T>` | `Type.Partial(S)` |
-| `Required<T>` | `Type.Required(S)` |
-| `Pick<T, "name">` | `Type.Pick(S, ["name"])` |
-| `Omit<T, "name">` | `Type.Omit(S, ["name"])` |
+| `string \| null`            | `Type.Union([Type.String(), Type.Null()])`            |
+| `TA \| TB`                  | `Type.Union([A, B])`                                  |
+| `TA & TB`                   | `Type.Intersect([A, B])`                              |
+| `Record<string, number>`    | `Type.Record(Type.String(), Type.Number())`           |
+| `Partial<T>`                | `Type.Partial(S)`                                     |
+| `Required<T>`               | `Type.Required(S)`                                    |
+| `Pick<T, "name">`           | `Type.Pick(S, ["name"])`                              |
+| `Omit<T, "name">`           | `Type.Omit(S, ["name"])`                              |
 
 `Type.Integer()` also infers `number`; integrality is a runtime constraint. Optional properties may be absent; accepting `null` is a separate union. `Type.Readonly` affects static typing, not runtime freezing. `Type.Unknown` and `Type.Any` accept any value at runtime but infer different TypeScript types; neither guarantees JSON serializability. JavaScript-only values such as `undefined`, `bigint`, functions and symbols are not JSON data contracts.
 
@@ -47,10 +47,13 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { Compile } from "typebox/compile";
 
-const Task = Type.Object({
-  title: Type.String({ minLength: 1 }),
-  attempts: Type.Integer({ minimum: 1, maximum: 10 }),
-}, { additionalProperties: false });
+const Task = Type.Object(
+  {
+    title: Type.String({ minLength: 1 }),
+    attempts: Type.Integer({ minimum: 1, maximum: 10 }),
+  },
+  { additionalProperties: false },
+);
 
 const valid = Value.Check(Task, { title: "Build", attempts: 3 });
 const invalid = Value.Check(Task, { title: "Build", attempts: "3" });
@@ -77,7 +80,7 @@ type Outcome = Static<typeof Outcome>;
 
 const UniqueNames = Type.Refine(
   Type.Array(Type.String()),
-  names => new Set(names).size === names.length,
+  (names) => new Set(names).size === names.length,
   () => "Names must be unique",
 );
 const distinct = Value.Check(UniqueNames, ["build", "review"]);
@@ -92,12 +95,15 @@ The literal `kind` supports TypeScript narrowing and distinguishes runtime branc
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
 
-const Tree = Type.Cyclic({
-  Node: Type.Object({
-    name: Type.String(),
-    children: Type.Array(Type.Ref("Node")),
-  }),
-}, "Node");
+const Tree = Type.Cyclic(
+  {
+    Node: Type.Object({
+      name: Type.String(),
+      children: Type.Array(Type.Ref("Node")),
+    }),
+  },
+  "Node",
+);
 type Tree = Static<typeof Tree>;
 
 const tree: Tree = { name: "root", children: [{ name: "leaf", children: [] }] };
@@ -113,8 +119,8 @@ import { Type, type StaticEncode, type StaticDecode } from "typebox";
 import { Value } from "typebox/value";
 
 const CountText = Type.Codec(Type.String({ pattern: "^[0-9]+$" }))
-  .Decode(text => Number(text))
-  .Encode(count => String(count));
+  .Decode((text) => Number(text))
+  .Encode((count) => String(count));
 
 type CountInput = StaticEncode<typeof CountText>;
 type CountOutput = StaticDecode<typeof CountText>;

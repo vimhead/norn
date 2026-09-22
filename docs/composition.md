@@ -81,8 +81,8 @@ and iteration limit. Neither reusable capability knows the caller's policy.
 Task-level findings and run-level completion are separate: a caller may accept
 some findings, request more work, or fail when its revision budget is exhausted.
 
-| Decision | GOOD | BAD |
-|---|---|---|
+| Decision                                                                                                                                           | GOOD                                                                         | BAD                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | IF callers need different acceptance or follow-up policies, THEN supply a caller-owned router as the continuation. ELSE use a direct continuation. | Route the same assessment to completion or revision using caller thresholds. | Embed one caller's revision budget in a reusable assessment, or add a router to unconditional delivery. |
 
 ## Multiple outcomes and direct targets
@@ -104,11 +104,11 @@ An implementation can return `args.next.success({ resultPath })`, `args.next.fai
 
 These are alternative transitions, not fan-out. `success` and `failure` are not reserved names, and a failure reference does not catch unhandled exceptions automatically.
 
-| Decision | GOOD | BAD |
-|---|---|---|
-| IF the caller selects the next step, THEN invoke its reference with the declared contribution. ELSE call a known declaration or use a dynamic ID. | `args.next({ resultPath })` | Manually reconstruct captured forwarding input. |
-| IF additional caller work follows the result, THEN represent it as the supplied reference. ELSE complete the run. | `assess → caller.deliver` | Expect execution to return to the line following a workflow call. |
-| IF a target schema changes, THEN exercise the assembled input contract. ELSE preserve its existing input contract. | Verify the target accepts captured context and contributed results. | Treat contribution metadata as end-to-end compatibility proof. |
+| Decision                                                                                                                                          | GOOD                                                                | BAD                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| IF the caller selects the next step, THEN invoke its reference with the declared contribution. ELSE call a known declaration or use a dynamic ID. | `args.next({ resultPath })`                                         | Manually reconstruct captured forwarding input.                   |
+| IF additional caller work follows the result, THEN represent it as the supplied reference. ELSE complete the run.                                 | `assess → caller.deliver`                                           | Expect execution to return to the line following a workflow call. |
+| IF a target schema changes, THEN exercise the assembled input contract. ELSE preserve its existing input contract.                                | Verify the target accepts captured context and contributed results. | Treat contribution metadata as end-to-end compatibility proof.    |
 
 The [worktree development loop](../examples/worktree-development-loop/README.md) is a larger multi-step example using known workflow declarations, not a required planner/reviewer architecture.
 

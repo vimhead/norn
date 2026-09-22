@@ -1,5 +1,10 @@
 import type { CreateAgentSessionOptions } from "@earendil-works/pi-coding-agent";
-import type { NornAgents, NornCommands, NornLogs, NornRun } from "@vimhead.dev/norn";
+import type {
+	NornAgents,
+	NornCommands,
+	NornLogs,
+	NornRun,
+} from "@vimhead.dev/norn";
 import { createWorkflowTransition } from "@vimhead.dev/norn-core/workflow-transition";
 import type { NornAgentResponseCollector } from "./agent-response-tool.ts";
 import { NornAgentRunner } from "./agents.ts";
@@ -28,23 +33,26 @@ export class NornExecutionContext {
 	constructor(private readonly input: NornExecutionContextInput) {
 		this.run = {
 			id: input.id,
-			next: (workflowId, args) => createWorkflowTransition({ workflowId, args }),
-			complete: metadata => ({ type: "complete", metadata }),
-			fail: metadata => ({ type: "fail", metadata }),
+			next: (workflowId, args) =>
+				createWorkflowTransition({ workflowId, args }),
+			complete: (metadata) => ({ type: "complete", metadata }),
+			fail: (metadata) => ({ type: "fail", metadata }),
 		};
 		this.logs = {
-			read: log => this.input.logs.read(log),
+			read: (log) => this.input.logs.read(log),
 		};
 		this.commands = {
-			run: commandInput => new NornCommandRunner({
-				signal: this.input.signal,
-				logs: this.input.logs,
-				logger: this.input.logger,
-			}).run(commandInput),
+			run: (commandInput) =>
+				new NornCommandRunner({
+					signal: this.input.signal,
+					logs: this.input.logs,
+					logger: this.input.logger,
+				}).run(commandInput),
 		};
 		this.agents = {
-			createSession: agentInput => this.createAgentRunner().createSession(agentInput),
-			prompt: agentInput => this.createAgentRunner().prompt(agentInput),
+			createSession: (agentInput) =>
+				this.createAgentRunner().createSession(agentInput),
+			prompt: (agentInput) => this.createAgentRunner().prompt(agentInput),
 		};
 	}
 

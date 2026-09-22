@@ -1,3 +1,6 @@
 export function safeFileName(value: string): string {
-	return value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "workflow";
+	return (
+		value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") ||
+		"workflow"
+	);
 }

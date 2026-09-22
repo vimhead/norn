@@ -26,7 +26,10 @@ if (mode === "hold") {
 	const { state } = await initializeSharedState(root);
 	try {
 		for (let index = 0; index < 12; index++) {
-			await state.set({ id: `${worker}-${index}`, schema: Type.Number() }, index);
+			await state.set(
+				{ id: `${worker}-${index}`, schema: Type.Number() },
+				index,
+			);
 		}
 	} finally {
 		state.close();

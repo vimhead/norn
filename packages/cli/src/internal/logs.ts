@@ -10,7 +10,10 @@ export type NornLogWriteStream = {
 };
 
 export class NornRunLogs {
-	constructor(private readonly logsRoot: string, private readonly files: NornFileCoordinator) {}
+	constructor(
+		private readonly logsRoot: string,
+		private readonly files: NornFileCoordinator,
+	) {}
 
 	async write(path: string, content: string): Promise<void> {
 		await this.files.writeText(this.resolveLogPath(path), content);
@@ -33,7 +36,12 @@ export class NornRunLogs {
 		if (isAbsolute(path)) throw new Error(`Log path must be relative: ${path}`);
 		const resolvedPath = resolve(this.logsRoot, path);
 		const relativePath = relative(this.logsRoot, resolvedPath);
-		if (relativePath === "" || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+		if (
+			relativePath === "" ||
+			relativePath === ".." ||
+			relativePath.startsWith(`..${sep}`) ||
+			isAbsolute(relativePath)
+		) {
 			throw new Error(`Log path escapes logs directory: ${path}`);
 		}
 		return resolvedPath;

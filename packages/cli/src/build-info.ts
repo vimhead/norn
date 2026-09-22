@@ -1,6 +1,9 @@
 import { NORN_GENERATED_BUILD_INFO } from "./generated-build-info.ts";
 
-export type NornBuildInfo = NornUnknownBuildInfo | NornNpmRegistryBuildInfo | NornGithubReleaseBinaryBuildInfo;
+export type NornBuildInfo =
+	| NornUnknownBuildInfo
+	| NornNpmRegistryBuildInfo
+	| NornGithubReleaseBinaryBuildInfo;
 
 export type NornUnknownBuildInfo = {
 	readonly kind: "unknown";

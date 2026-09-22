@@ -1,10 +1,21 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { NornAgentMetrics, NornAgentUsage, NornCommandMetrics, NornRunMetrics, NornRunStatus, NornWorkflowMetrics } from "@vimhead.dev/norn";
+import type {
+	NornAgentMetrics,
+	NornAgentUsage,
+	NornCommandMetrics,
+	NornRunMetrics,
+	NornRunStatus,
+	NornWorkflowMetrics,
+} from "@vimhead.dev/norn";
 import { runCurrentRoot } from "./run-store.ts";
 import { RUN_STATE_FILE_NAME } from "./run-state.ts";
 import { isNodeError } from "@vimhead.dev/norn-core/errors";
-import { addAgentUsage, agentUsageFromValue, emptyAgentUsage } from "./usage.ts";
+import {
+	addAgentUsage,
+	agentUsageFromValue,
+	emptyAgentUsage,
+} from "./usage.ts";
 
 const LEGACY_RUN_STATE_FILE_NAME = "runtime-state.json";
 
@@ -61,7 +72,8 @@ export function calculateRunMetrics(
 	state: NornRunStateSnapshot,
 	now: Date,
 ): NornRunMetrics {
-	const startedAt = state.startedAt ?? firstEventTime(events) ?? now.toISOString();
+	const startedAt =
+		state.startedAt ?? firstEventTime(events) ?? now.toISOString();
 	const endedAt = runEndedAt(state);
 	const startedAtMs = timestampMs(startedAt) ?? now.getTime();
 	const endedAtMs = timestampMs(endedAt) ?? now.getTime();
@@ -73,8 +85,13 @@ export function calculateRunMetrics(
 
 	for (const event of events) {
 		const eventAtMs = timestampMs(event.at);
-		if (event.type === "run.interrupted" && eventAtMs !== undefined) gateStartedAtMs = eventAtMs;
-		else if (event.type === "run.resumed" && eventAtMs !== undefined && gateStartedAtMs !== undefined) {
+		if (event.type === "run.interrupted" && eventAtMs !== undefined)
+			gateStartedAtMs = eventAtMs;
+		else if (
+			event.type === "run.resumed" &&
+			eventAtMs !== undefined &&
+			gateStartedAtMs !== undefined
+		) {
 			gateWaitMs += Math.max(0, eventAtMs - gateStartedAtMs);
 			gateStartedAtMs = undefined;
 		}
@@ -93,45 +110,101 @@ export function calculateRunMetrics(
 		}
 
 		if (event.type === "agent.started") {
-			if (openWorkflow) openWorkflow = startAgentMetrics(openWorkflow, event, now);
+			if (openWorkflow)
+				openWorkflow = startAgentMetrics(openWorkflow, event, now);
 			continue;
 		}
 
 		if (event.type === "agent.completed" || event.type === "agent.failed") {
 			const usage = agentUsageFromEvent(event);
 			agentUsage = addAgentUsage(agentUsage, usage);
-			if (openWorkflow) openWorkflow = finishAgentMetrics(openWorkflow, event, usage, now);
+			if (openWorkflow)
+				openWorkflow = finishAgentMetrics(openWorkflow, event, usage, now);
 			continue;
 		}
 
 		if (event.type === "command.started") {
-			if (openWorkflow) openWorkflow = startCommandMetrics(openWorkflow, event, now);
+			if (openWorkflow)
+				openWorkflow = startCommandMetrics(openWorkflow, event, now);
 			continue;
 		}
 
 		if (event.type === "command.completed" || event.type === "command.failed") {
-			if (openWorkflow) openWorkflow = finishCommandMetrics(openWorkflow, event, now);
+			if (openWorkflow)
+				openWorkflow = finishCommandMetrics(openWorkflow, event, now);
 			continue;
 		}
 
 		const status = workflowTerminalStatus(event.type);
 		if (status) {
-			const durationMs = numberField(event.durationMs) || (openWorkflow && eventAtMs !== undefined ? Math.max(0, eventAtMs - openWorkflow.startedAtMs) : 0);
-			const workflowId = status === "transitioned" ? stringField(event.fromWorkflowId, openWorkflow?.workflowId ?? "unknown") : stringField(event.workflowId, openWorkflow?.workflowId ?? "unknown");
-			const workflow = openWorkflow ?? createSyntheticWorkflowMetrics(workflowId, startedAtMs, endedAtMs, eventAtMs, durationMs);
+			const durationMs =
+				numberField(event.durationMs) ||
+				(openWorkflow && eventAtMs !== undefined
+					? Math.max(0, eventAtMs - openWorkflow.startedAtMs)
+					: 0);
+			const workflowId =
+				status === "transitioned"
+					? stringField(
+							event.fromWorkflowId,
+							openWorkflow?.workflowId ?? "unknown",
+						)
+					: stringField(
+							event.workflowId,
+							openWorkflow?.workflowId ?? "unknown",
+						);
+			const workflow =
+				openWorkflow ??
+				createSyntheticWorkflowMetrics(
+					workflowId,
+					startedAtMs,
+					endedAtMs,
+					eventAtMs,
+					durationMs,
+				);
 			const childStatus = status === "failed" ? "failed" : "completed";
-			workflows.push(closeWorkflowMetrics(closeOpenChildMetrics(workflow, eventAtMs ?? now.getTime(), event.at, childStatus), workflows.length + 1, status, durationMs, event.at));
+			workflows.push(
+				closeWorkflowMetrics(
+					closeOpenChildMetrics(
+						workflow,
+						eventAtMs ?? now.getTime(),
+						event.at,
+						childStatus,
+					),
+					workflows.length + 1,
+					status,
+					durationMs,
+					event.at,
+				),
+			);
 			openWorkflow = undefined;
 		}
 	}
 
-	if (gateStartedAtMs !== undefined) gateWaitMs += Math.max(0, endedAtMs - gateStartedAtMs);
+	if (gateStartedAtMs !== undefined)
+		gateWaitMs += Math.max(0, endedAtMs - gateStartedAtMs);
 	if (openWorkflow) {
-		workflows.push(closeWorkflowMetrics(closeOpenChildMetrics(openWorkflow, endedAtMs, endedAt, "running"), workflows.length + 1, "running", Math.max(0, endedAtMs - openWorkflow.startedAtMs), endedAt));
+		workflows.push(
+			closeWorkflowMetrics(
+				closeOpenChildMetrics(openWorkflow, endedAtMs, endedAt, "running"),
+				workflows.length + 1,
+				"running",
+				Math.max(0, endedAtMs - openWorkflow.startedAtMs),
+				endedAt,
+			),
+		);
 	}
-	const workflowsMs = workflows.reduce((sum, workflow) => sum + workflow.wallMs, 0);
-	const agentsMs = workflows.reduce((sum, workflow) => sum + workflow.agentsMs, 0);
-	const commandsMs = workflows.reduce((sum, workflow) => sum + workflow.commandsMs, 0);
+	const workflowsMs = workflows.reduce(
+		(sum, workflow) => sum + workflow.wallMs,
+		0,
+	);
+	const agentsMs = workflows.reduce(
+		(sum, workflow) => sum + workflow.agentsMs,
+		0,
+	);
+	const commandsMs = workflows.reduce(
+		(sum, workflow) => sum + workflow.commandsMs,
+		0,
+	);
 	const wallMs = Math.max(0, endedAtMs - startedAtMs);
 	return {
 		status: state.status ?? "running",
@@ -149,22 +222,39 @@ export function calculateRunMetrics(
 	};
 }
 
-async function readRunStateSnapshot(currentRoot: string): Promise<NornRunStateSnapshot> {
+async function readRunStateSnapshot(
+	currentRoot: string,
+): Promise<NornRunStateSnapshot> {
 	try {
-		return JSON.parse(await readFile(join(currentRoot, RUN_STATE_FILE_NAME), "utf8")) as NornRunStateSnapshot;
+		return JSON.parse(
+			await readFile(join(currentRoot, RUN_STATE_FILE_NAME), "utf8"),
+		) as NornRunStateSnapshot;
 	} catch (error) {
 		if (!isNodeError(error) || error.code !== "ENOENT") throw error;
-		return JSON.parse(await readFile(join(currentRoot, LEGACY_RUN_STATE_FILE_NAME), "utf8")) as NornRunStateSnapshot;
+		return JSON.parse(
+			await readFile(join(currentRoot, LEGACY_RUN_STATE_FILE_NAME), "utf8"),
+		) as NornRunStateSnapshot;
 	}
 }
 
-async function readManifestEvents(path: string): Promise<readonly NornRunManifestEvent[]> {
+async function readManifestEvents(
+	path: string,
+): Promise<readonly NornRunManifestEvent[]> {
 	const manifest = JSON.parse(await readFile(path, "utf8")) as NornRunManifest;
 	return manifest.events ?? [];
 }
 
-function createSyntheticWorkflowMetrics(workflowId: string, runStartedAtMs: number, runEndedAtMs: number, eventAtMs: number | undefined, durationMs: number): OpenWorkflowMetrics {
-	const startedAtMs = eventAtMs === undefined ? runEndedAtMs : Math.max(runStartedAtMs, eventAtMs - durationMs);
+function createSyntheticWorkflowMetrics(
+	workflowId: string,
+	runStartedAtMs: number,
+	runEndedAtMs: number,
+	eventAtMs: number | undefined,
+	durationMs: number,
+): OpenWorkflowMetrics {
+	const startedAtMs =
+		eventAtMs === undefined
+			? runEndedAtMs
+			: Math.max(runStartedAtMs, eventAtMs - durationMs);
 	return {
 		workflowId,
 		startedAt: isoTimeFromMs(startedAtMs),
@@ -176,41 +266,90 @@ function createSyntheticWorkflowMetrics(workflowId: string, runStartedAtMs: numb
 	};
 }
 
-function startAgentMetrics(workflow: OpenWorkflowMetrics, event: NornRunManifestEvent, now: Date): OpenWorkflowMetrics {
+function startAgentMetrics(
+	workflow: OpenWorkflowMetrics,
+	event: NornRunManifestEvent,
+	now: Date,
+): OpenWorkflowMetrics {
 	return {
 		...workflow,
-		openAgents: [...workflow.openAgents, {
-			label: stringField(event.label, "unknown"),
-			startedAt: isoTime(event.at, now),
-			startedAtMs: timestampMs(event.at) ?? now.getTime(),
-		}],
+		openAgents: [
+			...workflow.openAgents,
+			{
+				label: stringField(event.label, "unknown"),
+				startedAt: isoTime(event.at, now),
+				startedAtMs: timestampMs(event.at) ?? now.getTime(),
+			},
+		],
 	};
 }
 
-function finishAgentMetrics(workflow: OpenWorkflowMetrics, event: NornRunManifestEvent, usage: NornAgentUsage, now: Date): OpenWorkflowMetrics {
-	const [agent, openAgents] = takeOpenChild(workflow.openAgents, stringField(event.label, "unknown"));
-	const closedAgent = closeAgentMetrics(event, workflow.agents.length + 1, usage, now, agent);
+function finishAgentMetrics(
+	workflow: OpenWorkflowMetrics,
+	event: NornRunManifestEvent,
+	usage: NornAgentUsage,
+	now: Date,
+): OpenWorkflowMetrics {
+	const [agent, openAgents] = takeOpenChild(
+		workflow.openAgents,
+		stringField(event.label, "unknown"),
+	);
+	const closedAgent = closeAgentMetrics(
+		event,
+		workflow.agents.length + 1,
+		usage,
+		now,
+		agent,
+	);
 	return { ...workflow, agents: [...workflow.agents, closedAgent], openAgents };
 }
 
-function startCommandMetrics(workflow: OpenWorkflowMetrics, event: NornRunManifestEvent, now: Date): OpenWorkflowMetrics {
+function startCommandMetrics(
+	workflow: OpenWorkflowMetrics,
+	event: NornRunManifestEvent,
+	now: Date,
+): OpenWorkflowMetrics {
 	return {
 		...workflow,
-		openCommands: [...workflow.openCommands, {
-			label: stringField(event.label, "unknown"),
-			startedAt: isoTime(event.at, now),
-			startedAtMs: timestampMs(event.at) ?? now.getTime(),
-		}],
+		openCommands: [
+			...workflow.openCommands,
+			{
+				label: stringField(event.label, "unknown"),
+				startedAt: isoTime(event.at, now),
+				startedAtMs: timestampMs(event.at) ?? now.getTime(),
+			},
+		],
 	};
 }
 
-function finishCommandMetrics(workflow: OpenWorkflowMetrics, event: NornRunManifestEvent, now: Date): OpenWorkflowMetrics {
-	const [command, openCommands] = takeOpenChild(workflow.openCommands, stringField(event.label, "unknown"));
-	const closedCommand = closeCommandMetrics(event, workflow.commands.length + 1, now, command);
-	return { ...workflow, commands: [...workflow.commands, closedCommand], openCommands };
+function finishCommandMetrics(
+	workflow: OpenWorkflowMetrics,
+	event: NornRunManifestEvent,
+	now: Date,
+): OpenWorkflowMetrics {
+	const [command, openCommands] = takeOpenChild(
+		workflow.openCommands,
+		stringField(event.label, "unknown"),
+	);
+	const closedCommand = closeCommandMetrics(
+		event,
+		workflow.commands.length + 1,
+		now,
+		command,
+	);
+	return {
+		...workflow,
+		commands: [...workflow.commands, closedCommand],
+		openCommands,
+	};
 }
 
-function closeOpenChildMetrics(workflow: OpenWorkflowMetrics, endedAtMs: number, endedAt: string | undefined, status: NornAgentMetrics["status"]): OpenWorkflowMetrics {
+function closeOpenChildMetrics(
+	workflow: OpenWorkflowMetrics,
+	endedAtMs: number,
+	endedAt: string | undefined,
+	status: NornAgentMetrics["status"],
+): OpenWorkflowMetrics {
 	return {
 		...workflow,
 		agents: [
@@ -248,8 +387,14 @@ function closeWorkflowMetrics(
 	wallMs: number,
 	endedAt: string | undefined,
 ): NornWorkflowMetrics {
-	const agentsMs = workflow.agents.reduce((sum, agent) => sum + agent.wallMs, 0);
-	const commandsMs = workflow.commands.reduce((sum, command) => sum + command.wallMs, 0);
+	const agentsMs = workflow.agents.reduce(
+		(sum, agent) => sum + agent.wallMs,
+		0,
+	);
+	const commandsMs = workflow.commands.reduce(
+		(sum, command) => sum + command.wallMs,
+		0,
+	);
 	return {
 		index,
 		workflowId: workflow.workflowId,
@@ -260,20 +405,32 @@ function closeWorkflowMetrics(
 		ownMs: Math.max(0, wallMs - agentsMs - commandsMs),
 		agentsMs,
 		commandsMs,
-		agentUsage: workflow.agents.reduce((sum, agent) => addAgentUsage(sum, agent.usage), emptyAgentUsage()),
+		agentUsage: workflow.agents.reduce(
+			(sum, agent) => addAgentUsage(sum, agent.usage),
+			emptyAgentUsage(),
+		),
 		agents: workflow.agents,
 		commands: workflow.commands,
 	};
 }
 
-function closeAgentMetrics(event: NornRunManifestEvent, index: number, usage: NornAgentUsage, now: Date, openAgent: OpenAgentMetrics | undefined): NornAgentMetrics {
+function closeAgentMetrics(
+	event: NornRunManifestEvent,
+	index: number,
+	usage: NornAgentUsage,
+	now: Date,
+	openAgent: OpenAgentMetrics | undefined,
+): NornAgentMetrics {
 	const endedAtMs = timestampMs(event.at) ?? now.getTime();
-	const wallMs = numberField(event.durationMs) || (openAgent ? Math.max(0, endedAtMs - openAgent.startedAtMs) : 0);
+	const wallMs =
+		numberField(event.durationMs) ||
+		(openAgent ? Math.max(0, endedAtMs - openAgent.startedAtMs) : 0);
 	return {
 		index,
 		label: stringField(event.label, openAgent?.label ?? "unknown"),
 		status: event.type === "agent.failed" ? "failed" : "completed",
-		startedAt: openAgent?.startedAt ?? isoTimeFromMs(Math.max(0, endedAtMs - wallMs)),
+		startedAt:
+			openAgent?.startedAt ?? isoTimeFromMs(Math.max(0, endedAtMs - wallMs)),
 		endedAt: isoTime(event.at, now),
 		wallMs,
 		attempts: optionalNumberField(event.attempts),
@@ -281,27 +438,48 @@ function closeAgentMetrics(event: NornRunManifestEvent, index: number, usage: No
 	};
 }
 
-function closeCommandMetrics(event: NornRunManifestEvent, index: number, now: Date, openCommand: OpenCommandMetrics | undefined): NornCommandMetrics {
+function closeCommandMetrics(
+	event: NornRunManifestEvent,
+	index: number,
+	now: Date,
+	openCommand: OpenCommandMetrics | undefined,
+): NornCommandMetrics {
 	const endedAtMs = timestampMs(event.at) ?? now.getTime();
-	const wallMs = numberField(event.durationMs) || (openCommand ? Math.max(0, endedAtMs - openCommand.startedAtMs) : 0);
+	const wallMs =
+		numberField(event.durationMs) ||
+		(openCommand ? Math.max(0, endedAtMs - openCommand.startedAtMs) : 0);
 	return {
 		index,
 		label: stringField(event.label, openCommand?.label ?? "unknown"),
 		status: event.type === "command.failed" ? "failed" : "completed",
-		startedAt: openCommand?.startedAt ?? isoTimeFromMs(Math.max(0, endedAtMs - wallMs)),
+		startedAt:
+			openCommand?.startedAt ?? isoTimeFromMs(Math.max(0, endedAtMs - wallMs)),
 		endedAt: isoTime(event.at, now),
 		wallMs,
-		...(event.type === "command.completed" ? { exitCode: nullableNumberField(event.exitCode), killed: booleanField(event.killed) } : {}),
+		...(event.type === "command.completed"
+			? {
+					exitCode: nullableNumberField(event.exitCode),
+					killed: booleanField(event.killed),
+				}
+			: {}),
 	};
 }
 
-function takeOpenChild<T extends { readonly label: string }>(children: readonly T[], label: string): readonly [T | undefined, readonly T[]] {
+function takeOpenChild<T extends { readonly label: string }>(
+	children: readonly T[],
+	label: string,
+): readonly [T | undefined, readonly T[]] {
 	const index = children.findIndex((child) => child.label === label);
 	if (index === -1) return [undefined, children];
-	return [children[index], [...children.slice(0, index), ...children.slice(index + 1)]];
+	return [
+		children[index],
+		[...children.slice(0, index), ...children.slice(index + 1)],
+	];
 }
 
-function workflowTerminalStatus(type: unknown): NornWorkflowMetrics["status"] | undefined {
+function workflowTerminalStatus(
+	type: unknown,
+): NornWorkflowMetrics["status"] | undefined {
 	if (type === "workflow.completed") return "completed";
 	if (type === "workflow.failed") return "failed";
 	if (type === "workflow.transitioned") return "transitioned";
@@ -309,8 +487,12 @@ function workflowTerminalStatus(type: unknown): NornWorkflowMetrics["status"] | 
 }
 
 function runEndedAt(state: NornRunStateSnapshot): string | undefined {
-	if (state.status === "completed") return state.outcome?.completedAt ?? state.updatedAt;
-	if (state.status === "failed") return state.failed?.failedAt ?? state.outcome?.completedAt ?? state.updatedAt;
+	if (state.status === "completed")
+		return state.outcome?.completedAt ?? state.updatedAt;
+	if (state.status === "failed")
+		return (
+			state.failed?.failedAt ?? state.outcome?.completedAt ?? state.updatedAt
+		);
 	return undefined;
 }
 
@@ -318,7 +500,9 @@ function agentUsageFromEvent(event: NornRunManifestEvent): NornAgentUsage {
 	return agentUsageFromValue(event.usage) ?? emptyAgentUsage();
 }
 
-function firstEventTime(events: readonly NornRunManifestEvent[]): string | undefined {
+function firstEventTime(
+	events: readonly NornRunManifestEvent[],
+): string | undefined {
 	return events.find((event) => timestampMs(event.at) !== undefined)?.at;
 }
 
@@ -340,7 +524,9 @@ function numberField(value: unknown): number {
 }
 
 function optionalNumberField(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
 }
 
 function nullableNumberField(value: unknown): number | null {

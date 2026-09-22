@@ -10,5 +10,9 @@ export const developmentLoopArgsSchema = Type.Object({
 	maxIterations: Type.Integer({ minimum: 1, maximum: 10, default: 3 }),
 });
 
-export type DevelopmentLoopConfig = StaticDecode<typeof developmentLoopConfigSchema>;
-export type DevelopmentLoopArgs = StaticDecode<typeof developmentLoopArgsSchema>;
+export type DevelopmentLoopConfig = StaticDecode<
+	typeof developmentLoopConfigSchema
+>;
+export type DevelopmentLoopArgs = StaticDecode<
+	typeof developmentLoopArgsSchema
+>;

@@ -1,11 +1,11 @@
 {
-  "version": 1,
-  "hooks": {
-    "sessionStart": [
-      {
-        "command": "node ./.cursor-plugin/hooks/norn-session-start.mjs",
-        "timeout": 10
-      }
-    ]
-  }
+	"version": 1,
+	"hooks": {
+		"sessionStart": [
+			{
+				"command": "node ./.cursor-plugin/hooks/norn-session-start.mjs",
+				"timeout": 10
+			}
+		]
+	}
 }

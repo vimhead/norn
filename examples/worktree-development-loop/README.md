@@ -19,13 +19,13 @@ workflow:
 
 ## Source layout
 
-| File or directory | Role in this example |
-|---|---|
-| [scope.ts](scope.ts) | Declares the shared namespace and repository configuration. |
-| [plugin.ts](plugin.ts) | Exports the workflows for registration. |
-| [workflows/development-loop/](workflows/development-loop/) | Defines entrypoint inputs and repository setup. |
-| [workflows/planning/](workflows/planning/), [workflows/implementation/](workflows/implementation/), [workflows/review/](workflows/review/) | Define each agent step's inputs and execution. |
-| [workflows/review-router/](workflows/review-router/) | Defines editable gate fields and routes the chosen decision. |
+| File or directory                                                                                                                          | Role in this example                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| [scope.ts](scope.ts)                                                                                                                       | Declares the shared namespace and repository configuration.  |
+| [plugin.ts](plugin.ts)                                                                                                                     | Exports the workflows for registration.                      |
+| [workflows/development-loop/](workflows/development-loop/)                                                                                 | Defines entrypoint inputs and repository setup.              |
+| [workflows/planning/](workflows/planning/), [workflows/implementation/](workflows/implementation/), [workflows/review/](workflows/review/) | Define each agent step's inputs and execution.               |
+| [workflows/review-router/](workflows/review-router/)                                                                                       | Defines editable gate fields and routes the chosen decision. |
 
 ## Setup
 
@@ -90,11 +90,11 @@ proof that the task succeeded.
 
 Only `decision` and `summary` are gate-editable fields:
 
-| Decision | Result after resume |
-|---|---|
-| `accept` | Complete with outcome data `status: done`, including at the iteration limit. |
-| `revise` | Run the next implementation/review iteration, then interrupt again. At `maxIterations`, fail with outcome data `status: needs-attention`. |
-| `blocked` | Fail with outcome data `status: blocked` and the supplied summary. |
+| Decision  | Result after resume                                                                                                                       |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `accept`  | Complete with outcome data `status: done`, including at the iteration limit.                                                              |
+| `revise`  | Run the next implementation/review iteration, then interrupt again. At `maxIterations`, fail with outcome data `status: needs-attention`. |
+| `blocked` | Fail with outcome data `status: blocked` and the supplied summary.                                                                        |
 
 For an authorized acceptance decision after checking the work:
 

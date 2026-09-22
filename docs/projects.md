@@ -52,10 +52,10 @@ Runtime imports do not configure TypeScript or an editor. A matching `@vimhead.d
 
 New CLI discovery/start/resume invocations load current source; an already executing workflow retains its loaded definition. Discovery does not invoke workflow execution or gate descriptions. Module-level code still executes during import.
 
-| Decision | GOOD | BAD |
-|---|---|---|
-| IF source changes, THEN inspect it through a new invocation before starting or resuming. ELSE use the inspected definition. | Edit a workflow, inspect it, then resume. | Assume a running executor hot-reloads edits. |
-| IF importing a module can mutate files or start work, THEN move those effects into workflow execution. ELSE keep import-time definitions. | `execute` launches the command. | `workflows list` starts a delivery from top-level code. |
+| Decision                                                                                                                                  | GOOD                                      | BAD                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------- |
+| IF source changes, THEN inspect it through a new invocation before starting or resuming. ELSE use the inspected definition.               | Edit a workflow, inspect it, then resume. | Assume a running executor hot-reloads edits.            |
+| IF importing a module can mutate files or start work, THEN move those effects into workflow execution. ELSE keep import-time definitions. | `execute` launches the command.           | `workflows list` starts a delivery from top-level code. |
 
 ## Diagnose registration
 
@@ -71,8 +71,8 @@ Workflow inspection exposes argument and configuration schemas, separate workflo
 
 Discovery can exit successfully with an incomplete catalogue. Start, resume, and executable client entries require the entire project to load; otherwise they report `NORN_PROJECT_INVALID`. Malformed project/include configuration is fatal rather than producing a partial catalogue.
 
-| Decision | GOOD | BAD |
-|---|---|---|
+| Decision                                                                                                                                      | GOOD                                          | BAD                                                |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------- |
 | IF `isComplete` is false, THEN repair or explicitly remove the invalid registration and inspect again. ELSE select from the loaded contracts. | Fix the named config field or default export. | Launch a valid sibling from an incomplete project. |
 
 Next: [write a workflow](workflows.md), [reuse across projects](composition.md).

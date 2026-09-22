@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	mkdtemp,
+	readFile,
+	readdir,
+	realpath,
+	rm,
+	stat,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,47 +20,67 @@ import type { NornRunInfo } from "@vimhead.dev/norn";
 import { prepareRunWorkerDirectory } from "../packages/cli/src/internal/worker-directory.ts";
 
 const execute = promisify(execFile);
-const cliPath = fileURLToPath(new URL("../packages/cli/bin/norn.mjs", import.meta.url));
+const cliPath = fileURLToPath(
+	new URL("../packages/cli/bin/norn.mjs", import.meta.url),
+);
 
 async function fixture(context: TestContext) {
-	const root = await realpath(await mkdtemp(join(tmpdir(), "norn-worker-cwd-")));
+	const root = await realpath(
+		await mkdtemp(join(tmpdir(), "norn-worker-cwd-")),
+	);
 	context.onTestFinished(() => rm(root, { recursive: true, force: true }));
 	return root;
 }
 
-test("worker cwd is empty, read-only, reusable, and does not change the caller cwd", async context => {
+test("worker cwd is empty, read-only, reusable, and does not change the caller cwd", async (context) => {
 	const root = await fixture(context);
 	const callerCwd = process.cwd();
 	const directory = await prepareRunWorkerDirectory(root);
 	assert.deepEqual(await readdir(directory), []);
-	if (process.platform !== "win32") assert.equal((await stat(directory)).mode & 0o222, 0);
+	if (process.platform !== "win32")
+		assert.equal((await stat(directory)).mode & 0o222, 0);
 	assert.equal(await prepareRunWorkerDirectory(root), directory);
 	assert.equal(process.cwd(), callerCwd);
 });
 
-test("worker cwd preparation rejects symlinks without changing their target permissions", async context => {
+test("worker cwd preparation rejects symlinks without changing their target permissions", async (context) => {
 	const root = await fixture(context);
 	const target = join(root, "target");
 	await mkdir(target);
 	const mode = (await stat(target)).mode;
-	await symlink(target, join(root, "worker"), process.platform === "win32" ? "junction" : "dir");
+	await symlink(
+		target,
+		join(root, "worker"),
+		process.platform === "win32" ? "junction" : "dir",
+	);
 	await assert.rejects(prepareRunWorkerDirectory(root), /not a symlink/);
 	assert.equal((await stat(target)).mode, mode);
 });
 
-test("worker cwd preparation preserves and rejects unexpected contents", async context => {
+test("worker cwd preparation preserves and rejects unexpected contents", async (context) => {
 	const root = await fixture(context);
 	await mkdir(join(root, "worker"));
 	await writeFile(join(root, "worker", "evidence"), "retain");
 	await assert.rejects(prepareRunWorkerDirectory(root), /must be empty/);
-	assert.equal(await readFile(join(root, "worker", "evidence"), "utf8"), "retain");
+	assert.equal(
+		await readFile(join(root, "worker", "evidence"), "utf8"),
+		"retain",
+	);
 });
 
-test("detached start and resume use per-run guarded cwd without changing project files", { timeout: 45000 }, async context => {
-	const project = await fixture(context);
-	await writeFile(join(project, "source.txt"), "project evidence");
-	await writeFile(join(project, "norn.project.json"), JSON.stringify({ workflows: ["./workflow.ts"] }));
-	await writeFile(join(project, "workflow.ts"), `
+test(
+	"detached start and resume use per-run guarded cwd without changing project files",
+	{ timeout: 45000 },
+	async (context) => {
+		const project = await fixture(context);
+		await writeFile(join(project, "source.txt"), "project evidence");
+		await writeFile(
+			join(project, "norn.project.json"),
+			JSON.stringify({ workflows: ["./workflow.ts"] }),
+		);
+		await writeFile(
+			join(project, "workflow.ts"),
+			`
 import assert from "node:assert/strict";
 import { readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -89,31 +119,63 @@ const finish = workflow({
   },
 });
 export default [start, finish];
-`);
-	const invoke = async <Output = { run: NornRunInfo }>(args: string[], input: unknown): Promise<Output> => {
-		const child = execute(process.execPath, [cliPath, ...args], { cwd: project, timeout: 30000 });
-		child.child.stdin!.end(input === undefined ? "" : JSON.stringify(input));
-		return JSON.parse((await child).stdout);
-	};
-	const launches = await Promise.all([1, 2].map(() => invoke(["runs", "start", "start"], { args: {} })));
-	for (const { run } of launches) {
-		const paths = { project, workspace: join(run.path, "current/workspace") };
-		assert.deepEqual(run.paths, paths);
-		const paused = (await invoke(["runs", "wait", run.id], undefined)).run;
-		assert.equal(paused.status, "interrupted", JSON.stringify(paused));
-		assert.deepEqual(paused.paths, paths);
-		assert.equal(paused.interruption?.description, join(run.path, "worker"));
-		assert.deepEqual((await invoke(["runs", "inspect", run.id], undefined)).run.paths, paths);
-	}
-	const listed = await invoke<{ runs: NornRunInfo[] }>(["runs", "list"], undefined);
-	for (const run of listed.runs) assert.deepEqual(run.paths, { project, workspace: join(run.path, "current/workspace") });
-	await Promise.all(launches.map(({ run }) => invoke(["runs", "resume", run.id], { args: {} })));
-	for (const { run } of launches) {
-		const completed = (await invoke(["runs", "wait", run.id], undefined)).run;
-		assert.equal(completed.status, "completed", JSON.stringify(completed));
-		assert.deepEqual(completed.paths, run.paths);
-		assert.deepEqual(completed.outcome?.metadata?.data, { cwd: join(run.path, "worker"), paths: { project, workspace: join(run.path, "current/workspace") } });
-	}
-	assert.equal(await readFile(join(project, "source.txt"), "utf8"), "project evidence");
-	await assert.rejects(readFile(join(project, "start.txt")), { code: "ENOENT" });
-});
+`,
+		);
+		const invoke = async <Output = { run: NornRunInfo }>(
+			args: string[],
+			input: unknown,
+		): Promise<Output> => {
+			const child = execute(process.execPath, [cliPath, ...args], {
+				cwd: project,
+				timeout: 30000,
+			});
+			child.child.stdin!.end(input === undefined ? "" : JSON.stringify(input));
+			return JSON.parse((await child).stdout);
+		};
+		const launches = await Promise.all(
+			[1, 2].map(() => invoke(["runs", "start", "start"], { args: {} })),
+		);
+		for (const { run } of launches) {
+			const paths = { project, workspace: join(run.path, "current/workspace") };
+			assert.deepEqual(run.paths, paths);
+			const paused = (await invoke(["runs", "wait", run.id], undefined)).run;
+			assert.equal(paused.status, "interrupted", JSON.stringify(paused));
+			assert.deepEqual(paused.paths, paths);
+			assert.equal(paused.interruption?.description, join(run.path, "worker"));
+			assert.deepEqual(
+				(await invoke(["runs", "inspect", run.id], undefined)).run.paths,
+				paths,
+			);
+		}
+		const listed = await invoke<{ runs: NornRunInfo[] }>(
+			["runs", "list"],
+			undefined,
+		);
+		for (const run of listed.runs)
+			assert.deepEqual(run.paths, {
+				project,
+				workspace: join(run.path, "current/workspace"),
+			});
+		await Promise.all(
+			launches.map(({ run }) =>
+				invoke(["runs", "resume", run.id], { args: {} }),
+			),
+		);
+		for (const { run } of launches) {
+			const completed = (await invoke(["runs", "wait", run.id], undefined)).run;
+			assert.equal(completed.status, "completed", JSON.stringify(completed));
+			assert.deepEqual(completed.paths, run.paths);
+			assert.deepEqual(completed.outcome?.metadata?.data, {
+				cwd: join(run.path, "worker"),
+				paths: { project, workspace: join(run.path, "current/workspace") },
+			});
+		}
+		assert.equal(
+			await readFile(join(project, "source.txt"), "utf8"),
+			"project evidence",
+		);
+		await assert.rejects(readFile(join(project, "start.txt")), {
+			code: "ENOENT",
+		});
+	},
+);

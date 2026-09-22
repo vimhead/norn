@@ -7,33 +7,61 @@ import { test, type TestContext } from "vitest";
 
 import { workflow, workflowScope } from "@vimhead.dev/norn";
 import { NornEngine } from "../packages/cli/src/internal/engine.ts";
-import { readOptionalRunResumeRequest, writeRunResumeRequest, type NornRunResumeRequest } from "../packages/cli/src/internal/launch-request.ts";
+import {
+	readOptionalRunResumeRequest,
+	writeRunResumeRequest,
+	type NornRunResumeRequest,
+} from "../packages/cli/src/internal/launch-request.ts";
 
-async function createFixture(context: TestContext, gateMode: "pause" | "auto" | undefined, isEntrypoint: boolean) {
+async function createFixture(
+	context: TestContext,
+	gateMode: "pause" | "auto" | undefined,
+	isEntrypoint: boolean,
+) {
 	const cwd = await mkdtemp(join(tmpdir(), "norn-gate-test-"));
 	context.onTestFinished(() => rm(cwd, { recursive: true, force: true }));
 	const manifestScope = workflowScope({ name: "gates" });
-const manifest_decide = manifestScope.workflow({
-name: "decide",
-entrypoint: isEntrypoint ? { instructions: "Use to supply the test decision." } : false,
-args: Type.Object({ answer: Type.Boolean() }),
-gate: { enabled: true, fields: ["answer"] , describe: () => "Choose the answer before execution." },
-execute: ({ args: args, run: run }) => { executionCount++; return run.complete({ data: args }); }
-});
+	const manifest_decide = manifestScope.workflow({
+		name: "decide",
+		entrypoint: isEntrypoint
+			? { instructions: "Use to supply the test decision." }
+			: false,
+		args: Type.Object({ answer: Type.Boolean() }),
+		gate: {
+			enabled: true,
+			fields: ["answer"],
+			describe: () => "Choose the answer before execution.",
+		},
+		execute: ({ args: args, run: run }) => {
+			executionCount++;
+			return run.complete({ data: args });
+		},
+	});
 	let executionCount = 0;
 	const engine = new NornEngine({ cwd, gateMode });
 	engine.registerWorkflows([manifest_decide]);
-	return { cwd, engine, workflow: manifest_decide, count: () => executionCount };
+	return {
+		cwd,
+		engine,
+		workflow: manifest_decide,
+		count: () => executionCount,
+	};
 }
 
 for (const isEntrypoint of [true, false]) {
 	test(`direct gated ${isEntrypoint ? "entrypoint" : "internal workflow"} pauses and executes only after resume`, async (context) => {
 		const fixture = await createFixture(context, "pause", isEntrypoint);
-		const interrupted = await fixture.engine.runWorkflow(fixture.workflow, { answer: false }, undefined);
+		const interrupted = await fixture.engine.runWorkflow(
+			fixture.workflow,
+			{ answer: false },
+			undefined,
+		);
 		assert.equal(interrupted.status, "interrupted");
 		assert.equal(fixture.count(), 0);
 		const runRoot = join(fixture.cwd, ".norn/runs", interrupted.id);
-		const completed = await fixture.engine.resumeWorkflow(runRoot, { answer: true });
+		const completed = await fixture.engine.resumeWorkflow(runRoot, {
+			answer: true,
+		});
 		assert.equal(completed.status, "completed");
 		assert.deepEqual(completed.metadata?.data, { answer: true });
 		assert.equal(fixture.count(), 1);
@@ -43,53 +71,115 @@ for (const isEntrypoint of [true, false]) {
 for (const gateMode of ["auto", undefined] as const) {
 	test(`direct gates execute in ${gateMode ?? "default"} mode`, async (context) => {
 		const fixture = await createFixture(context, gateMode, true);
-		assert.equal((await fixture.engine.runWorkflow(fixture.workflow, { answer: true }, undefined)).status, "completed");
+		assert.equal(
+			(
+				await fixture.engine.runWorkflow(
+					fixture.workflow,
+					{ answer: true },
+					undefined,
+				)
+			).status,
+			"completed",
+		);
 		assert.equal(fixture.count(), 1);
 	});
 }
 
 test("restoring the initial checkpoint cannot bypass a direct gate", async (context) => {
 	const fixture = await createFixture(context, "pause", true);
-	const interrupted = await fixture.engine.runWorkflow(fixture.workflow, { answer: false }, undefined);
+	const interrupted = await fixture.engine.runWorkflow(
+		fixture.workflow,
+		{ answer: false },
+		undefined,
+	);
 	const runRoot = join(fixture.cwd, ".norn/runs", interrupted.id);
 	const [initial] = await fixture.engine.listRunCheckpoints(runRoot);
 	await fixture.engine.rollbackRun(runRoot, initial.id);
-	assert.equal((await fixture.engine.resumeWorkflow(runRoot)).status, "interrupted");
+	assert.equal(
+		(await fixture.engine.resumeWorkflow(runRoot)).status,
+		"interrupted",
+	);
 	assert.equal(fixture.count(), 0);
 });
 
-test("rollback of a terminal checkpoint cannot discard dirty evidence", async context => {
+test("rollback of a terminal checkpoint cannot discard dirty evidence", async (context) => {
 	const fixture = await createFixture(context, "auto", true);
-	const completed = await fixture.engine.runWorkflow(fixture.workflow, { answer: true }, undefined);
+	const completed = await fixture.engine.runWorkflow(
+		fixture.workflow,
+		{ answer: true },
+		undefined,
+	);
 	const runRoot = join(fixture.cwd, ".norn/runs", completed.id);
 	const checkpoints = await fixture.engine.listRunCheckpoints(runRoot);
 	const evidence = join(runRoot, "current/after-completion.txt");
 	await writeFile(evidence, "retain this");
 	const terminalCheckpoint = checkpoints.at(-1);
 	assert.ok(terminalCheckpoint);
-	await assert.rejects(fixture.engine.rollbackRun(runRoot, terminalCheckpoint.id), /without a current step/);
+	await assert.rejects(
+		fixture.engine.rollbackRun(runRoot, terminalCheckpoint.id),
+		/without a current step/,
+	);
 	assert.equal(await readFile(evidence, "utf8"), "retain this");
-	assert.deepEqual(await fixture.engine.listRunCheckpoints(runRoot), checkpoints);
+	assert.deepEqual(
+		await fixture.engine.listRunCheckpoints(runRoot),
+		checkpoints,
+	);
 });
 
 for (const isExpired of [false, true]) {
-	test(`${isExpired ? "abandoned" : "fresh"} resume requests ${isExpired ? "can" : "cannot"} be cleared by rollback`, async context => {
+	test(`${isExpired ? "abandoned" : "fresh"} resume requests ${isExpired ? "can" : "cannot"} be cleared by rollback`, async (context) => {
 		const fixture = await createFixture(context, "pause", true);
-		const interrupted = await fixture.engine.runWorkflow(fixture.workflow, { answer: false }, undefined);
+		const interrupted = await fixture.engine.runWorkflow(
+			fixture.workflow,
+			{ answer: false },
+			undefined,
+		);
 		const runRoot = join(fixture.cwd, ".norn/runs", interrupted.id);
 		const [initial] = await fixture.engine.listRunCheckpoints(runRoot);
-		const request: NornRunResumeRequest = { version: 2, type: "resume", id: interrupted.id, requestId: "old-request", args: { answer: true }, createdAt: new Date(Date.now() - (isExpired ? 120000 : 0)).toISOString() };
+		const request: NornRunResumeRequest = {
+			version: 2,
+			type: "resume",
+			id: interrupted.id,
+			requestId: "old-request",
+			args: { answer: true },
+			createdAt: new Date(Date.now() - (isExpired ? 120000 : 0)).toISOString(),
+		};
 		await writeRunResumeRequest(runRoot, request);
 		if (isExpired) {
-			assert.equal((await fixture.engine.rollbackRun(runRoot, initial.id)).status, "pendingResume");
+			assert.equal(
+				(await fixture.engine.rollbackRun(runRoot, initial.id)).status,
+				"pendingResume",
+			);
 			assert.equal(await readOptionalRunResumeRequest(runRoot), undefined);
-			await assert.rejects(fixture.engine.resumeRequestedWorkflow({ runRoot, request }), /do not accept args|request changed/);
-			assert.equal((await fixture.engine.resumeWorkflow(runRoot)).status, "interrupted");
+			await assert.rejects(
+				fixture.engine.resumeRequestedWorkflow({ runRoot, request }),
+				/do not accept args|request changed/,
+			);
+			assert.equal(
+				(await fixture.engine.resumeWorkflow(runRoot)).status,
+				"interrupted",
+			);
 		} else {
-			await assert.rejects(fixture.engine.rollbackRun(runRoot, initial.id), /still pending/);
-			await assert.rejects(fixture.engine.resumeWorkflow(runRoot, { answer: true }), /belongs to another executor/);
-			await assert.rejects(fixture.engine.resumeRequestedWorkflow({ runRoot, request: { ...request, requestId: "wrong-request" } }), /request changed/);
-			assert.equal((await fixture.engine.resumeRequestedWorkflow({ runRoot, request })).status, "completed");
+			await assert.rejects(
+				fixture.engine.rollbackRun(runRoot, initial.id),
+				/still pending/,
+			);
+			await assert.rejects(
+				fixture.engine.resumeWorkflow(runRoot, { answer: true }),
+				/belongs to another executor/,
+			);
+			await assert.rejects(
+				fixture.engine.resumeRequestedWorkflow({
+					runRoot,
+					request: { ...request, requestId: "wrong-request" },
+				}),
+				/request changed/,
+			);
+			assert.equal(
+				(await fixture.engine.resumeRequestedWorkflow({ runRoot, request }))
+					.status,
+				"completed",
+			);
 		}
 	});
 }

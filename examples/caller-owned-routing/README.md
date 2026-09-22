@@ -93,12 +93,12 @@ heading presence only; an actual content assessment needs a different capability
 For each case, edit `args.next.forwardArgs` in `input.json`, start a **new** run,
 and inspect that run and its `outline.md`. Leave both capability modules unchanged.
 
-| `maxMissingHeadings` | `maxRevisions` | Expected result |
-|---|---|---|
-| `2` | `0` | Completes immediately with two missing headings and `revisionsUsed: 0`; no revision transition. |
-| `1` | `2` | Completes after one revision, with only `Verification` missing. |
-| `0` | `1` | Fails in the router after one revision, with `Verification` still missing; retained outline includes `Changes`. |
-| `0` | `0` | Fails immediately with both headings missing; no revision transition. |
+| `maxMissingHeadings` | `maxRevisions` | Expected result                                                                                                 |
+| -------------------- | -------------- | --------------------------------------------------------------------------------------------------------------- |
+| `2`                  | `0`            | Completes immediately with two missing headings and `revisionsUsed: 0`; no revision transition.                 |
+| `1`                  | `2`            | Completes after one revision, with only `Verification` missing.                                                 |
+| `0`                  | `1`            | Fails in the router after one revision, with `Verification` still missing; retained outline includes `Changes`. |
+| `0`                  | `0`            | Fails immediately with both headings missing; no revision transition.                                           |
 
 Keep `revisionsUsed: 0` for each fresh run. In the failure cases, the router reports
 that the revision limit was reached rather than completing below the requested

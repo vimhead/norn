@@ -4,7 +4,17 @@ import { ensureCommandSucceeded } from "../../shared/commands.ts";
 
 const WORKSPACE_REPOSITORY_PATH = "repo";
 
-export async function materializeWorkspaceRepository({ commands, paths, repositoryRoot, baseRef }: { commands: NornCommands; paths: NornWorkflowPaths; repositoryRoot: string; baseRef: string }): Promise<string> {
+export async function materializeWorkspaceRepository({
+	commands,
+	paths,
+	repositoryRoot,
+	baseRef,
+}: {
+	commands: NornCommands;
+	paths: NornWorkflowPaths;
+	repositoryRoot: string;
+	baseRef: string;
+}): Promise<string> {
 	const repositoryPath = join(paths.workspace, WORKSPACE_REPOSITORY_PATH);
 	const result = await commands.run({
 		label: "materialize-workspace-repository",

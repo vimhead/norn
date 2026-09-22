@@ -5,8 +5,11 @@ import { WorkQueue } from "../../examples/coordinating-multiple-agents/work-queu
 
 const [root, mode, owner, leaseDuration] = process.argv.slice(2);
 const queue = await WorkQueue.open({
-	path: join(root, "current", "workspace", "queue.sqlite"), create: false,
-	leaseDurationMs: Number(leaseDuration), now: Date.now, createToken: randomUUID,
+	path: join(root, "current", "workspace", "queue.sqlite"),
+	create: false,
+	leaseDurationMs: Number(leaseDuration),
+	now: Date.now,
+	createToken: randomUUID,
 });
 try {
 	if (mode === "hold") {
@@ -19,7 +22,12 @@ try {
 			const claim = await queue.claim({ owner, signal: undefined });
 			if (!claim) break;
 			await delay(2);
-			await queue.acknowledge({ ...claim, owner, result: { summary: claim.text, quote: claim.text }, signal: undefined });
+			await queue.acknowledge({
+				...claim,
+				owner,
+				result: { summary: claim.text, quote: claim.text },
+				signal: undefined,
+			});
 		}
 	} else {
 		throw new Error(`Unknown queue worker mode: ${mode}`);

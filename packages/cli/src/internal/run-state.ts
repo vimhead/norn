@@ -1,11 +1,26 @@
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import type { NornRunHealth, NornRunStatus, NornRunOutcomeMetadata, NornRunInfo, NornRunInterruption, NornRunOutcomeInfo, NornRunFailureInfo } from "@vimhead.dev/norn";
+import type {
+	NornRunHealth,
+	NornRunStatus,
+	NornRunOutcomeMetadata,
+	NornRunInfo,
+	NornRunInterruption,
+	NornRunOutcomeInfo,
+	NornRunFailureInfo,
+} from "@vimhead.dev/norn";
 import { isNodeError } from "@vimhead.dev/norn-core/errors";
-import { readRunLaunchRequest, readOptionalRunResumeRequest, RESUME_START_GRACE_MS } from "./launch-request.ts";
+import {
+	readRunLaunchRequest,
+	readOptionalRunResumeRequest,
+	RESUME_START_GRACE_MS,
+} from "./launch-request.ts";
 import { getRunLeaseHealth } from "./run-lease.ts";
 import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
-import { createRunFileCoordinator, type NornFileCoordinator } from "./file-coordinator.ts";
+import {
+	createRunFileCoordinator,
+	type NornFileCoordinator,
+} from "./file-coordinator.ts";
 import { runCurrentRoot } from "./run-store.ts";
 import { jsonValueSchema } from "@vimhead.dev/norn/schema";
 import { Value } from "typebox/value";
@@ -13,11 +28,20 @@ import { Value } from "typebox/value";
 export const RUN_STATE_FILE_NAME = "run-state.json";
 const LEGACY_RUN_STATE_FILE_NAME = "runtime-state.json";
 
-export function mergeInterruptedWorkflowArgs(currentArgs: unknown, args: unknown, fields: readonly string[] | undefined): unknown {
+export function mergeInterruptedWorkflowArgs(
+	currentArgs: unknown,
+	args: unknown,
+	fields: readonly string[] | undefined,
+): unknown {
 	if (!isRecord(currentArgs) || !isRecord(args)) return args;
 	if (fields) {
-		const unsupportedFields = Object.keys(args).filter((field) => !fields.includes(field));
-		if (unsupportedFields.length > 0) throw new Error(`Interrupted workflow args cannot update non-gate fields: ${unsupportedFields.join(", ")}`);
+		const unsupportedFields = Object.keys(args).filter(
+			(field) => !fields.includes(field),
+		);
+		if (unsupportedFields.length > 0)
+			throw new Error(
+				`Interrupted workflow args cannot update non-gate fields: ${unsupportedFields.join(", ")}`,
+			);
 	}
 	return { ...currentArgs, ...args };
 }
@@ -40,7 +64,10 @@ type RuntimeInterruption = {
 type NornRunWorkflowCompletion = {
 	readonly workflowId: string;
 	readonly completedAt: string;
-	readonly outcome: { readonly type: "next"; readonly workflowId: string } | { readonly type: "complete" } | { readonly type: "fail" };
+	readonly outcome:
+		| { readonly type: "next"; readonly workflowId: string }
+		| { readonly type: "complete" }
+		| { readonly type: "fail" };
 };
 
 type NornRunWorkflowFailure = {
@@ -90,13 +117,20 @@ export class NornRunStateStore {
 	private state: NornRunState;
 	private readonly files: NornFileCoordinator;
 
-	private constructor(input: { readonly path: string; readonly state: NornRunState; readonly files: NornFileCoordinator }) {
+	private constructor(input: {
+		readonly path: string;
+		readonly state: NornRunState;
+		readonly files: NornFileCoordinator;
+	}) {
 		this.path = input.path;
 		this.state = input.state;
 		this.files = input.files;
 	}
 
-	static async create(runRoot: string, input: CreateNornRunStateInput): Promise<NornRunStateStore> {
+	static async create(
+		runRoot: string,
+		input: CreateNornRunStateInput,
+	): Promise<NornRunStateStore> {
 		const now = input.startedAt;
 		const state: NornRunState = {
 			version: RUN_STATE_VERSION,
@@ -114,7 +148,11 @@ export class NornRunStateStore {
 			startedAt: now,
 			updatedAt: now,
 		};
-		const store = new NornRunStateStore({ path: join(runCurrentRoot(runRoot), RUN_STATE_FILE_NAME), state, files: createRunFileCoordinator(runRoot) });
+		const store = new NornRunStateStore({
+			path: join(runCurrentRoot(runRoot), RUN_STATE_FILE_NAME),
+			state,
+			files: createRunFileCoordinator(runRoot),
+		});
 		await store.write();
 		return store;
 	}
@@ -122,8 +160,22 @@ export class NornRunStateStore {
 	static async load(runRoot: string): Promise<NornRunStateStore> {
 		const currentRoot = runCurrentRoot(runRoot);
 		const files = createRunFileCoordinator(runRoot);
-		const state = await files.withExclusiveLock(join(currentRoot, RUN_STATE_FILE_NAME), async (path) => parseNornRunState(await readRunStateFile({ path, legacyPath: join(currentRoot, LEGACY_RUN_STATE_FILE_NAME) }), "execute"));
-		return new NornRunStateStore({ path: join(currentRoot, RUN_STATE_FILE_NAME), state, files });
+		const state = await files.withExclusiveLock(
+			join(currentRoot, RUN_STATE_FILE_NAME),
+			async (path) =>
+				parseNornRunState(
+					await readRunStateFile({
+						path,
+						legacyPath: join(currentRoot, LEGACY_RUN_STATE_FILE_NAME),
+					}),
+					"execute",
+				),
+		);
+		return new NornRunStateStore({
+			path: join(currentRoot, RUN_STATE_FILE_NAME),
+			state,
+			files,
+		});
 	}
 
 	currentState(): NornRunState {
@@ -131,20 +183,35 @@ export class NornRunStateStore {
 	}
 
 	async startStep(step: NornRunWorkflowStep): Promise<void> {
-		await this.update({ status: "running", current: step, outcome: null, failed: null });
-	}
-
-	async completeWithNext(completedWorkflowId: string, next: NornRunWorkflowStep): Promise<void> {
 		await this.update({
 			status: "running",
-			current: next,
-			lastCompleted: { workflowId: completedWorkflowId, completedAt: new Date().toISOString(), outcome: { type: "next", workflowId: next.workflowId } },
+			current: step,
 			outcome: null,
 			failed: null,
 		});
 	}
 
-	async completeRun(workflowId: string, metadata: NornRunOutcomeMetadata | undefined): Promise<void> {
+	async completeWithNext(
+		completedWorkflowId: string,
+		next: NornRunWorkflowStep,
+	): Promise<void> {
+		await this.update({
+			status: "running",
+			current: next,
+			lastCompleted: {
+				workflowId: completedWorkflowId,
+				completedAt: new Date().toISOString(),
+				outcome: { type: "next", workflowId: next.workflowId },
+			},
+			outcome: null,
+			failed: null,
+		});
+	}
+
+	async completeRun(
+		workflowId: string,
+		metadata: NornRunOutcomeMetadata | undefined,
+	): Promise<void> {
 		const completedAt = new Date().toISOString();
 		await this.update({
 			status: "completed",
@@ -155,74 +222,141 @@ export class NornRunStateStore {
 		});
 	}
 
-	async failRun(workflowId: string, metadata: NornRunOutcomeMetadata & { readonly summary: string }): Promise<void> {
+	async failRun(
+		workflowId: string,
+		metadata: NornRunOutcomeMetadata & { readonly summary: string },
+	): Promise<void> {
 		const failedAt = new Date().toISOString();
 		await this.update({
 			status: "failed",
 			current: null,
-			lastCompleted: { workflowId, completedAt: failedAt, outcome: { type: "fail" } },
-			outcome: { workflowId, completedAt: failedAt, status: "failed", metadata },
+			lastCompleted: {
+				workflowId,
+				completedAt: failedAt,
+				outcome: { type: "fail" },
+			},
+			outcome: {
+				workflowId,
+				completedAt: failedAt,
+				status: "failed",
+				metadata,
+			},
 			failed: { workflowId, error: metadata.summary, metadata, failedAt },
 		});
 	}
 
-	async interruptCurrent(args: unknown, interruption: { readonly description: string; readonly fields?: readonly string[] }): Promise<void> {
-		if (!this.state.current) throw new Error("Cannot interrupt run without current step");
+	async interruptCurrent(
+		args: unknown,
+		interruption: {
+			readonly description: string;
+			readonly fields?: readonly string[];
+		},
+	): Promise<void> {
+		if (!this.state.current)
+			throw new Error("Cannot interrupt run without current step");
 		await this.update({
 			status: "interrupted",
-			current: { ...this.state.current, args, interruption: { status: "pending", ...interruption } },
+			current: {
+				...this.state.current,
+				args,
+				interruption: { status: "pending", ...interruption },
+			},
 			outcome: null,
 			failed: null,
 		});
 	}
 
 	async prepareForResumeAfterRollback(): Promise<void> {
-		if (!this.state.current) throw new Error("Cannot resume a checkpoint without a current step");
+		if (!this.state.current)
+			throw new Error("Cannot resume a checkpoint without a current step");
 		if (this.state.status === "interrupted") return;
-		if (this.state.status !== "running") throw new Error(`Cannot resume checkpoint with ${this.state.status} status`);
+		if (this.state.status !== "running")
+			throw new Error(
+				`Cannot resume checkpoint with ${this.state.status} status`,
+			);
 		await this.update({ status: "pendingResume", outcome: null, failed: null });
 	}
 
 	async stopCurrent(): Promise<void> {
-		if (!this.state.current) throw new Error("Cannot stop run without current step");
+		if (!this.state.current)
+			throw new Error("Cannot stop run without current step");
 		await this.update({ status: "stopped", outcome: null, failed: null });
 	}
 
 	async replaceCurrentArgs(args: unknown): Promise<void> {
-		if (!this.state.current) throw new Error("Cannot resume run without current step");
+		if (!this.state.current)
+			throw new Error("Cannot resume run without current step");
 		await this.update({
 			status: "running",
-			current: { ...this.state.current, args, interruption: { ...this.state.current.interruption, status: "satisfied" } },
+			current: {
+				...this.state.current,
+				args,
+				interruption: {
+					...this.state.current.interruption,
+					status: "satisfied",
+				},
+			},
 			outcome: null,
 			failed: null,
 		});
 	}
 
-	async failCurrent(errorOrMetadata: string | NornRunOutcomeMetadata & { readonly summary: string }): Promise<void> {
-		if (!this.state.current) throw new Error("Cannot fail run without current step");
+	async failCurrent(
+		errorOrMetadata:
+			string | (NornRunOutcomeMetadata & { readonly summary: string }),
+	): Promise<void> {
+		if (!this.state.current)
+			throw new Error("Cannot fail run without current step");
 		const failedAt = new Date().toISOString();
-		const metadata = typeof errorOrMetadata === "string" ? { summary: errorOrMetadata } : errorOrMetadata;
+		const metadata =
+			typeof errorOrMetadata === "string"
+				? { summary: errorOrMetadata }
+				: errorOrMetadata;
 		await this.update({
 			status: "failed",
-			outcome: { workflowId: this.state.current.workflowId, completedAt: failedAt, status: "failed", metadata },
-			failed: { workflowId: this.state.current.workflowId, error: metadata.summary, metadata, failedAt },
+			outcome: {
+				workflowId: this.state.current.workflowId,
+				completedAt: failedAt,
+				status: "failed",
+				metadata,
+			},
+			failed: {
+				workflowId: this.state.current.workflowId,
+				error: metadata.summary,
+				metadata,
+				failedAt,
+			},
 		});
 	}
 
 	private async update(patch: Partial<NornRunState>): Promise<void> {
 		await this.files.withExclusiveLock(this.path, async (path) => {
-			const current = parseNornRunState(await readRunStateFile({ path, legacyPath: join(dirname(this.path), LEGACY_RUN_STATE_FILE_NAME) }), "execute");
-			const next = { ...current, ...patch, updatedAt: new Date().toISOString() };
-			if (next.current?.args !== undefined) Value.Assert(jsonValueSchema, next.current.args);
+			const current = parseNornRunState(
+				await readRunStateFile({
+					path,
+					legacyPath: join(dirname(this.path), LEGACY_RUN_STATE_FILE_NAME),
+				}),
+				"execute",
+			);
+			const next = {
+				...current,
+				...patch,
+				updatedAt: new Date().toISOString(),
+			};
+			if (next.current?.args !== undefined)
+				Value.Assert(jsonValueSchema, next.current.args);
 			await writeJsonAtomically(path, next);
 			this.state = next;
 		});
 	}
 
 	private async write(): Promise<void> {
-		if (this.state.current?.args !== undefined) Value.Assert(jsonValueSchema, this.state.current.args);
+		if (this.state.current?.args !== undefined)
+			Value.Assert(jsonValueSchema, this.state.current.args);
 		await mkdir(dirname(this.path), { recursive: true });
-		await this.files.withExclusiveLock(this.path, (path) => writeJsonAtomically(path, this.state));
+		await this.files.withExclusiveLock(this.path, (path) =>
+			writeJsonAtomically(path, this.state),
+		);
 	}
 }
 
@@ -236,26 +370,46 @@ export async function listRuns(sessionCwd: string): Promise<NornRunInfo[]> {
 		throw error;
 	}
 
-	const runs = await Promise.all(entries.filter((entry) => entry.isDirectory()).map((entry) => readNornRunInfo(resolve(runsRoot, entry.name))));
-	return runs.filter((run): run is NornRunInfo => run !== undefined).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+	const runs = await Promise.all(
+		entries
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => readNornRunInfo(resolve(runsRoot, entry.name))),
+	);
+	return runs
+		.filter((run): run is NornRunInfo => run !== undefined)
+		.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
 export async function getRunInfo(runRoot: string): Promise<NornRunInfo> {
 	try {
 		// Read the request first so a completed handoff cannot revive an old interruption.
 		const pendingResume = await readOptionalRunResumeRequest(runRoot).then(
-			request => ({ status: "fulfilled" as const, request }),
+			(request) => ({ status: "fulfilled" as const, request }),
 			(error: unknown) => ({ status: "rejected" as const, error }),
 		);
-		const state = parseNornRunState(await readRunStateJson(runCurrentRoot(runRoot)), "inspect");
-		if (state.version === RUN_STATE_VERSION && pendingResume.status === "rejected") throw pendingResume.error;
-		const resumeRequest = state.version === RUN_STATE_VERSION && pendingResume.status === "fulfilled" ? pendingResume.request : undefined;
+		const state = parseNornRunState(
+			await readRunStateJson(runCurrentRoot(runRoot)),
+			"inspect",
+		);
+		if (
+			state.version === RUN_STATE_VERSION &&
+			pendingResume.status === "rejected"
+		)
+			throw pendingResume.error;
+		const resumeRequest =
+			state.version === RUN_STATE_VERSION &&
+			pendingResume.status === "fulfilled"
+				? pendingResume.request
+				: undefined;
 		return {
 			version: state.version,
 			id: state.id,
 			name: state.name,
 			path: runRoot,
-			paths: { project: state.projectRoot ?? resolve(runRoot, "../../.."), workspace: state.workspace },
+			paths: {
+				project: state.projectRoot ?? resolve(runRoot, "../../.."),
+				workspace: state.workspace,
+			},
 			entrypointWorkflowId: state.entrypointWorkflowId,
 			currentWorkflowId: state.current?.workflowId,
 			status: resumeRequest ? "running" : state.status,
@@ -274,38 +428,63 @@ export async function getRunInfo(runRoot: string): Promise<NornRunInfo> {
 	}
 }
 
-export async function resolveRunRoot(sessionCwd: string, run: string): Promise<string> {
+export async function resolveRunRoot(
+	sessionCwd: string,
+	run: string,
+): Promise<string> {
 	for (const candidate of runRootCandidates(sessionCwd, run)) {
 		try {
 			if (await readNornRunInfo(candidate)) return candidate;
 		} catch (error) {
-			if (!isNodeError(error) && (!(error instanceof Error) || !error.message.includes("run state"))) throw error;
+			if (
+				!isNodeError(error) &&
+				(!(error instanceof Error) || !error.message.includes("run state"))
+			)
+				throw error;
 		}
 	}
 
 	const runs = await listRuns(sessionCwd);
-	const match = runs.find((entry) => entry.id === run || entry.name === run || entry.path === run || entry.path.endsWith(`/${run}`));
+	const match = runs.find(
+		(entry) =>
+			entry.id === run ||
+			entry.name === run ||
+			entry.path === run ||
+			entry.path.endsWith(`/${run}`),
+	);
 	if (!match) throw new Error(`Unknown run: ${run}`);
 	return match.path;
 }
 
 function runRootCandidates(sessionCwd: string, run: string): string[] {
 	const candidates = [isAbsolute(run) ? run : resolve(sessionCwd, run)];
-	if (!isAbsolute(run)) candidates.push(resolve(sessionCwd, ".norn", "runs", run));
+	if (!isAbsolute(run))
+		candidates.push(resolve(sessionCwd, ".norn", "runs", run));
 	return Array.from(new Set(candidates));
 }
 
-async function getPendingResumeHealth(runRoot: string, requestedAt: string): Promise<NornRunHealth> {
+async function getPendingResumeHealth(
+	runRoot: string,
+	requestedAt: string,
+): Promise<NornRunHealth> {
 	const health = await getRunLeaseHealth(runRoot);
-	return health === "healthy" || Date.now() - Date.parse(requestedAt) < RESUME_START_GRACE_MS ? "healthy" : "unhealthy";
+	return health === "healthy" ||
+		Date.now() - Date.parse(requestedAt) < RESUME_START_GRACE_MS
+		? "healthy"
+		: "unhealthy";
 }
 
-async function runHealth(runRoot: string, status: NornRunStatus): Promise<NornRunHealth> {
+async function runHealth(
+	runRoot: string,
+	status: NornRunStatus,
+): Promise<NornRunHealth> {
 	if (status !== "running") return "healthy";
 	return getRunLeaseHealth(runRoot);
 }
 
-async function readNornRunInfo(runRoot: string): Promise<NornRunInfo | undefined> {
+async function readNornRunInfo(
+	runRoot: string,
+): Promise<NornRunInfo | undefined> {
 	try {
 		return await getRunInfo(runRoot);
 	} catch (error) {
@@ -321,7 +500,10 @@ async function getLaunchedRunInfo(runRoot: string): Promise<NornRunInfo> {
 		id: launchRequest.id,
 		name: launchRequest.name,
 		path: runRoot,
-		paths: { project: resolve(runRoot, "../../.."), workspace: join(runCurrentRoot(resolve(runRoot)), "workspace") },
+		paths: {
+			project: resolve(runRoot, "../../.."),
+			workspace: join(runCurrentRoot(resolve(runRoot)), "workspace"),
+		},
 		entrypointWorkflowId: launchRequest.workflowId,
 		currentWorkflowId: launchRequest.workflowId,
 		status: "running",
@@ -332,10 +514,16 @@ async function getLaunchedRunInfo(runRoot: string): Promise<NornRunInfo> {
 }
 
 async function readRunStateJson(currentRoot: string): Promise<unknown> {
-	return readRunStateFile({ path: join(currentRoot, RUN_STATE_FILE_NAME), legacyPath: join(currentRoot, LEGACY_RUN_STATE_FILE_NAME) });
+	return readRunStateFile({
+		path: join(currentRoot, RUN_STATE_FILE_NAME),
+		legacyPath: join(currentRoot, LEGACY_RUN_STATE_FILE_NAME),
+	});
 }
 
-async function readRunStateFile(input: { readonly path: string; readonly legacyPath: string }): Promise<unknown> {
+async function readRunStateFile(input: {
+	readonly path: string;
+	readonly legacyPath: string;
+}): Promise<unknown> {
 	try {
 		return JSON.parse(await readFile(input.path, "utf8"));
 	} catch (error) {
@@ -349,31 +537,74 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function assertRunVersion(version: unknown): void {
-	if (version !== RUN_STATE_VERSION) throw new Error(`Incompatible saved run state version ${String(version)}; this alpha requires version ${RUN_STATE_VERSION}. Use the original Norn version to resume this run, or start a new run. Saved files have not been migrated.`);
+	if (version !== RUN_STATE_VERSION)
+		throw new Error(
+			`Incompatible saved run state version ${String(version)}; this alpha requires version ${RUN_STATE_VERSION}. Use the original Norn version to resume this run, or start a new run. Saved files have not been migrated.`,
+		);
 }
 
-function parseNornRunState(value: unknown, mode: "execute" | "inspect"): NornRunState {
+function parseNornRunState(
+	value: unknown,
+	mode: "execute" | "inspect",
+): NornRunState {
 	if (!value || typeof value !== "object") throw new Error("Invalid run state");
 	const state = value as Partial<NornRunState> & { rootWorkflowId?: unknown };
-	if (mode === "execute" || state.version !== 1) assertRunVersion(state.version);
-	if (typeof state.id !== "string" || state.id.length === 0) throw new Error("Invalid run state id");
-	const normalizedState = state as { name?: string; entrypointWorkflowId?: unknown; rootWorkflowId?: unknown };
-	if (typeof normalizedState.name !== "string" || normalizedState.name.length === 0) normalizedState.name = state.id;
-	if (typeof normalizedState.entrypointWorkflowId !== "string" && typeof normalizedState.rootWorkflowId === "string") normalizedState.entrypointWorkflowId = normalizedState.rootWorkflowId;
-	if (typeof state.entrypointWorkflowId !== "string" || state.entrypointWorkflowId.length === 0) throw new Error("Invalid run state entrypoint workflow id");
-	if (typeof state.workspace !== "string" || state.workspace.length === 0) throw new Error("Invalid run state workspace");
-	if (state.status !== "running" && state.status !== "interrupted" && state.status !== "stopped" && state.status !== "pendingResume" && state.status !== "completed" && state.status !== "failed") throw new Error("Invalid run state status");
+	if (mode === "execute" || state.version !== 1)
+		assertRunVersion(state.version);
+	if (typeof state.id !== "string" || state.id.length === 0)
+		throw new Error("Invalid run state id");
+	const normalizedState = state as {
+		name?: string;
+		entrypointWorkflowId?: unknown;
+		rootWorkflowId?: unknown;
+	};
+	if (
+		typeof normalizedState.name !== "string" ||
+		normalizedState.name.length === 0
+	)
+		normalizedState.name = state.id;
+	if (
+		typeof normalizedState.entrypointWorkflowId !== "string" &&
+		typeof normalizedState.rootWorkflowId === "string"
+	)
+		normalizedState.entrypointWorkflowId = normalizedState.rootWorkflowId;
+	if (
+		typeof state.entrypointWorkflowId !== "string" ||
+		state.entrypointWorkflowId.length === 0
+	)
+		throw new Error("Invalid run state entrypoint workflow id");
+	if (typeof state.workspace !== "string" || state.workspace.length === 0)
+		throw new Error("Invalid run state workspace");
+	if (
+		state.status !== "running" &&
+		state.status !== "interrupted" &&
+		state.status !== "stopped" &&
+		state.status !== "pendingResume" &&
+		state.status !== "completed" &&
+		state.status !== "failed"
+	)
+		throw new Error("Invalid run state status");
 	if (state.status === "interrupted") assertInterruptedNornRunState(state);
-	if (state.status === "stopped" || state.status === "pendingResume") assertResumableNornRunState(state);
-	if (typeof state.startedAt !== "string" || typeof state.updatedAt !== "string") throw new Error("Invalid run state timestamps");
+	if (state.status === "stopped" || state.status === "pendingResume")
+		assertResumableNornRunState(state);
+	if (
+		typeof state.startedAt !== "string" ||
+		typeof state.updatedAt !== "string"
+	)
+		throw new Error("Invalid run state timestamps");
 	return state as NornRunState;
 }
 
 function assertInterruptedNornRunState(state: Partial<NornRunState>): void {
 	if (!state.current) throw new Error("Invalid interrupted run current step");
 	const interruption = state.current.interruption;
-	if (!interruption || interruption.status !== "pending") throw new Error("Invalid run interruption");
-	if (typeof interruption.description !== "string" || interruption.description.length === 0) throw new Error("Invalid run interruption description");
+	if (!interruption || interruption.status !== "pending")
+		throw new Error("Invalid run interruption");
+	if (
+		typeof interruption.description !== "string" ||
+		interruption.description.length === 0
+	)
+		throw new Error("Invalid run interruption description");
 }
 
 function assertResumableNornRunState(state: Partial<NornRunState>): void {
@@ -381,10 +612,14 @@ function assertResumableNornRunState(state: Partial<NornRunState>): void {
 }
 
 function runInterruption(state: NornRunState): NornRunInterruption | undefined {
-	if (state.status !== "interrupted" || !state.current?.interruption) return undefined;
+	if (state.status !== "interrupted" || !state.current?.interruption)
+		return undefined;
 	return {
 		workflowId: state.current.workflowId,
-		args: state.version === 1 ? (state.current as { readonly params?: unknown }).params : state.current.args,
+		args:
+			state.version === 1
+				? (state.current as { readonly params?: unknown }).params
+				: state.current.args,
 		description: state.current.interruption.description ?? "",
 		fields: state.current.interruption.fields,
 	};

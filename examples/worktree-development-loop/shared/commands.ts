@@ -1,6 +1,10 @@
 import type { NornCommandRunResult } from "@vimhead.dev/norn";
 
-export async function ensureCommandSucceeded(result: NornCommandRunResult): Promise<void> {
+export async function ensureCommandSucceeded(
+	result: NornCommandRunResult,
+): Promise<void> {
 	if (result.exitCode === 0) return;
-	throw new Error(`${result.label} failed with exit code ${result.exitCode ?? "unknown"}: ${result.stderrTail || result.stdoutTail}`);
+	throw new Error(
+		`${result.label} failed with exit code ${result.exitCode ?? "unknown"}: ${result.stderrTail || result.stdoutTail}`,
+	);
 }

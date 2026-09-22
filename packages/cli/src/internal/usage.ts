@@ -1,6 +1,8 @@
 import type { NornAgentUsage } from "@vimhead.dev/norn";
 
-export function agentUsageFromValue(value: unknown): NornAgentUsage | undefined {
+export function agentUsageFromValue(
+	value: unknown,
+): NornAgentUsage | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const usage = value as Record<string, unknown>;
 	const input = numberField(usage.input);
@@ -8,8 +10,12 @@ export function agentUsageFromValue(value: unknown): NornAgentUsage | undefined 
 	const cacheRead = numberField(usage.cacheRead);
 	const cacheWrite = numberField(usage.cacheWrite);
 	const reasoning = optionalNumberField(usage.reasoning);
-	const totalTokens = numberField(usage.totalTokens) || input + output + cacheRead + cacheWrite;
-	const costValue = usage.cost && typeof usage.cost === "object" ? usage.cost as Record<string, unknown> : {};
+	const totalTokens =
+		numberField(usage.totalTokens) || input + output + cacheRead + cacheWrite;
+	const costValue =
+		usage.cost && typeof usage.cost === "object"
+			? (usage.cost as Record<string, unknown>)
+			: {};
 	return {
 		input,
 		output,
@@ -27,12 +33,20 @@ export function agentUsageFromValue(value: unknown): NornAgentUsage | undefined 
 	};
 }
 
-export function totalAgentUsage(usages: readonly NornAgentUsage[]): NornAgentUsage {
+export function totalAgentUsage(
+	usages: readonly NornAgentUsage[],
+): NornAgentUsage {
 	return usages.reduce(addAgentUsage, emptyAgentUsage());
 }
 
-export function addAgentUsage(left: NornAgentUsage, right: NornAgentUsage): NornAgentUsage {
-	const reasoning = left.reasoning === undefined && right.reasoning === undefined ? undefined : (left.reasoning ?? 0) + (right.reasoning ?? 0);
+export function addAgentUsage(
+	left: NornAgentUsage,
+	right: NornAgentUsage,
+): NornAgentUsage {
+	const reasoning =
+		left.reasoning === undefined && right.reasoning === undefined
+			? undefined
+			: (left.reasoning ?? 0) + (right.reasoning ?? 0);
 	return {
 		input: left.input + right.input,
 		output: left.output + right.output,
@@ -66,5 +80,7 @@ function numberField(value: unknown): number {
 }
 
 function optionalNumberField(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
 }

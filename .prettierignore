@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.norn/
+*.tgz
+pnpm-lock.yaml
+packages/cli/assets/
+packages/cli/src/bun/*.generated.ts
+packages/cli/src/generated-build-info.ts

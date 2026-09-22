@@ -23,7 +23,7 @@ export const planningWorkflow = developmentLoopScope.workflow({
 		await mkdir(join(paths.workspace, "planning"), { recursive: true });
 		await writeFile(join(paths.workspace, planPath), planning.plan);
 		return implementationWorkflow({ ...args, planPath, iteration: 1 });
-	}
+	},
 });
 
 function buildPlanningPrompt(task: string): string {

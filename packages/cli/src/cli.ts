@@ -1,47 +1,102 @@
 import { main as runPi } from "@earendil-works/pi-coding-agent";
-import { type DeletedNornRunInfo, type NornAnyWorkflowDeclaration, type NornRunInfo } from "@vimhead.dev/norn";
+import {
+	type DeletedNornRunInfo,
+	type NornAnyWorkflowDeclaration,
+	type NornRunInfo,
+} from "@vimhead.dev/norn";
 import { isNodeError } from "@vimhead.dev/norn-core/errors";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import {
+	chmod,
+	mkdir,
+	readFile,
+	rename,
+	rm,
+	stat,
+	writeFile,
+} from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { Value } from "typebox/value";
-import { NORN_BUILD_INFO, type NornBuildInfo, type NornGithubReleaseBinaryBuildInfo } from "./build-info.ts";
-import { renderNornDocumentationIntro, resolveDocumentationCacheRoot, resolveNornDocumentation, type NornDocumentationSource } from "./documentation.ts";
+import {
+	NORN_BUILD_INFO,
+	type NornBuildInfo,
+	type NornGithubReleaseBinaryBuildInfo,
+} from "./build-info.ts";
+import {
+	renderNornDocumentationIntro,
+	resolveDocumentationCacheRoot,
+	resolveNornDocumentation,
+	type NornDocumentationSource,
+} from "./documentation.ts";
 import { NornEngine } from "./internal/engine.ts";
 import { resolveNornAgentDirectory } from "./internal/agent-directory.ts";
-import { errorMessage, NornProjectLoadError, NornRunStoppedError } from "./internal/errors.ts";
-import { clearRunResumeRequest, readRunLaunchRequest, readRunResumeRequest, writeRunLaunchRequest, writeRunResumeRequest, type NornRunResumeRequest } from "./internal/launch-request.ts";
+import {
+	errorMessage,
+	NornProjectLoadError,
+	NornRunStoppedError,
+} from "./internal/errors.ts";
+import {
+	clearRunResumeRequest,
+	readRunLaunchRequest,
+	readRunResumeRequest,
+	writeRunLaunchRequest,
+	writeRunResumeRequest,
+	type NornRunResumeRequest,
+} from "./internal/launch-request.ts";
 import { readRunMetrics } from "./internal/metrics.ts";
 import { getRunLeaseOwner, NornRunLease } from "./internal/run-lease.ts";
 import { generateRunName } from "./internal/run-names.ts";
-import { assertRunVersion, getRunInfo, listRuns, mergeInterruptedWorkflowArgs, resolveRunRoot } from "./internal/run-state.ts";
+import {
+	assertRunVersion,
+	getRunInfo,
+	listRuns,
+	mergeInterruptedWorkflowArgs,
+	resolveRunRoot,
+} from "./internal/run-state.ts";
 import { NornRunStore } from "./internal/run-store.ts";
 import { prepareRunWorkerDirectory } from "./internal/worker-directory.ts";
-import { discoverNornProject, findNornProject, inspectNornWorkflow, loadNornProject, NORN_PROJECT_FILE_NAME } from "./workflow-loader.ts";
+import {
+	discoverNornProject,
+	findNornProject,
+	inspectNornWorkflow,
+	loadNornProject,
+	NORN_PROJECT_FILE_NAME,
+} from "./workflow-loader.ts";
 
 const RUNS_ROOT = join(".norn", "runs");
 const RUN_WAIT_INTERVAL_MS = 1000;
-const CLI_DESCRIPTION = "Norn is a harness-agnostic runtime for agent-driven and code-driven workflows, built primarily for agents. Build workflows with the Norn SDK; use this JSON-native CLI to discover workflows, start or resume runs, inspect evidence, and manage the installed runtime.";
+const CLI_DESCRIPTION =
+	"Norn is a harness-agnostic runtime for agent-driven and code-driven workflows, built primarily for agents. Build workflows with the Norn SDK; use this JSON-native CLI to discover workflows, start or resume runs, inspect evidence, and manage the installed runtime.";
 
 const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "pi",
 		path: ["pi"],
-		description: "Run Norn's bundled Pi CLI for interactive authentication, provider packages, model configuration, or direct Pi use. No Norn project is required.",
+		description:
+			"Run Norn's bundled Pi CLI for interactive authentication, provider packages, model configuration, or direct Pi use. No Norn project is required.",
 		usage: "norn pi [pi arguments...]",
-		arguments: ["pi arguments: forwarded unchanged; use norn pi --help for Pi's CLI contract"],
-		output: "Pi's native terminal, text, JSON, or RPC output and exit status; not wrapped in Norn JSON.",
-		examples: ["norn pi", "norn pi install npm:pi-cursor-sdk", "norn pi --list-models cursor", "norn pi --help"],
-		execute: args => runPi([...args]),
+		arguments: [
+			"pi arguments: forwarded unchanged; use norn pi --help for Pi's CLI contract",
+		],
+		output:
+			"Pi's native terminal, text, JSON, or RPC output and exit status; not wrapped in Norn JSON.",
+		examples: [
+			"norn pi",
+			"norn pi install npm:pi-cursor-sdk",
+			"norn pi --list-models cursor",
+			"norn pi --help",
+		],
+		execute: (args) => runPi([...args]),
 	},
 	{
 		id: "commands.list",
 		path: ["commands", "list"],
-		description: "Use when an agent or human needs machine-readable Norn CLI command metadata.",
+		description:
+			"Use when an agent or human needs machine-readable Norn CLI command metadata.",
 		usage: "norn commands list [--all]",
 		options: ["--all: include hidden internal commands"],
 		output: "JSON object with command metadata under commands.",
@@ -51,7 +106,8 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "commands.inspect",
 		path: ["commands", "inspect"],
-		description: "Use when an agent or human needs the usage contract for one Norn CLI command.",
+		description:
+			"Use when an agent or human needs the usage contract for one Norn CLI command.",
 		usage: "norn commands inspect <command-id>",
 		arguments: ["command-id: command metadata id such as runs.start"],
 		output: "JSON object with one command metadata object under command.",
@@ -61,46 +117,67 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "help",
 		path: ["help"],
-		description: "Use when reading JSON help for all Norn commands, one command group, or one command.",
+		description:
+			"Use when reading JSON help for all Norn commands, one command group, or one command.",
 		usage: "norn help [command-or-group]",
-		arguments: ["command-or-group: optional command path such as runs or runs start"],
+		arguments: [
+			"command-or-group: optional command path such as runs or runs start",
+		],
 		output: "JSON object with help metadata under help.",
-		examples: ["norn help", "norn help runs", "norn help runs start", "norn --help"],
+		examples: [
+			"norn help",
+			"norn help runs",
+			"norn help runs start",
+			"norn --help",
+		],
 		execute: (args) => writeCliHelp(args),
 	},
 	{
 		id: "docs.inspect",
 		path: ["docs", "inspect"],
-		description: "Resolve version-matched local documentation and examples. Standalone binaries extract bundled assets into a verified build-specific cache; no project or network is required.",
+		description:
+			"Resolve version-matched local documentation and examples. Standalone binaries extract bundled assets into a verified build-specific cache; no project or network is required.",
 		usage: "norn docs inspect",
-		output: "JSON object under documentation with storage, version, commit, assetDigest, and absolute paths. NORN_DOCS_CACHE_DIR overrides the binary cache directory.",
+		output:
+			"JSON object under documentation with storage, version, commit, assetDigest, and absolute paths. NORN_DOCS_CACHE_DIR overrides the binary cache directory.",
 		examples: ["norn docs inspect"],
 		execute: async (args, documentationSource) => {
 			assertNoExtraArgs("docs inspect", args);
-			writeJson({ documentation: await resolveCliDocumentation(documentationSource) });
+			writeJson({
+				documentation: await resolveCliDocumentation(documentationSource),
+			});
 		},
 	},
 	{
 		id: "docs.intro",
 		path: ["docs", "intro"],
-		description: "Produce a compact introduction to Norn authoring with this runtime's invocation and matching local documentation pointers. Does not load a project, list workflows, or deliver context to agents.",
+		description:
+			"Produce a compact introduction to Norn authoring with this runtime's invocation and matching local documentation pointers. Does not load a project, list workflows, or deliver context to agents.",
 		usage: "norn docs intro",
-		output: "JSON object with introduction text under intro. Uses the same asset resolution and NORN_DOCS_CACHE_DIR override as docs inspect.",
+		output:
+			"JSON object with introduction text under intro. Uses the same asset resolution and NORN_DOCS_CACHE_DIR override as docs inspect.",
 		examples: ["norn docs intro"],
 		execute: async (args, documentationSource) => {
 			assertNoExtraArgs("docs intro", args);
-			writeJson({ intro: renderNornDocumentationIntro({
-				documentation: await resolveCliDocumentation(documentationSource),
-				invocation: documentationSource.kind === "embedded"
-					? [process.execPath]
-					: [process.execPath, fileURLToPath(new URL("../bin/norn.mjs", import.meta.url))],
-			}) });
+			writeJson({
+				intro: renderNornDocumentationIntro({
+					documentation: await resolveCliDocumentation(documentationSource),
+					invocation:
+						documentationSource.kind === "embedded"
+							? [process.execPath]
+							: [
+									process.execPath,
+									fileURLToPath(new URL("../bin/norn.mjs", import.meta.url)),
+								],
+				}),
+			});
 		},
 	},
 	{
 		id: "project.init",
 		path: ["project", "init"],
-		description: "Use when creating a self-contained Norn project config and local run state directory in the current directory.",
+		description:
+			"Use when creating a self-contained Norn project config and local run state directory in the current directory.",
 		usage: "norn project init",
 		output: "JSON object with initialized project metadata under project.",
 		examples: ["norn project init"],
@@ -112,9 +189,11 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "project.inspect",
 		path: ["project", "inspect"],
-		description: "Use when discovering the active Norn project, configuration, and workflow sources.",
+		description:
+			"Use when discovering the active Norn project, configuration, and workflow sources.",
 		usage: "norn project inspect",
-		output: "JSON object with project metadata under project, isComplete, and registration diagnostics. Incomplete discovery does not permit execution.",
+		output:
+			"JSON object with project metadata under project, isComplete, and registration diagnostics. Incomplete discovery does not permit execution.",
 		examples: ["norn project inspect"],
 		execute: async (args) => {
 			assertNoExtraArgs("project inspect", args);
@@ -124,23 +203,35 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "workflows.list",
 		path: ["workflows", "list"],
-		description: "Use when selecting a Norn workflow for a user task; defaults to entrypoint workflows.",
+		description:
+			"Use when selecting a Norn workflow for a user task; defaults to entrypoint workflows.",
 		usage: "norn workflows list [--entrypoints|--all]",
-		options: ["--entrypoints: list entrypoint workflows", "--all: include internal workflow steps"],
-		output: "JSON object with workflow summaries under workflows, isComplete, and registration diagnostics. Successful discovery can be incomplete; start/resume remain strict.",
+		options: [
+			"--entrypoints: list entrypoint workflows",
+			"--all: include internal workflow steps",
+		],
+		output:
+			"JSON object with workflow summaries under workflows, isComplete, and registration diagnostics. Successful discovery can be incomplete; start/resume remain strict.",
 		examples: ["norn workflows list", "norn workflows list --all"],
 		execute: listWorkflows,
 	},
 	{
 		id: "workflows.inspect",
 		path: ["workflows", "inspect"],
-		description: "Use when reading a workflow's instructions, args schema, gate contract, and registration source before starting or editing it.",
+		description:
+			"Use when reading a workflow's instructions, args schema, gate contract, and registration source before starting or editing it.",
 		usage: "norn workflows inspect <workflow-id>",
 		arguments: ["workflow-id: fully qualified workflow id"],
-		output: "JSON object with workflow details, isComplete, and registration diagnostics. workflow is null if unavailable in an incomplete catalog or its schema cannot be inspected; an unknown id in a complete catalog is an error.",
+		output:
+			"JSON object with workflow details, isComplete, and registration diagnostics. workflow is null if unavailable in an incomplete catalog or its schema cannot be inspected; an unknown id in a complete catalog is an error.",
 		examples: ["norn workflows inspect example.plan"],
 		execute: async (args) => {
-			const workflowId = requiredArg("workflows inspect", args, 0, "workflow id");
+			const workflowId = requiredArg(
+				"workflows inspect",
+				args,
+				0,
+				"workflow id",
+			);
 			assertNoExtraArgs("workflows inspect", args.slice(1));
 			await inspectWorkflow(workflowId);
 		},
@@ -148,12 +239,16 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.start",
 		path: ["runs", "start"],
-		description: "Use when starting a Norn workflow run after the workflow id and args are known.",
+		description:
+			"Use when starting a Norn workflow run after the workflow id and args are known.",
 		usage: "norn runs start <workflow-id>",
 		arguments: ["workflow-id: fully qualified workflow id to start"],
-		stdin: "Optional JSON object: {\"args\":{...},\"config\":{\"workflowOrScopeId\":{...}}}.",
+		stdin:
+			'Optional JSON object: {"args":{...},"config":{"workflowOrScopeId":{...}}}.',
 		output: "JSON object with started run info under run.",
-		examples: ["printf '{\"args\":{\"task\":\"Add tests\"}}' | norn runs start example.plan"],
+		examples: [
+			'printf \'{"args":{"task":"Add tests"}}\' | norn runs start example.plan',
+		],
 		execute: async (args) => {
 			const workflowId = requiredArg("runs start", args, 0, "workflow id");
 			await startRun(workflowId, args.slice(1));
@@ -162,12 +257,16 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.resume",
 		path: ["runs", "resume"],
-		description: "Use when resuming an interrupted gate or a checkpoint restored for retry.",
+		description:
+			"Use when resuming an interrupted gate or a checkpoint restored for retry.",
 		usage: "norn runs resume <run>",
 		arguments: ["run: run id, generated name, or run path"],
-		stdin: "Optional JSON object: {\"args\":{...}}. Interrupted runs require a patch containing only editable gate fields; pending-resume runs do not accept args.",
+		stdin:
+			'Optional JSON object: {"args":{...}}. Interrupted runs require a patch containing only editable gate fields; pending-resume runs do not accept args.',
 		output: "JSON object with resumed run info under run.",
-		examples: ["printf '{\"args\":{\"decision\":\"accept\"}}' | norn runs resume quiet-river-lantern"],
+		examples: [
+			'printf \'{"args":{"decision":"accept"}}\' | norn runs resume quiet-river-lantern',
+		],
 		execute: async (args) => {
 			const run = requiredArg("runs resume", args, 0, "run");
 			await resumeRun(run, args.slice(1));
@@ -176,7 +275,8 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.wait",
 		path: ["runs", "wait"],
-		description: "Use when waiting for a Norn run to finish, fail, interrupt, or become unhealthy.",
+		description:
+			"Use when waiting for a Norn run to finish, fail, interrupt, or become unhealthy.",
 		usage: "norn runs wait <run>",
 		arguments: ["run: run id, generated name, or run path"],
 		output: "JSON object with final or current run info under run.",
@@ -202,7 +302,8 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.inspect",
 		path: ["runs", "inspect"],
-		description: "Use when reading status, health, current workflow, interruption, and outcome details for one Norn run.",
+		description:
+			"Use when reading status, health, current workflow, interruption, and outcome details for one Norn run.",
 		usage: "norn runs inspect <run>",
 		arguments: ["run: run id, generated name, or run path"],
 		output: "JSON object with run details under run.",
@@ -216,7 +317,8 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.checkpoints",
 		path: ["runs", "checkpoints"],
-		description: "Use when finding rollback points before retrying or repairing a Norn run.",
+		description:
+			"Use when finding rollback points before retrying or repairing a Norn run.",
 		usage: "norn runs checkpoints <run>",
 		arguments: ["run: run id, generated name, or run path"],
 		output: "JSON object with checkpoints under checkpoints.",
@@ -226,13 +328,16 @@ const COMMANDS: readonly CliCommand[] = [
 			assertNoExtraArgs("runs checkpoints", args.slice(1));
 			const project = await findNornProject(process.cwd());
 			const runRoot = await resolveRunRoot(project.projectRoot, run);
-			writeJson({ checkpoints: await (await NornRunStore.open(runRoot)).listCheckpoints() });
+			writeJson({
+				checkpoints: await (await NornRunStore.open(runRoot)).listCheckpoints(),
+			});
 		},
 	},
 	{
 		id: "runs.metrics",
 		path: ["runs", "metrics"],
-		description: "Use when measuring workflow, agent, command, token, and cost totals for a Norn run.",
+		description:
+			"Use when measuring workflow, agent, command, token, and cost totals for a Norn run.",
 		usage: "norn runs metrics <run>",
 		arguments: ["run: run id, generated name, or run path"],
 		output: "JSON object with metrics under metrics.",
@@ -248,12 +353,16 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.logs",
 		path: ["runs", "logs"],
-		description: "Use when streaming or reading chronological JSON events for a Norn run.",
+		description:
+			"Use when streaming or reading chronological JSON events for a Norn run.",
 		usage: "norn runs logs <run> [--follow]",
 		arguments: ["run: run id, generated name, or run path"],
 		options: ["--follow: continue streaming until the run stops"],
 		output: "JSON Lines stream of run events.",
-		examples: ["norn runs logs quiet-river-lantern", "norn runs logs quiet-river-lantern --follow"],
+		examples: [
+			"norn runs logs quiet-river-lantern",
+			"norn runs logs quiet-river-lantern --follow",
+		],
 		execute: async (args) => {
 			const run = requiredArg("runs logs", args, 0, "run");
 			const logArgs = args.slice(1);
@@ -264,9 +373,13 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.rollback",
 		path: ["runs", "rollback"],
-		description: "Use when restoring a failed or stopped run to a checkpoint and marking it pending resume.",
+		description:
+			"Use when restoring a failed or stopped run to a checkpoint and marking it pending resume.",
 		usage: "norn runs rollback <run> <checkpoint-id>",
-		arguments: ["run: run id, generated name, or run path", "checkpoint-id: checkpoint id from runs.checkpoints"],
+		arguments: [
+			"run: run id, generated name, or run path",
+			"checkpoint-id: checkpoint id from runs.checkpoints",
+		],
 		output: "JSON object with rolled-back run info under run.",
 		examples: ["norn runs rollback quiet-river-lantern checkpoint-1"],
 		execute: async (args) => {
@@ -277,7 +390,8 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.stop",
 		path: ["runs", "stop"],
-		description: "Use when stopping a running Norn execution while preserving its dirty state for inspection or rollback.",
+		description:
+			"Use when stopping a running Norn execution while preserving its dirty state for inspection or rollback.",
 		usage: "norn runs stop <run>",
 		arguments: ["run: run id, generated name, or run path"],
 		output: "JSON object with updated run info under run.",
@@ -291,7 +405,8 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.kill",
 		path: ["runs", "kill"],
-		description: "Use when force-stopping a Norn execution process that did not stop politely.",
+		description:
+			"Use when force-stopping a Norn execution process that did not stop politely.",
 		usage: "norn runs kill <run>",
 		arguments: ["run: run id, generated name, or run path"],
 		output: "JSON object with updated run info under run.",
@@ -305,7 +420,8 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "runs.delete",
 		path: ["runs", "delete"],
-		description: "Use when deleting an inactive Norn run directory after evidence is no longer needed.",
+		description:
+			"Use when deleting an inactive Norn run directory after evidence is no longer needed.",
 		usage: "norn runs delete <run>",
 		arguments: ["run: run id, generated name, or run path"],
 		output: "JSON object with deleted run identity under deleted.",
@@ -319,10 +435,12 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "execute-run",
 		path: ["execute-run"],
-		description: "Use internally when executing a previously launched detached run request.",
+		description:
+			"Use internally when executing a previously launched detached run request.",
 		usage: "norn execute-run <run-id>",
 		arguments: ["run-id: internal run id"],
-		output: "No stable stdout contract; execution state is persisted in the run directory.",
+		output:
+			"No stable stdout contract; execution state is persisted in the run directory.",
 		hidden: true,
 		examples: ["norn execute-run 00000000-0000-0000-0000-000000000000"],
 		execute: async (args) => {
@@ -334,19 +452,25 @@ const COMMANDS: readonly CliCommand[] = [
 	{
 		id: "upgrade",
 		path: ["upgrade"],
-		description: "Use when upgrading this Norn CLI installation according to explicit build metadata.",
+		description:
+			"Use when upgrading this Norn CLI installation according to explicit build metadata.",
 		usage: "norn upgrade [--dry-run]",
-		options: ["--dry-run: report the upgrade plan without changing files or running installers"],
-		output: "JSON object with upgrade status, plan, or unsupported reason under upgrade.",
+		options: [
+			"--dry-run: report the upgrade plan without changing files or running installers",
+		],
+		output:
+			"JSON object with upgrade status, plan, or unsupported reason under upgrade.",
 		examples: ["norn upgrade --dry-run", "norn upgrade"],
 		execute: upgradeNorn,
 	},
 	{
 		id: "version",
 		path: ["version"],
-		description: "Use when checking the installed Norn CLI version and explicit build metadata.",
+		description:
+			"Use when checking the installed Norn CLI version and explicit build metadata.",
 		usage: "norn version",
-		output: "JSON object with package version under version and build metadata under build.",
+		output:
+			"JSON object with package version under version and build metadata under build.",
 		examples: ["norn version", "norn --version"],
 		execute: async (args) => {
 			assertNoExtraArgs("version", args);
@@ -386,7 +510,8 @@ const HUMAN_COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
 	"commands.list": "List machine-readable command metadata.",
 	"commands.inspect": "Inspect one command's machine-readable contract.",
 	"docs.inspect": "Locate matching documentation and examples offline.",
-	"docs.intro": "Produce a compact authoring introduction with local documentation pointers.",
+	"docs.intro":
+		"Produce a compact authoring introduction with local documentation pointers.",
 	"workflows.list": "List Norn workflows.",
 	"workflows.inspect": "Inspect a workflow schema and source.",
 	"runs.start": "Start a workflow run.",
@@ -409,7 +534,10 @@ const HUMAN_COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
 	help: "Show concise command help.",
 };
 
-export async function main(args: readonly string[], documentationSource: NornDocumentationSource): Promise<void> {
+export async function main(
+	args: readonly string[],
+	documentationSource: NornDocumentationSource,
+): Promise<void> {
 	if (args[0] === "pi") {
 		await runPi([...args.slice(1)]);
 		return;
@@ -417,15 +545,23 @@ export async function main(args: readonly string[], documentationSource: NornDoc
 	try {
 		await runCommand(args, documentationSource);
 	} catch (error) {
-		writeJson({ error: {
-			code: errorCode(error), message: errorMessage(error),
-			...(error instanceof NornProjectLoadError ? { isComplete: error.isComplete, diagnostics: error.diagnostics } : {}),
-		} });
+		writeJson({
+			error: {
+				code: errorCode(error),
+				message: errorMessage(error),
+				...(error instanceof NornProjectLoadError
+					? { isComplete: error.isComplete, diagnostics: error.diagnostics }
+					: {}),
+			},
+		});
 		process.exitCode = 1;
 	}
 }
 
-async function runCommand(args: readonly string[], documentationSource: NornDocumentationSource): Promise<void> {
+async function runCommand(
+	args: readonly string[],
+	documentationSource: NornDocumentationSource,
+): Promise<void> {
 	if (args.length === 0) {
 		writeCliHelp([]);
 		return;
@@ -455,7 +591,10 @@ type CliCommand = {
 	readonly output: string;
 	readonly examples: readonly string[];
 	readonly hidden?: true;
-	readonly execute: (args: readonly string[], documentationSource: NornDocumentationSource) => Promise<void> | void;
+	readonly execute: (
+		args: readonly string[],
+		documentationSource: NornDocumentationSource,
+	) => Promise<void> | void;
 };
 
 type CliCommandInfo = Omit<CliCommand, "execute">;
@@ -463,7 +602,11 @@ type CliCommandInfo = Omit<CliCommand, "execute">;
 async function listCliCommands(args: readonly string[]): Promise<void> {
 	assertKnownFlags("commands list", args, ["--all"]);
 	const shouldIncludeHidden = args.includes("--all");
-	writeJson({ commands: COMMANDS.filter((command) => shouldIncludeHidden || !command.hidden).map(cliCommandInfo) });
+	writeJson({
+		commands: COMMANDS.filter(
+			(command) => shouldIncludeHidden || !command.hidden,
+		).map(cliCommandInfo),
+	});
 }
 
 async function inspectCliCommand(args: readonly string[]): Promise<void> {
@@ -505,12 +648,20 @@ function writeCliHelp(path: readonly string[]): void {
 		process.stdout.write(renderCommandHelp(command));
 		return;
 	}
-	const groupCommands = sortedCommandsForHelp(visibleCommands().filter((candidate) => path.length === 0 || startsWithPath(candidate.path, path)));
-	if (groupCommands.length === 0) throw new Error(`Unknown norn help topic: ${path.join(" ")}`);
+	const groupCommands = sortedCommandsForHelp(
+		visibleCommands().filter(
+			(candidate) => path.length === 0 || startsWithPath(candidate.path, path),
+		),
+	);
+	if (groupCommands.length === 0)
+		throw new Error(`Unknown norn help topic: ${path.join(" ")}`);
 	process.stdout.write(renderGroupHelp(path, groupCommands));
 }
 
-function renderGroupHelp(path: readonly string[], commands: readonly CliCommand[]): string {
+function renderGroupHelp(
+	path: readonly string[],
+	commands: readonly CliCommand[],
+): string {
 	return [
 		"Norn",
 		"",
@@ -552,33 +703,59 @@ function renderCommandHelp(command: CliCommand): string {
 function renderCommandSummary(commands: readonly CliCommand[]): string {
 	const commandNames = commands.map((command) => command.path.join(" "));
 	const width = Math.max(...commandNames.map((name) => name.length));
-	return commands.map((command, index) => `  ${commandNames[index].padEnd(width)}  ${commandHumanSummary(command)}`).join("\n");
+	return commands
+		.map(
+			(command, index) =>
+				`  ${commandNames[index].padEnd(width)}  ${commandHumanSummary(command)}`,
+		)
+		.join("\n");
 }
 
-function helpSection(title: string, lines: readonly string[]): readonly string[] {
+function helpSection(
+	title: string,
+	lines: readonly string[],
+): readonly string[] {
 	return ["", `${title}:`, ...lines.map((line) => `  ${line}`)];
 }
 
 function groupHelpUsage(path: readonly string[]): readonly string[] {
-	if (path.length === 0) return ["norn <command> [args]", "norn help <command>", "norn --version"];
+	if (path.length === 0)
+		return ["norn <command> [args]", "norn help <command>", "norn --version"];
 	const prefix = `norn ${path.join(" ")}`;
-	return [`${prefix} <command> [args]`, `norn help ${path.join(" ")} <command>`, "norn --version"];
+	return [
+		`${prefix} <command> [args]`,
+		`norn help ${path.join(" ")} <command>`,
+		"norn --version",
+	];
 }
 
 function findCliCommand(args: readonly string[]): CliCommand | undefined {
-	return sortedCommandsByPathLength(COMMANDS).find((command) => startsWithPath(args, command.path));
+	return sortedCommandsByPathLength(COMMANDS).find((command) =>
+		startsWithPath(args, command.path),
+	);
 }
 
 function findExactCliCommand(path: readonly string[]): CliCommand | undefined {
-	return COMMANDS.find((command) => command.path.length === path.length && startsWithPath(command.path, path));
+	return COMMANDS.find(
+		(command) =>
+			command.path.length === path.length && startsWithPath(command.path, path),
+	);
 }
 
-function sortedCommandsByPathLength(commands: readonly CliCommand[]): readonly CliCommand[] {
-	return [...commands].sort((left, right) => right.path.length - left.path.length);
+function sortedCommandsByPathLength(
+	commands: readonly CliCommand[],
+): readonly CliCommand[] {
+	return [...commands].sort(
+		(left, right) => right.path.length - left.path.length,
+	);
 }
 
-function sortedCommandsForHelp(commands: readonly CliCommand[]): readonly CliCommand[] {
-	return [...commands].sort((left, right) => commandHelpOrder(left) - commandHelpOrder(right));
+function sortedCommandsForHelp(
+	commands: readonly CliCommand[],
+): readonly CliCommand[] {
+	return [...commands].sort(
+		(left, right) => commandHelpOrder(left) - commandHelpOrder(right),
+	);
 }
 
 function commandHelpOrder(command: CliCommand): number {
@@ -594,7 +771,10 @@ function visibleCommands(): readonly CliCommand[] {
 	return COMMANDS.filter((command) => !command.hidden);
 }
 
-function startsWithPath(value: readonly string[], path: readonly string[]): boolean {
+function startsWithPath(
+	value: readonly string[],
+	path: readonly string[],
+): boolean {
 	return path.every((segment, index) => value[index] === segment);
 }
 
@@ -602,21 +782,32 @@ async function resolveCliDocumentation(source: NornDocumentationSource) {
 	return resolveNornDocumentation({
 		source,
 		build: { ...NORN_BUILD_INFO, version: await readPackageVersion() },
-		cacheRoot: resolveDocumentationCacheRoot({ platform: process.platform, home: homedir(), environment: process.env }),
+		cacheRoot: resolveDocumentationCacheRoot({
+			platform: process.platform,
+			home: homedir(),
+			environment: process.env,
+		}),
 	});
 }
 
-async function versionInfo(): Promise<{ readonly version: string; readonly build: NornBuildInfo }> {
+async function versionInfo(): Promise<{
+	readonly version: string;
+	readonly build: NornBuildInfo;
+}> {
 	return { version: await readPackageVersion(), build: NORN_BUILD_INFO };
 }
 
 async function readPackageVersion(): Promise<string> {
 	try {
-		const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as { version?: unknown };
-		if (typeof packageJson.version !== "string") throw new Error("Invalid Norn package version");
+		const packageJson = JSON.parse(
+			await readFile(new URL("../package.json", import.meta.url), "utf8"),
+		) as { version?: unknown };
+		if (typeof packageJson.version !== "string")
+			throw new Error("Invalid Norn package version");
 		return packageJson.version;
 	} catch (error) {
-		if (isNodeError(error) && error.code === "ENOENT") return NORN_BUILD_INFO.version;
+		if (isNodeError(error) && error.code === "ENOENT")
+			return NORN_BUILD_INFO.version;
 		throw error;
 	}
 }
@@ -627,13 +818,21 @@ async function upgradeNorn(args: readonly string[]): Promise<void> {
 	const currentVersion = await readPackageVersion();
 	const build = NORN_BUILD_INFO;
 	if (build.kind !== "github-release-binary") {
-		writeJson({ upgrade: unsupportedUpgrade(build, currentVersion, build.upgrade.reason) });
+		writeJson({
+			upgrade: unsupportedUpgrade(build, currentVersion, build.upgrade.reason),
+		});
 		return;
 	}
-	writeJson({ upgrade: await upgradeGithubReleaseBinary(build, currentVersion, dryRun) });
+	writeJson({
+		upgrade: await upgradeGithubReleaseBinary(build, currentVersion, dryRun),
+	});
 }
 
-function unsupportedUpgrade(build: NornBuildInfo, currentVersion: string, reason: string): Record<string, unknown> {
+function unsupportedUpgrade(
+	build: NornBuildInfo,
+	currentVersion: string,
+	reason: string,
+): Record<string, unknown> {
 	return {
 		supported: false,
 		kind: build.kind,
@@ -643,16 +842,36 @@ function unsupportedUpgrade(build: NornBuildInfo, currentVersion: string, reason
 	};
 }
 
-async function upgradeGithubReleaseBinary(build: NornGithubReleaseBinaryBuildInfo, currentVersion: string, dryRun: boolean): Promise<Record<string, unknown>> {
+async function upgradeGithubReleaseBinary(
+	build: NornGithubReleaseBinaryBuildInfo,
+	currentVersion: string,
+	dryRun: boolean,
+): Promise<Record<string, unknown>> {
 	const plan = githubReleaseBinaryUpgradePlan(build, currentVersion, dryRun);
 	if (dryRun) return { ...plan, status: "planned" };
-	if (process.platform === "win32") return unsupportedUpgrade(build, currentVersion, "Replacing a running Windows executable is not supported yet.");
+	if (process.platform === "win32")
+		return unsupportedUpgrade(
+			build,
+			currentVersion,
+			"Replacing a running Windows executable is not supported yet.",
+		);
 	const binary = await downloadReleaseAsset(plan.downloadUrl);
 	const checksumText = await downloadReleaseText(plan.checksumUrl);
-	const expectedChecksum = parseSha256Checksum(checksumText, build.checksumAssetName);
-	const actualChecksum = createHash("sha256").update(Buffer.from(binary)).digest("hex");
-	if (actualChecksum !== expectedChecksum) throw new Error(`Downloaded Norn binary checksum mismatch: expected ${expectedChecksum}, got ${actualChecksum}`);
-	const tempPath = join(dirname(plan.targetPath), `.norn-upgrade-${process.pid}-${build.assetName}`);
+	const expectedChecksum = parseSha256Checksum(
+		checksumText,
+		build.checksumAssetName,
+	);
+	const actualChecksum = createHash("sha256")
+		.update(Buffer.from(binary))
+		.digest("hex");
+	if (actualChecksum !== expectedChecksum)
+		throw new Error(
+			`Downloaded Norn binary checksum mismatch: expected ${expectedChecksum}, got ${actualChecksum}`,
+		);
+	const tempPath = join(
+		dirname(plan.targetPath),
+		`.norn-upgrade-${process.pid}-${build.assetName}`,
+	);
 	try {
 		await writeFile(tempPath, binary);
 		await chmod(tempPath, 0o755);
@@ -664,7 +883,11 @@ async function upgradeGithubReleaseBinary(build: NornGithubReleaseBinaryBuildInf
 	return { ...plan, status: "completed", checksum: actualChecksum };
 }
 
-function githubReleaseBinaryUpgradePlan(build: NornGithubReleaseBinaryBuildInfo, currentVersion: string, dryRun: boolean): {
+function githubReleaseBinaryUpgradePlan(
+	build: NornGithubReleaseBinaryBuildInfo,
+	currentVersion: string,
+	dryRun: boolean,
+): {
 	readonly supported: true;
 	readonly kind: "github-release-binary";
 	readonly dryRun: boolean;
@@ -694,49 +917,82 @@ function githubReleaseBinaryUpgradePlan(build: NornGithubReleaseBinaryBuildInfo,
 	};
 }
 
-function githubReleaseDownloadUrl(build: NornGithubReleaseBinaryBuildInfo, assetName: string): string {
+function githubReleaseDownloadUrl(
+	build: NornGithubReleaseBinaryBuildInfo,
+	assetName: string,
+): string {
 	return `https://github.com/${build.repository}/releases/download/${build.releaseTag}/${assetName}`;
 }
 
 async function downloadReleaseAsset(url: string): Promise<Uint8Array> {
 	const response = await fetch(url);
-	if (!response.ok) throw new Error(`Failed to download Norn release asset: ${url} returned ${response.status}`);
+	if (!response.ok)
+		throw new Error(
+			`Failed to download Norn release asset: ${url} returned ${response.status}`,
+		);
 	return new Uint8Array(await response.arrayBuffer());
 }
 
 async function downloadReleaseText(url: string): Promise<string> {
 	const response = await fetch(url);
-	if (!response.ok) throw new Error(`Failed to download Norn release metadata: ${url} returned ${response.status}`);
+	if (!response.ok)
+		throw new Error(
+			`Failed to download Norn release metadata: ${url} returned ${response.status}`,
+		);
 	return response.text();
 }
 
 function parseSha256Checksum(text: string, checksumAssetName: string): string {
 	const checksum = text.trim().split(/\s+/)[0] ?? "";
-	if (!/^[a-f0-9]{64}$/i.test(checksum)) throw new Error(`Invalid Norn checksum asset: ${checksumAssetName}`);
+	if (!/^[a-f0-9]{64}$/i.test(checksum))
+		throw new Error(`Invalid Norn checksum asset: ${checksumAssetName}`);
 	return checksum.toLowerCase();
 }
 
-function requiredArg(command: string, args: readonly string[], index: number, label: string): string {
+function requiredArg(
+	command: string,
+	args: readonly string[],
+	index: number,
+	label: string,
+): string {
 	const value = args[index];
 	if (!value) throw new Error(`Missing ${label} for ${command}`);
 	return value;
 }
 
 function assertNoExtraArgs(command: string, args: readonly string[]): void {
-	if (args.length > 0) throw new Error(`${command} does not accept CLI arguments: ${args.join(" ")}`);
+	if (args.length > 0)
+		throw new Error(
+			`${command} does not accept CLI arguments: ${args.join(" ")}`,
+		);
 }
 
-function assertKnownFlags(command: string, args: readonly string[], flags: readonly string[]): void {
+function assertKnownFlags(
+	command: string,
+	args: readonly string[],
+	flags: readonly string[],
+): void {
 	const allowedFlags = new Set(flags);
 	const unsupportedFlags = args.filter((arg) => !allowedFlags.has(arg));
-	if (unsupportedFlags.length > 0) throw new Error(`${command} has unsupported flags or arguments: ${unsupportedFlags.join(" ")}`);
+	if (unsupportedFlags.length > 0)
+		throw new Error(
+			`${command} has unsupported flags or arguments: ${unsupportedFlags.join(" ")}`,
+		);
 }
 
 async function listWorkflows(args: readonly string[]): Promise<void> {
 	assertKnownFlags("workflows list", args, ["--entrypoints", "--all"]);
 	const entrypointsOnly = workflowListEntrypointsOnly(args);
-	const { workflows, isComplete, diagnostics } = await discoverNornProject(process.cwd());
-	writeJson({ workflows: entrypointsOnly ? workflows.filter(workflow => workflow.isEntrypoint) : workflows, isComplete, diagnostics });
+	const { workflows, isComplete, diagnostics } = await discoverNornProject(
+		process.cwd(),
+	);
+	writeJson({
+		workflows: entrypointsOnly
+			? workflows.filter((workflow) => workflow.isEntrypoint)
+			: workflows,
+		isComplete,
+		diagnostics,
+	});
 }
 
 async function inspectWorkflow(workflowId: string): Promise<void> {
@@ -746,18 +1002,30 @@ async function inspectWorkflow(workflowId: string): Promise<void> {
 function workflowListEntrypointsOnly(args: readonly string[]): boolean {
 	const entrypoints = args.includes("--entrypoints");
 	const all = args.includes("--all");
-	if (entrypoints && all) throw new Error("Use either --entrypoints or --all, not both");
+	if (entrypoints && all)
+		throw new Error("Use either --entrypoints or --all, not both");
 	return !all;
 }
 
 async function initProject(): Promise<void> {
 	const projectRoot = process.cwd();
 	const projectPath = resolve(projectRoot, NORN_PROJECT_FILE_NAME);
-	if (await isFile(projectPath)) throw new Error(`Norn project already exists: ${projectPath}`);
+	if (await isFile(projectPath))
+		throw new Error(`Norn project already exists: ${projectPath}`);
 	await mkdir(resolve(projectRoot, RUNS_ROOT), { recursive: true });
-	await writeFile(projectPath, `${JSON.stringify({ version: 1, workflows: [], includes: [], config: {} }, null, 2)}\n`, "utf8");
+	await writeFile(
+		projectPath,
+		`${JSON.stringify({ version: 1, workflows: [], includes: [], config: {} }, null, 2)}\n`,
+		"utf8",
+	);
 	await ensureGitignoreExcludesRunState(projectRoot);
-	writeJson({ project: { path: projectPath, root: projectRoot, runsRoot: resolve(projectRoot, RUNS_ROOT) } });
+	writeJson({
+		project: {
+			path: projectPath,
+			root: projectRoot,
+			runsRoot: resolve(projectRoot, RUNS_ROOT),
+		},
+	});
 }
 
 async function listCurrentProjectRuns(): Promise<NornRunInfo[]> {
@@ -766,11 +1034,16 @@ async function listCurrentProjectRuns(): Promise<NornRunInfo[]> {
 }
 
 async function inspectProject(): Promise<void> {
-	const { project, isComplete, diagnostics } = await discoverNornProject(process.cwd());
+	const { project, isComplete, diagnostics } = await discoverNornProject(
+		process.cwd(),
+	);
 	writeJson({ project, isComplete, diagnostics });
 }
 
-async function startRun(workflowId: string, commandArgs: readonly string[]): Promise<void> {
+async function startRun(
+	workflowId: string,
+	commandArgs: readonly string[],
+): Promise<void> {
 	assertNoStructuredInputArgs("runs start", commandArgs);
 	const project = await loadNornProject(process.cwd());
 	const workflow = project.registry.workflowById(workflowId);
@@ -780,13 +1053,33 @@ async function startRun(workflowId: string, commandArgs: readonly string[]): Pro
 	Value.Decode(workflow.args, args);
 	const configOverride = input.config;
 	const id = randomUUID();
-	const name = generateRunName(new Set((await listRuns(project.projectRoot)).map((run) => run.name)));
+	const name = generateRunName(
+		new Set((await listRuns(project.projectRoot)).map((run) => run.name)),
+	);
 	const runRoot = resolve(project.projectRoot, RUNS_ROOT, id);
 	await mkdir(runRoot, { recursive: true });
 	const createdAt = new Date().toISOString();
-	await writeRunLaunchRequest(runRoot, { version: 2, type: "run", id, name, workflowId, args, configOverride, createdAt });
+	await writeRunLaunchRequest(runRoot, {
+		version: 2,
+		type: "run",
+		id,
+		name,
+		workflowId,
+		args,
+		configOverride,
+		createdAt,
+	});
 	await startDetachedExecuteRun(id, project.projectRoot);
-	writeJson({ run: startedRunInfo({ id, name, workflow, runRoot, projectRoot: project.projectRoot, createdAt }) });
+	writeJson({
+		run: startedRunInfo({
+			id,
+			name,
+			workflow,
+			runRoot,
+			projectRoot: project.projectRoot,
+			createdAt,
+		}),
+	});
 }
 
 async function resumeRun(run: string, args: readonly string[]): Promise<void> {
@@ -800,7 +1093,14 @@ async function resumeRun(run: string, args: readonly string[]): Promise<void> {
 		const runInfo = await getRunInfo(runRoot);
 		assertRunVersion(runInfo.version);
 		const args = await parseResumeArgs(runInfo, input.args);
-		request = { version: 2, type: "resume", id: runInfo.id, requestId: randomUUID(), args, createdAt: new Date().toISOString() };
+		request = {
+			version: 2,
+			type: "resume",
+			id: runInfo.id,
+			requestId: randomUUID(),
+			args,
+			createdAt: new Date().toISOString(),
+		};
 		await writeRunResumeRequest(runRoot, request);
 	} finally {
 		await lease.release();
@@ -814,18 +1114,38 @@ async function resumeRun(run: string, args: readonly string[]): Promise<void> {
 	writeJson({ run: await getRunInfo(runRoot) });
 }
 
-async function parseResumeArgs(runInfo: NornRunInfo, args: unknown): Promise<unknown> {
+async function parseResumeArgs(
+	runInfo: NornRunInfo,
+	args: unknown,
+): Promise<unknown> {
 	if (runInfo.status === "interrupted") {
-		if (args === undefined) throw new Error(`Interrupted workflow resume requires args: ${runInfo.name}`);
-		if (!runInfo.currentWorkflowId) throw new Error(`Run has no current workflow: ${runInfo.name}`);
+		if (args === undefined)
+			throw new Error(
+				`Interrupted workflow resume requires args: ${runInfo.name}`,
+			);
+		if (!runInfo.currentWorkflowId)
+			throw new Error(`Run has no current workflow: ${runInfo.name}`);
 		const project = await loadNornProject(process.cwd());
 		const workflow = project.registry.workflowById(runInfo.currentWorkflowId);
-		if (!workflow) throw new Error(`Unknown workflow for resumed run: ${runInfo.currentWorkflowId}`);
-		Value.Decode(workflow.args, mergeInterruptedWorkflowArgs(runInfo.interruption?.args, args, runInfo.interruption?.fields));
+		if (!workflow)
+			throw new Error(
+				`Unknown workflow for resumed run: ${runInfo.currentWorkflowId}`,
+			);
+		Value.Decode(
+			workflow.args,
+			mergeInterruptedWorkflowArgs(
+				runInfo.interruption?.args,
+				args,
+				runInfo.interruption?.fields,
+			),
+		);
 		return args;
 	}
 	if (runInfo.status === "pendingResume") {
-		if (args !== undefined) throw new Error(`Pending-resume workflows do not accept args: ${runInfo.name}`);
+		if (args !== undefined)
+			throw new Error(
+				`Pending-resume workflows do not accept args: ${runInfo.name}`,
+			);
 		return undefined;
 	}
 	throw new Error(`Run must be rolled back before resuming: ${runInfo.name}`);
@@ -836,13 +1156,17 @@ async function waitRun(run: string): Promise<void> {
 	writeJson({ run: await waitForInactiveRun(project.projectRoot, run) });
 }
 
-async function waitForInactiveRun(projectRoot: string, run: string): Promise<NornRunInfo> {
+async function waitForInactiveRun(
+	projectRoot: string,
+	run: string,
+): Promise<NornRunInfo> {
 	let runRoot: string | undefined;
 	while (true) {
 		runRoot ??= await resolveWaitableRunRoot(projectRoot, run);
 		try {
 			const runInfo = await readRunInspection(runRoot);
-			if (runInfo.status !== "running" || runInfo.health === "unhealthy") return runInfo;
+			if (runInfo.status !== "running" || runInfo.health === "unhealthy")
+				return runInfo;
 		} catch (error) {
 			if (!isNodeError(error) || error.code !== "ENOENT") throw error;
 		}
@@ -850,11 +1174,17 @@ async function waitForInactiveRun(projectRoot: string, run: string): Promise<Nor
 	}
 }
 
-async function resolveWaitableRunRoot(sessionCwd: string, run: string): Promise<string> {
+async function resolveWaitableRunRoot(
+	sessionCwd: string,
+	run: string,
+): Promise<string> {
 	try {
 		return await resolveRunRoot(sessionCwd, run);
 	} catch (error) {
-		for (const candidate of [resolve(sessionCwd, run), resolve(sessionCwd, RUNS_ROOT, run)]) {
+		for (const candidate of [
+			resolve(sessionCwd, run),
+			resolve(sessionCwd, RUNS_ROOT, run),
+		]) {
 			if (await isDirectory(candidate)) return candidate;
 		}
 		throw error;
@@ -879,7 +1209,9 @@ async function isFile(path: string): Promise<boolean> {
 	}
 }
 
-async function ensureGitignoreExcludesRunState(projectRoot: string): Promise<void> {
+async function ensureGitignoreExcludesRunState(
+	projectRoot: string,
+): Promise<void> {
 	const gitignorePath = resolve(projectRoot, ".gitignore");
 	const runStatePattern = ".norn/runs/";
 	let currentText = "";
@@ -889,37 +1221,65 @@ async function ensureGitignoreExcludesRunState(projectRoot: string): Promise<voi
 		if (!isNodeError(error) || error.code !== "ENOENT") throw error;
 	}
 	if (currentText.split(/\r?\n/).includes(runStatePattern)) return;
-	const separator = currentText.length === 0 || currentText.endsWith("\n") ? "" : "\n";
-	await writeFile(gitignorePath, `${currentText}${separator}${runStatePattern}\n`, "utf8");
+	const separator =
+		currentText.length === 0 || currentText.endsWith("\n") ? "" : "\n";
+	await writeFile(
+		gitignorePath,
+		`${currentText}${separator}${runStatePattern}\n`,
+		"utf8",
+	);
 }
 
 async function executeRun(runId: string): Promise<void> {
 	const abortController = new AbortController();
-	process.once("SIGTERM", () => abortController.abort(new NornRunStoppedError()));
-	process.once("SIGINT", () => abortController.abort(new NornRunStoppedError()));
+	process.once("SIGTERM", () =>
+		abortController.abort(new NornRunStoppedError()),
+	);
+	process.once("SIGINT", () =>
+		abortController.abort(new NornRunStoppedError()),
+	);
 	const location = await findNornProject(process.cwd());
 	const runRoot = resolve(location.projectRoot, RUNS_ROOT, runId);
-	const request = await readOptionalRunLaunchRequest(runRoot) ?? await readRunResumeRequest(runRoot);
+	const request =
+		(await readOptionalRunLaunchRequest(runRoot)) ??
+		(await readRunResumeRequest(runRoot));
 	try {
-		const agentDir = resolveNornAgentDirectory({ home: homedir(), environment: process.env });
+		const agentDir = resolveNornAgentDirectory({
+			home: homedir(),
+			environment: process.env,
+		});
 		process.chdir(await prepareRunWorkerDirectory(runRoot));
 		const project = await loadNornProject(location.projectRoot);
-		const engine = new NornEngine({ cwd: project.projectRoot, agentDir, signal: abortController.signal, gateMode: "pause", config: project.projectConfig });
+		const engine = new NornEngine({
+			cwd: project.projectRoot,
+			agentDir,
+			signal: abortController.signal,
+			gateMode: "pause",
+			config: project.projectConfig,
+		});
 		engine.registerWorkflows(project.definitions);
 		if (request.type === "run") {
 			const workflow = project.registry.workflowById(request.workflowId);
 			if (!workflow) throw new Error(`Unknown workflow: ${request.workflowId}`);
-			await engine.runWorkflow(workflow, request.args, { id: request.id, name: request.name, configOverride: request.configOverride });
+			await engine.runWorkflow(workflow, request.args, {
+				id: request.id,
+				name: request.name,
+				configOverride: request.configOverride,
+			});
 		} else {
 			await engine.resumeRequestedWorkflow({ runRoot, request });
 		}
 	} finally {
-		if (request.type === "run") await rm(join(runRoot, "launch-request.json"), { force: true });
+		if (request.type === "run")
+			await rm(join(runRoot, "launch-request.json"), { force: true });
 		else await removeResumeRequest({ runRoot, request });
 	}
 }
 
-async function removeResumeRequest(input: { readonly runRoot: string; readonly request: NornRunResumeRequest }): Promise<void> {
+async function removeResumeRequest(input: {
+	readonly runRoot: string;
+	readonly request: NornRunResumeRequest;
+}): Promise<void> {
 	const lease = await NornRunLease.acquire(input.runRoot);
 	try {
 		await clearRunResumeRequest({ ...input, lease });
@@ -928,12 +1288,18 @@ async function removeResumeRequest(input: { readonly runRoot: string; readonly r
 	}
 }
 
-async function rollbackRun(run: string, args: readonly string[]): Promise<void> {
+async function rollbackRun(
+	run: string,
+	args: readonly string[],
+): Promise<void> {
 	const checkpointId = requiredArg("runs rollback", args, 0, "checkpoint id");
 	assertNoExtraArgs("runs rollback", args.slice(1));
 	const project = await findNornProject(process.cwd());
 	const runRoot = await resolveRunRoot(project.projectRoot, run);
-	const engine = new NornEngine({ cwd: project.projectRoot, gateMode: "pause" });
+	const engine = new NornEngine({
+		cwd: project.projectRoot,
+		gateMode: "pause",
+	});
 	writeJson({ run: await engine.rollbackRun(runRoot, checkpointId) });
 }
 
@@ -957,25 +1323,33 @@ async function deleteRun(run: string): Promise<DeletedNornRunInfo> {
 	const project = await findNornProject(process.cwd());
 	const runRoot = await resolveRunRoot(project.projectRoot, run);
 	const runInfo = await getRunInfo(runRoot);
-	if (runInfo.status === "running") throw new Error(`Stop run before deleting it: ${runInfo.name}`);
+	if (runInfo.status === "running")
+		throw new Error(`Stop run before deleting it: ${runInfo.name}`);
 	await rm(runRoot, { recursive: true, force: true });
 	return { id: runInfo.id, name: runInfo.name, path: runInfo.path };
 }
 
-async function terminateRun(runRoot: string, signal: NodeJS.Signals): Promise<void> {
+async function terminateRun(
+	runRoot: string,
+	signal: NodeJS.Signals,
+): Promise<void> {
 	const owner = await getRunLeaseOwner(runRoot);
 	if (!owner) return;
 	sendSignal(owner.processGroupId, owner.pid, signal);
 	await delay(signal === "SIGKILL" ? 250 : 1000);
 }
 
-async function writeRunLogs(run: string, options: { readonly follow: boolean }): Promise<void> {
+async function writeRunLogs(
+	run: string,
+	options: { readonly follow: boolean },
+): Promise<void> {
 	const project = await findNornProject(process.cwd());
 	const runRoot = await resolveRunRoot(project.projectRoot, run);
 	let written = 0;
 	while (true) {
 		const events = await readRunEvents(runRoot);
-		for (const event of events.slice(written)) process.stdout.write(`${JSON.stringify(event)}\n`);
+		for (const event of events.slice(written))
+			process.stdout.write(`${JSON.stringify(event)}\n`);
 		written = events.length;
 		if (!options.follow) return;
 		const info = await getRunInfo(runRoot);
@@ -984,7 +1358,10 @@ async function writeRunLogs(run: string, options: { readonly follow: boolean }):
 	}
 }
 
-async function startDetachedExecuteRun(runId: string, projectRoot: string): Promise<void> {
+async function startDetachedExecuteRun(
+	runId: string,
+	projectRoot: string,
+): Promise<void> {
 	const child = spawn(process.execPath, detachedExecuteRunArgs(runId), {
 		cwd: projectRoot,
 		detached: true,
@@ -998,9 +1375,14 @@ async function startDetachedExecuteRun(runId: string, projectRoot: string): Prom
 }
 
 function detachedExecuteRunArgs(runId: string): readonly string[] {
-	if (NORN_BUILD_INFO.kind === "github-release-binary") return ["execute-run", runId];
+	if (NORN_BUILD_INFO.kind === "github-release-binary")
+		return ["execute-run", runId];
 	const scriptPath = process.argv[1];
-	return scriptPath && isAbsolute(scriptPath) && /\.(?:c?m?js|ts)$/.test(scriptPath) ? [scriptPath, "execute-run", runId] : ["execute-run", runId];
+	return scriptPath &&
+		isAbsolute(scriptPath) &&
+		/\.(?:c?m?js|ts)$/.test(scriptPath)
+		? [scriptPath, "execute-run", runId]
+		: ["execute-run", runId];
 }
 
 function startedRunInfo(input: {
@@ -1016,7 +1398,10 @@ function startedRunInfo(input: {
 		id: input.id,
 		name: input.name,
 		path: input.runRoot,
-		paths: { project: input.projectRoot, workspace: join(input.runRoot, "current", "workspace") },
+		paths: {
+			project: input.projectRoot,
+			workspace: join(input.runRoot, "current", "workspace"),
+		},
 		entrypointWorkflowId: input.workflow.id,
 		currentWorkflowId: input.workflow.id,
 		status: "running",
@@ -1035,9 +1420,13 @@ async function readOptionalRunLaunchRequest(runRoot: string) {
 	}
 }
 
-async function readRunEvents(runRoot: string): Promise<readonly Record<string, unknown>[]> {
+async function readRunEvents(
+	runRoot: string,
+): Promise<readonly Record<string, unknown>[]> {
 	try {
-		const manifest = JSON.parse(await readFile(join(runRoot, "current", "manifest.json"), "utf8")) as { events?: readonly Record<string, unknown>[] };
+		const manifest = JSON.parse(
+			await readFile(join(runRoot, "current", "manifest.json"), "utf8"),
+		) as { events?: readonly Record<string, unknown>[] };
 		return manifest.events ?? [];
 	} catch (error) {
 		if (isNodeError(error) && error.code === "ENOENT") return [];
@@ -1065,7 +1454,10 @@ async function readStdin(): Promise<string> {
 	});
 }
 
-function parseStartRunInput(value: unknown): { readonly args?: unknown; readonly config?: unknown } {
+function parseStartRunInput(value: unknown): {
+	readonly args?: unknown;
+	readonly config?: unknown;
+} {
 	if (value === undefined) return {};
 	const input = parseStructuredInputObject("runs start", value);
 	assertStructuredInputKeys("runs start", input, ["args", "config"]);
@@ -1079,22 +1471,43 @@ function parseResumeRunInput(value: unknown): { readonly args?: unknown } {
 	return { args: input.args };
 }
 
-function parseStructuredInputObject(command: string, value: unknown): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${command} reads a JSON object from stdin`);
+function parseStructuredInputObject(
+	command: string,
+	value: unknown,
+): Record<string, unknown> {
+	if (!value || typeof value !== "object" || Array.isArray(value))
+		throw new Error(`${command} reads a JSON object from stdin`);
 	return value as Record<string, unknown>;
 }
 
-function assertStructuredInputKeys(command: string, input: Record<string, unknown>, allowedKeys: readonly string[]): void {
+function assertStructuredInputKeys(
+	command: string,
+	input: Record<string, unknown>,
+	allowedKeys: readonly string[],
+): void {
 	const allowed = new Set(allowedKeys);
 	const unexpected = Object.keys(input).filter((key) => !allowed.has(key));
-	if (unexpected.length > 0) throw new Error(`${command} stdin JSON has unsupported keys: ${unexpected.join(", ")}`);
+	if (unexpected.length > 0)
+		throw new Error(
+			`${command} stdin JSON has unsupported keys: ${unexpected.join(", ")}`,
+		);
 }
 
-function assertNoStructuredInputArgs(command: string, args: readonly string[]): void {
-	if (args.length > 0) throw new Error(`${command} reads structured input from stdin, not CLI arguments: ${args.join(" ")}`);
+function assertNoStructuredInputArgs(
+	command: string,
+	args: readonly string[],
+): void {
+	if (args.length > 0)
+		throw new Error(
+			`${command} reads structured input from stdin, not CLI arguments: ${args.join(" ")}`,
+		);
 }
 
-function sendSignal(processGroupId: number, pid: number, signal: NodeJS.Signals): void {
+function sendSignal(
+	processGroupId: number,
+	pid: number,
+	signal: NodeJS.Signals,
+): void {
 	try {
 		if (processGroupId > 0 && process.platform !== "win32") {
 			process.kill(-processGroupId, signal);
@@ -1111,7 +1524,9 @@ function sendSignal(processGroupId: number, pid: number, signal: NodeJS.Signals)
 }
 
 function isIgnorableSignalError(error: unknown): boolean {
-	return isNodeError(error) && (error.code === "ESRCH" || error.code === "EPERM");
+	return (
+		isNodeError(error) && (error.code === "ESRCH" || error.code === "EPERM")
+	);
 }
 
 function writeJson(value: unknown): void {

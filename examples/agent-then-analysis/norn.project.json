@@ -1,4 +1,4 @@
 {
-  "version": 1,
-  "workflows": ["./plugin.ts"]
+	"version": 1,
+	"workflows": ["./plugin.ts"]
 }

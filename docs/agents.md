@@ -9,7 +9,12 @@ The [Norn agent → saved file → analysis example](../examples/agent-then-anal
 Import Pi types used by Norn directly from the SDK:
 
 ```ts
-import type { CreateAgentSessionOptions, EventBus, PromptOptions, ToolDefinition } from "@vimhead.dev/norn";
+import type {
+  CreateAgentSessionOptions,
+  EventBus,
+  PromptOptions,
+  ToolDefinition,
+} from "@vimhead.dev/norn";
 ```
 
 These are Pi's original types, not Norn-specific copies. Installing the SDK
@@ -37,7 +42,10 @@ try {
     maxAttempts: 2,
   });
   const verification = await agentSession.prompt({
-    prompt: JSON.stringify({ task: "Verify the saved changes", implementation }),
+    prompt: JSON.stringify({
+      task: "Verify the saved changes",
+      implementation,
+    }),
     response: verificationSchema,
     maxAttempts: 2,
   });
@@ -57,11 +65,11 @@ Norn adds `pi_workflows_agent_response` to the requested tools and supplies the 
 
 Successful results and raw attempts are written under `current/logs/agents/`; Pi session files live under `current/sessions/`. A schema-valid response establishes shape, not factual support, successful external effects, or task completion.
 
-| Decision | GOOD | BAD |
-|---|---|---|
-| IF later work needs independent judgment, THEN create a fresh session and pass only its input/evidence contract. ELSE retain a session for conversation-dependent follow-up. | Analysis receives saved source and draft, not the author's conversation. | Call an author again and describe its self-review as independent. |
-| IF a Norn agent claims a verifiable result, THEN verify the evidence before accepting it. ELSE preserve the uncertainty in the result. | Check quotations against source bytes and command outcomes against logs. | Treat a schema-valid `passed: true` as proof that tests ran. |
-| IF a result must survive a workflow transition, THEN save its content/ref using [persistence](persistence.md). ELSE keep it local to the active step. | Save a draft file, then pass its path to analysis. | Expect the next workflow to recover a local variable or an undisposed session object. |
+| Decision                                                                                                                                                                     | GOOD                                                                     | BAD                                                                                   |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| IF later work needs independent judgment, THEN create a fresh session and pass only its input/evidence contract. ELSE retain a session for conversation-dependent follow-up. | Analysis receives saved source and draft, not the author's conversation. | Call an author again and describe its self-review as independent.                     |
+| IF a Norn agent claims a verifiable result, THEN verify the evidence before accepting it. ELSE preserve the uncertainty in the result.                                       | Check quotations against source bytes and command outcomes against logs. | Treat a schema-valid `passed: true` as proof that tests ran.                          |
+| IF a result must survive a workflow transition, THEN save its content/ref using [persistence](persistence.md). ELSE keep it local to the active step.                        | Save a draft file, then pass its path to analysis.                       | Expect the next workflow to recover a local variable or an undisposed session object. |
 
 ## Custom tools
 
@@ -83,10 +91,10 @@ return run.complete({ summary: result.summary });
 
 `lookupTool` is an author-provided `ToolDefinition` in this fragment. Custom tool names must be unique and must not collide with built-ins, the response tool, or already-loaded extension tools. Authors own tool dependencies and their cleanup, including when session creation fails; closing an agent does not close a database or delete stored data captured by its tools.
 
-| Decision | GOOD | BAD |
-|---|---|---|
-| IF supplying an explicit `tools` list, THEN include each custom or extension tool name the agent needs. ELSE Pi's default selection applies. | Register `lookupTool` and select `lookupTool.name`. | Expect `customTools: [lookupTool]` to bypass `tools: []`. |
-| IF tool closures contain per-agent state, THEN create fresh definitions for each agent. ELSE shared definitions can use a shared dependency. | Create queue tools separately for each claim owner. | Reuse one owner's closures across competing workers. |
+| Decision                                                                                                                                           | GOOD                                                                 | BAD                                                                |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| IF supplying an explicit `tools` list, THEN include each custom or extension tool name the agent needs. ELSE Pi's default selection applies.       | Register `lookupTool` and select `lookupTool.name`.                  | Expect `customTools: [lookupTool]` to bypass `tools: []`.          |
+| IF tool closures contain per-agent state, THEN create fresh definitions for each agent. ELSE shared definitions can use a shared dependency.       | Create queue tools separately for each claim owner.                  | Reuse one owner's closures across competing workers.               |
 | IF tool dependencies need cleanup, THEN retain ownership with `try/finally` around session creation and use. ELSE no cleanup wrapper is necessary. | Close an author-opened connection after the agent finishes or fails. | Expect a tool definition to provide automatic connection disposal. |
 
 ## Prompts, tools, and resource loading
@@ -95,9 +103,9 @@ Each session loads resources for its `cwd` and [Norn configuration](providers.md
 
 `systemPrompt` replaces the base prompt; `appendSystemPrompt` adds to resource-loader append content. Pi's default self-documentation block is absent with a custom base prompt. Context files and applicable skill advertisements can still be appended by Pi. Norn currently does not automatically inject a Norn authoring bootstrap.
 
-| Decision | GOOD | BAD |
-|---|---|---|
-| IF a custom-prompt Norn agent must author capabilities, THEN deliberately supply the matching documentation locations and authoring scope. ELSE keep authoring material out of a source-only assessor's supplied prompt. | Author gets installed Norn references; assessor gets source and result. | Inject the entire parent task and authoring manual into every agent. |
-| IF strict evidence/tool isolation is required, THEN control the Pi resource environment and inspect the effective session, using an OS boundary for filesystem restrictions. ELSE describe this as conversation separation only. | Verify loaded context and active tools in a controlled agent environment. | Call `tools: []` plus a fresh session a filesystem sandbox. |
+| Decision                                                                                                                                                                                                                         | GOOD                                                                      | BAD                                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| IF a custom-prompt Norn agent must author capabilities, THEN deliberately supply the matching documentation locations and authoring scope. ELSE keep authoring material out of a source-only assessor's supplied prompt.         | Author gets installed Norn references; assessor gets source and result.   | Inject the entire parent task and authoring manual into every agent. |
+| IF strict evidence/tool isolation is required, THEN control the Pi resource environment and inspect the effective session, using an OS boundary for filesystem restrictions. ELSE describe this as conversation separation only. | Verify loaded context and active tools in a controlled agent environment. | Call `tools: []` plus a fresh session a filesystem sandbox.          |
 
 Sources: [session API](../packages/sdk/src/api.ts), [agent runner](../packages/cli/src/internal/agents.ts), [response tool](../packages/cli/src/internal/agent-response-tool.ts). Filesystem semantics: [workspaces](persistence.md#filesystem-boundaries).
