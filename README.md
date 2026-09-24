@@ -149,8 +149,9 @@ methods, custom providers, and Norn's configuration directory, see
 
 ### 3. Optionally connect your harness
 
-The shipped Pi and Cursor adapters deliver Norn documentation context to your
-harness. Installing Norn alone does not register an adapter. Claude Code, Codex,
+The shipped Pi and Cursor adapters deliver Norn documentation context and
+[available workflow introductions](docs/cli.md#workflow-introduction) to your
+harness at session start. Installing Norn alone does not register an adapter. Claude Code, Codex,
 and other harnesses can [invoke the CLI directly](docs/cli.md#javascript-client-and-other-harnesses).
 
 #### Pi

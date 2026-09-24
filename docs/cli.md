@@ -96,6 +96,31 @@ each argument, without relying on another `norn` installation on PATH.
 inputs without filesystem or process access. Generating the introduction does not
 inject it into prompts or alter Norn agent sessions.
 
+## Workflow introduction
+
+```bash
+norn workflows intro
+```
+
+Returns `{ "intro": "..." }` with caller guidance and an XML advertisement of the
+current project's entrypoints. Each `<workflow>` contains its fully qualified
+`<id>` and caller-facing `<instructions>` inside `<available_norn_workflows>`;
+field values are XML-escaped. Internal steps and argument schemas are omitted.
+For example, the [minimal project](../examples/minimal-workflow/README.md)
+advertises `greet`; its full contract remains available through `workflows inspect greet`.
+
+The command discovers the nearest project from the invocation directory and
+loads current registration modules. No project, or a valid project with no
+entrypoints, returns `{ "intro": "" }` with no preamble or XML wrapper. Invalid
+configuration or incomplete registration fails rather than returning an empty
+or partial advertisement. Like [other discovery commands](projects.md#import-and-reload),
+it evaluates module-level code but does not execute workflows or create run state.
+
+Adapters can request `docs intro` and `workflows intro` from the same selected
+executable and deliver the returned text in that order. Neither command injects
+context itself. The advertisement is a snapshot, not a replacement for live
+workflow listing and inspection after source changes.
+
 ## Discover live contracts
 
 ```bash

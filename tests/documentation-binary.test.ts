@@ -161,6 +161,7 @@ test(
 			(await invoke(["commands", "inspect", "docs.intro"])).command.id,
 			"docs.intro",
 		);
+		assert.deepEqual(await invoke(["workflows", "intro"]), { intro: "" });
 		await assert.rejects(access(cacheRoot), { code: "ENOENT" });
 		const { intro } = await invoke(["docs", "intro"]);
 		const invocation = JSON.parse(intro.match(/^Runtime argv .*: (.+)$/m)[1]);
@@ -207,6 +208,12 @@ test(
 			(await invoke(["project", "inspect"], projectRoot)).isComplete,
 			true,
 		);
+		const workflowAdvertisement = await invoke(
+			["workflows", "intro"],
+			projectRoot,
+		);
+		assert.ok(workflowAdvertisement.intro.includes("<id>greet</id>"));
+		assert.ok(workflowAdvertisement.intro.includes("<instructions>"));
 		const launch = await new Promise<{ run: NornRunInfo }>(
 			(resolve, reject) => {
 				const child = execFile(

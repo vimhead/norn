@@ -206,7 +206,7 @@ test(
 		await mkdir(shadow);
 		await writeExecutable(
 			join(shadow, "norn"),
-			'process.stdout.write(JSON.stringify({intro:"PATH runtime introduction"}));',
+			'process.stdout.write(JSON.stringify({intro: process.argv[2] === "docs" ? "PATH runtime introduction" : ""}));',
 		);
 		const previousPath = process.env.PATH;
 		process.env.PATH = `${shadow}${delimiter}${previousPath}`;
@@ -295,6 +295,7 @@ test(
 		assert.ok(!first.includes("PATH runtime introduction"));
 		assert.equal(first.split("<norn-docs-intro>").length - 1, 1);
 		assert.ok(first.includes(directIntro.intro));
+		assert.ok(!first.includes("<available_norn_workflows>"));
 		const runtimeLine = first.match(/^Runtime argv .*: (.+)$/m);
 		assert.ok(runtimeLine);
 		const invocation: [string, ...string[]] = JSON.parse(runtimeLine[1]);
@@ -370,6 +371,17 @@ test(
 		);
 		assert.ok(lastRequest(captured).systemPrompt.includes('Version: "9.9.10"'));
 		assert.ok(!lastRequest(captured).systemPrompt.includes('Version: "9.9.9"'));
+		const workflowsIntro = invoke<{ intro: string }>([
+			"workflows",
+			"intro",
+		]).intro;
+		assert.ok(workflowsIntro.includes("<id>freshGreeting</id>"));
+		assert.ok(lastRequest(captured).systemPrompt.includes(workflowsIntro));
+		assert.equal(
+			lastRequest(captured).systemPrompt.split("<available_norn_workflows>")
+				.length - 1,
+			1,
+		);
 
 		useCustomPrompt = false;
 		await session.reload();

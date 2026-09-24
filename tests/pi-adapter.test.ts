@@ -21,6 +21,8 @@ import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol"
 type AdapterFixture = {
 	cwd: string;
 	result: ExecResult | Error;
+	workflowsResult: ExecResult | Error;
+	isProjectTrusted: boolean;
 	tools: ToolInfo[];
 	flags: Map<string, string | boolean>;
 	calls: Parameters<ExtensionAPI["exec"]>[];
@@ -48,6 +50,13 @@ async function createAdapterFixture(
 			code: 0,
 			killed: false,
 		},
+		workflowsResult: {
+			stdout: '{"intro":""}',
+			stderr: "",
+			code: 0,
+			killed: false,
+		},
+		isProjectTrusted: true,
 		tools: [],
 		flags: new Map(),
 		calls: [],
@@ -75,8 +84,12 @@ async function createAdapterFixture(
 					);
 					vi.spyOn(pi, "exec").mockImplementation(async (...args) => {
 						fixture.calls.push(args);
-						if (fixture.result instanceof Error) throw fixture.result;
-						return fixture.result;
+						const result =
+							args[1][0] === "workflows"
+								? fixture.workflowsResult
+								: fixture.result;
+						if (result instanceof Error) throw result;
+						return result;
 					});
 					adapter(pi);
 				},
@@ -104,6 +117,12 @@ async function createAdapterFixture(
 		SessionManager.inMemory(cwd),
 		new ModelRegistry(models),
 	);
+	const createContext = runner.createContext.bind(runner);
+	vi.spyOn(runner, "createContext").mockImplementation(() =>
+		Object.assign(createContext(), {
+			isProjectTrusted: () => fixture.isProjectTrusted,
+		}),
+	);
 	runner.setUIContext({
 		...runner.getUIContext(),
 		notify: (...args) => {
@@ -119,7 +138,7 @@ test("adapter loads at session start and only appends cached context when a prom
 	assert.equal(await fixture.before(base), undefined);
 	assert.equal(fixture.calls.length, 0);
 	await fixture.start();
-	assert.equal(fixture.calls.length, 1);
+	assert.equal(fixture.calls.length, 2);
 	const first = await fixture.before(base);
 	assert.ok(first?.systemPrompt);
 	assert.equal(
@@ -131,8 +150,13 @@ test("adapter loads at session start and only appends cached context when a prom
 		["docs", "intro"],
 		{ cwd: fixture.cwd, timeout: 10_000 },
 	]);
+	assert.deepEqual(fixture.calls[1], [
+		"norn",
+		["workflows", "intro"],
+		{ cwd: fixture.cwd, timeout: 10_000 },
+	]);
 	assert.equal(await fixture.before(first.systemPrompt), undefined);
-	assert.equal(fixture.calls.length, 1);
+	assert.equal(fixture.calls.length, 2);
 	fixture.result = {
 		stdout: JSON.stringify({ intro: "Changed Norn introduction" }),
 		stderr: "",
@@ -145,7 +169,7 @@ test("adapter loads at session start and only appends cached context when a prom
 		next?.systemPrompt,
 		`${nextBase}\n\n<norn-docs-intro>\nCurrent Norn introduction\n</norn-docs-intro>`,
 	);
-	assert.equal(fixture.calls.length, 1);
+	assert.equal(fixture.calls.length, 2);
 	assert.equal(fixture.warnings.length, 0);
 });
 
@@ -180,7 +204,7 @@ test("registered native response tools exclude workers even with a cached introd
 	assert.ok((await fixture.before("Outer authoring prompt"))?.systemPrompt);
 	fixture.tools = workerTools;
 	assert.equal(await fixture.before("Source-only worker prompt"), undefined);
-	assert.equal(fixture.calls.length, 1);
+	assert.equal(fixture.calls.length, 2);
 	assert.equal(fixture.warnings.length, 0);
 });
 
@@ -196,13 +220,13 @@ test("changing the executable invalidates context without running a subprocess a
 	fixture.result = new Error("unavailable runtime");
 	assert.equal(await fixture.before("base"), undefined);
 	assert.equal(await fixture.before("another task"), undefined);
-	assert.equal(fixture.calls.length, 1);
+	assert.equal(fixture.calls.length, 2);
 	assert.equal(fixture.warnings.length, 1);
 	assert.ok(fixture.warnings[0][0].includes("/reload"));
 	await fixture.start();
 	assert.equal(await fixture.before("base"), undefined);
-	assert.equal(fixture.calls.length, 2);
-	assert.equal(fixture.calls[1][0], "/missing/norn");
+	assert.equal(fixture.calls.length, 4);
+	assert.equal(fixture.calls[2][0], "/missing/norn");
 	fixture.flags.delete("norn-executable");
 	fixture.result = {
 		stdout: '{"intro":"Reselected runtime introduction"}',
@@ -216,10 +240,61 @@ test("changing the executable invalidates context without running a subprocess a
 			"Reselected runtime introduction",
 		),
 	);
-	assert.equal(fixture.calls.length, 3);
-	assert.equal(fixture.calls[2][0], "norn");
+	assert.equal(fixture.calls.length, 6);
+	assert.equal(fixture.calls[4][0], "norn");
 	await fixture.before("another task");
-	assert.equal(fixture.calls.length, 3);
+	assert.equal(fixture.calls.length, 6);
+});
+
+test("adapter delivers runtime workflow XML verbatim and refreshes or removes it at session start", async (context) => {
+	const fixture = await createAdapterFixture(context);
+	const intro =
+		"Runtime selection guidance\n<available_norn_workflows>\n  <workflow><id>example.brief</id><instructions>Use when researching.</instructions></workflow>\n</available_norn_workflows>";
+	fixture.workflowsResult = {
+		stdout: JSON.stringify({ intro }),
+		stderr: "",
+		code: 0,
+		killed: false,
+	};
+	await fixture.start();
+	const first = await fixture.before("Custom prompt");
+	assert.equal(
+		first?.systemPrompt,
+		`Custom prompt\n\n<norn-docs-intro>\nCurrent Norn introduction\n</norn-docs-intro>\n\n${intro}`,
+	);
+	assert.equal(await fixture.before(first!.systemPrompt!), undefined);
+	fixture.workflowsResult = {
+		stdout: '{"intro":""}',
+		stderr: "",
+		code: 0,
+		killed: false,
+	};
+	assert.ok(
+		(await fixture.before("Custom prompt"))?.systemPrompt?.includes(intro),
+	);
+	await fixture.start();
+	assert.equal(
+		(await fixture.before("Custom prompt"))?.systemPrompt,
+		"Custom prompt\n\n<norn-docs-intro>\nCurrent Norn introduction\n</norn-docs-intro>",
+	);
+	assert.equal(fixture.warnings.length, 0);
+});
+
+test("untrusted Pi projects receive documentation without importing workflow modules", async (context) => {
+	const fixture = await createAdapterFixture(context);
+	fixture.isProjectTrusted = false;
+	fixture.workflowsResult = new Error("Project modules must not load");
+	await fixture.start();
+	assert.deepEqual(
+		fixture.calls.map((call) => call[1]),
+		[["docs", "intro"]],
+	);
+	assert.ok(
+		(await fixture.before("base"))?.systemPrompt?.includes(
+			"Current Norn introduction",
+		),
+	);
+	assert.equal(fixture.warnings.length, 0);
 });
 
 const failures: [string, ExecResult | Error][] = [
@@ -258,6 +333,19 @@ const failures: [string, ExecResult | Error][] = [
 ];
 
 for (const [label, result] of failures) {
+	if (label !== "empty intro") {
+		test(`workflow ${label} surfaces a failure without partial context`, async (context) => {
+			const fixture = await createAdapterFixture(context);
+			fixture.workflowsResult = result;
+			await fixture.start();
+			assert.equal(await fixture.before("base"), undefined);
+			assert.equal(fixture.warnings.length, 1);
+			assert.ok(fixture.warnings[0][0].includes("workflows intro"));
+			assert.ok(
+				!JSON.stringify(fixture.warnings).includes("secret diagnostic"),
+			);
+		});
+	}
 	test(`${label} warns at startup without retrying on prompts and permits recovery at the next session start`, async (context) => {
 		const fixture = await createAdapterFixture(context);
 		fixture.result = result;
@@ -274,7 +362,7 @@ for (const [label, result] of failures) {
 			killed: false,
 		};
 		assert.equal(await fixture.before("base"), undefined);
-		assert.equal(fixture.calls.length, 1);
+		assert.equal(fixture.calls.length, 2);
 		await fixture.start();
 		assert.ok(
 			(await fixture.before("base"))?.systemPrompt?.includes("recovered"),
@@ -283,10 +371,10 @@ for (const [label, result] of failures) {
 		assert.ok(
 			(await fixture.before("base"))?.systemPrompt?.includes("recovered"),
 		);
-		assert.equal(fixture.calls.length, 2);
+		assert.equal(fixture.calls.length, 4);
 		await fixture.start();
 		assert.equal(await fixture.before("base"), undefined);
-		assert.equal(fixture.calls.length, 3);
+		assert.equal(fixture.calls.length, 6);
 		assert.equal(fixture.warnings.length, 2);
 	});
 }

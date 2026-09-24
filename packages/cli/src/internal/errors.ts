@@ -1,6 +1,13 @@
 import type { NornWorkflowDiagnostic } from "@vimhead.dev/norn";
 import { AssertError } from "typebox/value";
 
+export class NornProjectNotFoundError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "NornProjectNotFoundError";
+	}
+}
+
 export class NornProjectLoadError extends Error {
 	readonly code = "NORN_PROJECT_INVALID";
 	readonly isComplete = false;

@@ -67,6 +67,8 @@ import {
 	NORN_PROJECT_FILE_NAME,
 } from "./workflow-loader.ts";
 
+import { loadNornWorkflowsIntro } from "./workflows-intro.ts";
+
 const RUNS_ROOT = join(".norn", "runs");
 const RUN_WAIT_INTERVAL_MS = 1000;
 const CLI_DESCRIPTION =
@@ -214,6 +216,20 @@ const COMMANDS: readonly CliCommand[] = [
 			"JSON object with workflow summaries under workflows, isComplete, and registration diagnostics. Successful discovery can be incomplete; start/resume remain strict.",
 		examples: ["norn workflows list", "norn workflows list --all"],
 		execute: listWorkflows,
+	},
+	{
+		id: "workflows.intro",
+		path: ["workflows", "intro"],
+		description:
+			"Produce caller guidance and an XML advertisement of the current project's entrypoint workflows. Loads project modules but does not execute workflows or deliver context to agents.",
+		usage: "norn workflows intro",
+		output:
+			"JSON object with text under intro. Empty when no project or entrypoints exist; project-loading failures are errors, not partial advertisements.",
+		examples: ["norn workflows intro"],
+		execute: async (args) => {
+			assertNoExtraArgs("workflows intro", args);
+			writeJson({ intro: await loadNornWorkflowsIntro(process.cwd()) });
+		},
 	},
 	{
 		id: "workflows.inspect",
@@ -485,6 +501,7 @@ const HELP_COMMAND_ORDER = [
 	"docs.inspect",
 	"docs.intro",
 	"workflows.list",
+	"workflows.intro",
 	"workflows.inspect",
 	"runs.start",
 	"runs.resume",
@@ -513,6 +530,8 @@ const HUMAN_COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
 	"docs.intro":
 		"Produce a compact authoring introduction with local documentation pointers.",
 	"workflows.list": "List Norn workflows.",
+	"workflows.intro":
+		"Advertise current entrypoints with caller instructions as XML.",
 	"workflows.inspect": "Inspect a workflow schema and source.",
 	"runs.start": "Start a workflow run.",
 	"runs.resume": "Resume an interrupted gate or a restored checkpoint.",

@@ -64,7 +64,7 @@ test("Cursor session hook injects the runtime-selected Norn introduction", async
 		join(fixture.root, "norn"),
 		`
 require("node:fs").writeFileSync(${JSON.stringify(calledFrom)}, process.cwd());
-process.stdout.write(JSON.stringify({ intro: "Current Norn introduction" }));
+process.stdout.write(JSON.stringify({ intro: process.argv[2] === "docs" ? "Current Norn introduction" : "Runtime guidance\\n<available_norn_workflows><workflow><id>brief</id><instructions>Use when researching.</instructions></workflow></available_norn_workflows>" }));
 `,
 	);
 	const result = await runHook({
@@ -77,7 +77,7 @@ process.stdout.write(JSON.stringify({ intro: "Current Norn introduction" }));
 	assert.equal(result.stderr, "");
 	assert.deepEqual(JSON.parse(result.stdout), {
 		additional_context:
-			"<norn-docs-intro>\nCurrent Norn introduction\n</norn-docs-intro>",
+			"<norn-docs-intro>\nCurrent Norn introduction\n</norn-docs-intro>\n\nRuntime guidance\n<available_norn_workflows><workflow><id>brief</id><instructions>Use when researching.</instructions></workflow></available_norn_workflows>",
 	});
 	assert.equal(
 		await realpath(await readFile(calledFrom, "utf8")),
@@ -92,7 +92,7 @@ test("Cursor hook passes explicit executable paths as executable names", async (
 	const executable = join(runtimeRoot, "norn");
 	await writeExecutable(
 		executable,
-		'process.stdout.write(JSON.stringify({ intro: "Custom runtime introduction" }));',
+		'process.stdout.write(JSON.stringify({ intro: process.argv[2] === "docs" ? "Custom runtime introduction" : "" }));',
 	);
 	const result = await runHook({
 		cwd: fixture.cwd,
@@ -121,6 +121,23 @@ const failures: [string, string][] = [
 ];
 
 for (const [label, source] of failures) {
+	if (label !== "empty intro") {
+		test(`workflow ${label} returns a diagnostic rather than partial context`, async (context) => {
+			const fixture = await createFixture(context);
+			const executable = join(fixture.root, "norn");
+			await writeExecutable(
+				executable,
+				`if (process.argv[2] === "docs") { process.stdout.write(JSON.stringify({ intro: "Documentation" })); } else { ${source} }`,
+			);
+			const result = await runHook({
+				cwd: fixture.cwd,
+				env: { NORN_EXECUTABLE: executable },
+			});
+			assert.deepEqual(JSON.parse(result.stdout), {});
+			assert.ok(result.stderr.includes("workflows intro"));
+			assert.ok(!result.stderr.includes("secret diagnostic"));
+		});
+	}
 	test(`${label} returns no context and does not leak subprocess diagnostics`, async (context) => {
 		const fixture = await createFixture(context);
 		const executable = join(fixture.root, "norn");
@@ -178,9 +195,10 @@ test("Cursor marketplace resolves a runnable sessionStart hook from a relocated 
 	await writeExecutable(
 		executable,
 		`
-require("node:assert/strict").deepEqual(process.argv.slice(2), ["docs", "intro"]);
+require("node:assert/strict").ok(["docs", "workflows"].includes(process.argv[2]));
+require("node:assert/strict").equal(process.argv[3], "intro");
 require("node:fs").writeFileSync(${JSON.stringify(calledFrom)}, process.cwd());
-process.stdout.write(JSON.stringify({ intro: "Installed Norn introduction" }));
+process.stdout.write(JSON.stringify({ intro: process.argv[2] === "docs" ? "Installed Norn introduction" : "" }));
 `,
 	);
 	const result = await runCommand(hooks.hooks.sessionStart[0].command, {

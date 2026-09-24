@@ -24,7 +24,11 @@ import * as typeboxCompileModule from "typebox/compile";
 import * as typeboxSchemaModule from "typebox/schema";
 import * as typeboxValueModule from "typebox/value";
 import { AssertError, Value } from "typebox/value";
-import { errorMessage, NornProjectLoadError } from "./internal/errors.ts";
+import {
+	errorMessage,
+	NornProjectLoadError,
+	NornProjectNotFoundError,
+} from "./internal/errors.ts";
 import {
 	assertCompatibleConfigurationOwners,
 	assertWorkflowDefinition,
@@ -169,7 +173,9 @@ async function findNearestNornProject(cwd: string): Promise<string> {
 		}
 		const parent = dirname(current);
 		if (parent === current)
-			throw new Error(`Could not find ${NORN_PROJECT_FILE_NAME} from ${cwd}`);
+			throw new NornProjectNotFoundError(
+				`Could not find ${NORN_PROJECT_FILE_NAME} from ${cwd}`,
+			);
 		current = parent;
 	}
 }

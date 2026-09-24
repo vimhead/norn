@@ -22,7 +22,7 @@ function projectDirectory() {
 	);
 }
 
-function readIntroResponse(stdout) {
+function readIntroResponse({ stdout, group }) {
 	const response = JSON.parse(stdout);
 	if (
 		!response ||
@@ -31,7 +31,7 @@ function readIntroResponse(stdout) {
 	)
 		throw new Error("Invalid Norn introduction response");
 	if (
-		response.intro.trim().length === 0 ||
+		(group === "docs" && response.intro.trim().length === 0) ||
 		Buffer.byteLength(response.intro, "utf8") > MAX_INTRO_BYTES
 	)
 		throw new Error("Invalid Norn introduction response");
@@ -42,27 +42,28 @@ function writeResponse(response) {
 	process.stdout.write(`${JSON.stringify(response)}\n`);
 }
 
-async function loadNornIntroduction() {
-	const { stdout } = await runExecutable(
-		selectedExecutable(),
-		["docs", "intro"],
-		{
-			cwd: projectDirectory(),
-			timeout: 10_000,
-			maxBuffer: MAX_INTRO_BYTES * 2,
-		},
-	);
-	return readIntroResponse(stdout);
+async function loadNornIntroduction({ executable, cwd, group }) {
+	const { stdout } = await runExecutable(executable, [group, "intro"], {
+		cwd,
+		timeout: 10_000,
+		maxBuffer: MAX_INTRO_BYTES * 2,
+	});
+	return readIntroResponse({ stdout, group });
 }
 
 try {
-	const intro = await loadNornIntroduction();
+	const executable = selectedExecutable();
+	const cwd = projectDirectory();
+	const [intro, workflowsIntro] = await Promise.all([
+		loadNornIntroduction({ executable, cwd, group: "docs" }),
+		loadNornIntroduction({ executable, cwd, group: "workflows" }),
+	]);
 	writeResponse({
-		additional_context: `${INTRO_START}\n${intro}\n${INTRO_END}`,
+		additional_context: `${INTRO_START}\n${intro}\n${INTRO_END}${workflowsIntro ? `\n\n${workflowsIntro}` : ""}`,
 	});
 } catch {
 	process.stderr.write(
-		"Norn introduction unavailable. Check NORN_EXECUTABLE and run that executable with 'docs intro' to diagnose, then start a new Cursor session to retry.\n",
+		"Norn introduction unavailable. Check NORN_EXECUTABLE and run that executable with 'docs intro' and 'workflows intro' in the project directory to diagnose, then start a new Cursor session to retry.\n",
 	);
 	writeResponse({});
 }
