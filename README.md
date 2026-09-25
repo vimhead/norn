@@ -149,9 +149,9 @@ methods, custom providers, and Norn's configuration directory, see
 
 ### 3. Optionally connect your harness
 
-The shipped Pi and Cursor adapters deliver Norn documentation context and
+The shipped Pi, Cursor, and Claude Code adapters deliver Norn documentation context and
 [available workflow introductions](docs/cli.md#workflow-introduction) to your
-harness at session start. Installing Norn alone does not register an adapter. Claude Code, Codex,
+harness at session start. Installing Norn alone does not register an adapter. Codex
 and other harnesses can [invoke the CLI directly](docs/cli.md#javascript-client-and-other-harnesses).
 
 #### Pi
@@ -182,6 +182,32 @@ outside `PATH`, start Cursor with an executable path:
 
 ```bash
 NORN_EXECUTABLE=/absolute/path/to/norn cursor .
+```
+
+#### Claude Code
+
+With Node and `norn` available on `PATH`, run in your terminal:
+
+```bash
+claude plugin marketplace add vimhead/norn
+claude plugin install norn@norn-adapters
+claude
+```
+
+To select a different runtime, launch Claude Code with
+`NORN_EXECUTABLE=/absolute/path/to/norn claude`. The plugin uses that runtime's
+documentation and the workflows in the session's working directory; it does not
+install Norn or configure authentication for Norn agents.
+
+Context is added on startup, `/clear`, and compaction, not again on resume or
+fork. Named-agent sessions (`--agent`) and subagent hook calls are excluded.
+Existing instructions and prompts are preserved. Introduction failures appear as
+hook errors without falling back to another runtime.
+
+To test a checkout without installing the marketplace:
+
+```bash
+claude --plugin-dir /absolute/path/to/norn
 ```
 
 Need an adapter for another harness? [Open an issue](https://github.com/vimhead/norn/issues/new)

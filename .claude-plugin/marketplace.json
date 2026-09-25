@@ -1,0 +1,12 @@
+{
+	"name": "norn-adapters",
+	"owner": { "name": "Norn" },
+	"metadata": { "description": "Norn adapter plugins" },
+	"plugins": [
+		{
+			"name": "norn",
+			"source": "./",
+			"description": "Adds runtime-selected Norn documentation and workflow context to Claude Code sessions."
+		}
+	]
+}

@@ -160,6 +160,11 @@ test("Cursor marketplace resolves a runnable sessionStart hook from a relocated 
 		join(installationRoot, ".cursor-plugin"),
 		{ recursive: true },
 	);
+	await cp(
+		join(packageRoot, "packages/core/src/host-introduction.mjs"),
+		join(installationRoot, "packages/core/src/host-introduction.mjs"),
+		{ recursive: true },
+	);
 	const marketplace = JSON.parse(
 		await readFile(
 			join(installationRoot, ".cursor-plugin/marketplace.json"),
