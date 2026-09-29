@@ -10,6 +10,9 @@ norn version
 norn help
 ```
 
+For harnesses using an npm dependency without global Norn, see
+[adapter runtime selection](../README.md#project-local-runtime-selection).
+
 For a source checkout, run `pnpm install --frozen-lockfile` and `pnpm build` first. A shell function keeps all examples bound to that checkout rather than another `PATH` installation:
 
 ```bash

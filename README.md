@@ -113,6 +113,17 @@ npm install -g @vimhead.dev/norn-cli@tip
 norn version
 ```
 
+Alternatively, install into the package that owns your workflows, without a global
+Norn installation:
+
+```bash
+npm install --save-dev --save-exact @vimhead.dev/norn-cli@tip
+./node_modules/.bin/norn version
+```
+
+Use that local executable in place of `norn` in the commands below. Connect harnesses
+with [project-local runtime selection](#project-local-runtime-selection).
+
 Releases are prereleases, not stable `latest` releases. For a standalone binary
 without Node, use the matching GitHub `tip` release:
 
@@ -154,10 +165,51 @@ The shipped Pi, Cursor, and Claude Code adapters deliver Norn documentation cont
 harness at session start. Installing Norn alone does not register an adapter. Codex
 and other harnesses can [invoke the CLI directly](docs/cli.md#javascript-client-and-other-harnesses).
 
+#### Project-local runtime selection
+
+To use a CLI dependency from a harness launched elsewhere in your workspace, put
+`.nornrc.json` in the harness's working directory or an ancestor:
+
+```json
+{
+  "runtime": {
+    "packageRoot": "./packages/workflows"
+  }
+}
+```
+
+`packageRoot` is relative to this configuration file (absolute paths also work).
+It names a package whose `package.json` declares `@vimhead.dev/norn-cli` in
+`dependencies`, `devDependencies`, or `optionalDependencies`. Install that package's
+dependencies first; its manifest and lockfile own the version. npm hoisting and
+pnpm's linked `node_modules` installations are supported. No download occurs at
+harness startup. Node `>=22.19.0` is required for the npm runtime.
+
+The Pi, Cursor, and Claude Code adapters select an explicit executable override
+first, then the nearest `.nornrc.json`, then `norn` on `PATH` only when no configuration
+exists. Configuration files do not merge. Invalid configuration or a missing/broken
+selected installation fails without falling back. Pi ignores repository runtime
+configuration in untrusted projects; Cursor and Claude Code use their host's hook
+trust/approval boundary. Only enable adapters and runtime selection in workspaces
+you trust: the selected dependency executes code.
+
+Both introductions come from the selected runtime, and its documentation introduction
+supplies concrete argv for subsequent agent calls. The session's working directory
+is preserved; runtime selection does not select a workflow project or workspace.
+Restart the session (or `/reload` in Pi) after changing selection or dependencies.
+
+This is adapter configuration, **not CLI delegation**: globally installed Norn and
+direct CLI invocations do not read `.nornrc.json` or proxy commands. For terminal use,
+invoke the dependency directly, preserving your working directory:
+
+```bash
+./packages/workflows/node_modules/.bin/norn version
+```
+
 #### Pi
 
-With Pi already installed and `norn` available on `PATH`, install the adapter
-and start a new session:
+With Pi already installed and a runtime selected as above or available on `PATH`,
+install the adapter and start a new session:
 
 ```bash
 pi install npm:@vimhead.dev/pi-norn@tip
@@ -177,8 +229,8 @@ pi --norn-executable /absolute/path/to/norn
 3. Install the **norn** plugin, choosing user or project scope.
 4. Start a new agent conversation.
 
-By default the adapter runs `norn` from `PATH`. To select a CLI executable
-outside `PATH`, start Cursor with an executable path:
+Use [project-local runtime selection](#project-local-runtime-selection), or override
+it by starting Cursor with an executable path:
 
 ```bash
 NORN_EXECUTABLE=/absolute/path/to/norn cursor .
@@ -186,7 +238,7 @@ NORN_EXECUTABLE=/absolute/path/to/norn cursor .
 
 #### Claude Code
 
-With Node and `norn` available on `PATH`, run in your terminal:
+With Node and a [selected runtime](#project-local-runtime-selection), run in your terminal:
 
 ```bash
 claude plugin marketplace add vimhead/norn

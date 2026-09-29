@@ -1,4 +1,5 @@
 import { loadHostIntroduction } from "../packages/core/src/host-introduction.mjs";
+import { RuntimeResolutionError } from "../packages/core/src/runtime-resolution.mjs";
 
 async function readSessionStart() {
 	let input = "";
@@ -29,7 +30,7 @@ async function deliverIntroduction() {
 	)
 		return;
 	const additionalContext = await loadHostIntroduction({
-		executable: process.env.NORN_EXECUTABLE || "norn",
+		executableOverride: process.env.NORN_EXECUTABLE || null,
 		cwd: session.cwd,
 	});
 	if (additionalContext.length > 10_000)
@@ -41,9 +42,9 @@ async function deliverIntroduction() {
 
 try {
 	await deliverIntroduction();
-} catch {
+} catch (error) {
 	process.stderr.write(
-		"Norn introduction unavailable. Check NORN_EXECUTABLE and run that executable with 'docs intro' and 'workflows intro' in the project directory to diagnose; check the combined introduction fits Claude Code's 10000-character hook limit, then start a new Claude Code session to retry.\n",
+		`Norn introduction unavailable.${error instanceof RuntimeResolutionError ? ` ${error.message}` : ""} Check NORN_EXECUTABLE or .nornrc.json and run the selected runtime with 'docs intro' and 'workflows intro' in the project directory to diagnose; check the combined introduction fits Claude Code's 10000-character hook limit, then start a new Claude Code session to retry.\n`,
 	);
 	process.exitCode = 1;
 }

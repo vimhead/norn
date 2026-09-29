@@ -14,6 +14,10 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, type TestContext } from "vitest";
+import {
+	writeLocalRuntime,
+	writeRuntimeConfiguration,
+} from "./helpers/local-runtime.ts";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const hookScript = join(packageRoot, "hooks/norn-session-start.mjs");
@@ -112,6 +116,51 @@ process.stdout.write(JSON.stringify({ intro: process.argv[2] === "docs" ? "Selec
 	});
 }
 
+test("Claude Code selects the session's project-local runtime without Norn on PATH", async (context) => {
+	const fixture = await createFixture(context);
+	const { scriptPath } = await writeLocalRuntime({
+		packageRoot: join(fixture.root, "tooling/packages/owner"),
+	});
+	await writeRuntimeConfiguration({
+		directory: fixture.root,
+		packageRoot: "./tooling/packages/owner",
+	});
+	const result = await runHook({
+		cwd: packageRoot,
+		payload: session(fixture.cwd),
+		env: { PATH: "", NORN_EXECUTABLE: "" },
+	});
+	assert.equal(result.code, 0);
+	assert.equal(result.stderr, "");
+	const introduction = JSON.parse(result.stdout).hookSpecificOutput
+		.additionalContext;
+	assert.ok(introduction.includes(JSON.stringify(await realpath(scriptPath))));
+	assert.ok(introduction.includes(`Workspace: ${await realpath(fixture.cwd)}`));
+});
+
+test("Claude Code reports invalid configuration without falling back to PATH", async (context) => {
+	const fixture = await createFixture(context);
+	await writeRuntimeConfiguration({
+		directory: fixture.root,
+		packageRoot: "./missing",
+	});
+	await writeExecutable(
+		join(fixture.root, "norn"),
+		'process.stdout.write(JSON.stringify({ intro: "Wrong runtime" }));',
+	);
+	const result = await runHook({
+		cwd: packageRoot,
+		payload: session(fixture.cwd),
+		env: {
+			PATH: `${fixture.root}${delimiter}${process.env.PATH ?? ""}`,
+			NORN_EXECUTABLE: "",
+		},
+	});
+	assert.equal(result.code, 1);
+	assert.equal(result.stdout, "");
+	assert.match(result.stderr, /package.json/);
+});
+
 for (const overrides of [
 	{ source: "resume" },
 	{ source: "fork" },
@@ -120,6 +169,7 @@ for (const overrides of [
 ]) {
 	test(`Claude Code skips duplicate or delegated context: ${JSON.stringify(overrides)}`, async (context) => {
 		const fixture = await createFixture(context);
+		await writeFile(join(fixture.cwd, ".nornrc.json"), "invalid JSON");
 		const result = await runHook({
 			cwd: fixture.cwd,
 			payload: session(fixture.cwd, overrides),
@@ -221,6 +271,7 @@ test("Claude Code marketplace hook runs from a relocated installation without de
 		".claude-plugin",
 		"hooks",
 		"packages/core/src/host-introduction.mjs",
+		"packages/core/src/runtime-resolution.mjs",
 	]) {
 		await cp(join(packageRoot, path), join(installationRoot, path), {
 			recursive: true,
@@ -248,6 +299,7 @@ test("Claude Code marketplace hook runs from a relocated installation without de
 	const hook = registration.hooks[0];
 	assert.equal(hook.type, "command");
 	assert.equal(hook.timeout, 15);
+	await writeFile(join(fixture.cwd, ".nornrc.json"), "invalid JSON");
 	const executable = join(fixture.root, "runtime with spaces");
 	await writeExecutable(
 		executable,

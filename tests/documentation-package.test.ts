@@ -225,8 +225,15 @@ void [plugin, client];
 			join(consumer, "continuation"),
 			{ recursive: true },
 		);
+		await writeFile(
+			join(root, ".nornrc.json"),
+			JSON.stringify({ runtime: { packageRoot: "./consumer" } }),
+		);
 		const smoke = `
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import adapter from "./node_modules/@vimhead.dev/pi-norn/dist/index.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { workflow, workflowScope } from "@vimhead.dev/norn";
@@ -252,6 +259,37 @@ const loader = new DefaultResourceLoader({ cwd: process.cwd(), agentDir: ${JSON.
 await loader.reload();
 assert.deepEqual(loader.getExtensions().errors, []);
 assert.ok(loader.getExtensions().extensions.some(extension => extension.path.endsWith("pi-norn/dist/index.js")));
+const handlers = new Map();
+const execute = promisify(execFile);
+const warnings = [];
+const calls = [];
+adapter({
+  registerFlag() {},
+  on(name, handler) { handlers.set(name, handler); },
+  getAllTools() { return []; },
+  getFlag() { return undefined; },
+  async exec(executable, args, options) {
+    calls.push([executable, args, options.cwd]);
+    const result = await execute(executable, args, options);
+    return { ...result, code: 0, killed: false };
+  },
+});
+process.env.PATH = "";
+const adapterContext = { cwd: process.cwd(), isProjectTrusted: () => true, ui: { notify(message) { warnings.push(message); } } };
+await handlers.get("session_start")({}, adapterContext);
+assert.deepEqual(warnings, []);
+assert.deepEqual(calls.map(call => call[1].slice(-2)), [["docs", "intro"], ["workflows", "intro"]]);
+for (const call of calls) {
+  assert.equal(call[0], process.execPath);
+  assert.equal(call[1][0], ${JSON.stringify(join(canonicalRuntime, "bin/norn.mjs"))});
+  assert.equal(call[2], process.cwd());
+}
+const deliveredIntro = handlers.get("before_agent_start")({ systemPrompt: "Custom prompt" }, adapterContext).systemPrompt;
+assert.ok(deliveredIntro.startsWith("Custom prompt"));
+const selectedInvocation = JSON.parse(deliveredIntro.match(/^Runtime argv .*: (.+)$/m)[1]);
+assert.deepEqual(selectedInvocation, ${JSON.stringify(invocation)});
+const selectedVersion = await execute(selectedInvocation[0], [...selectedInvocation.slice(1), "version"], { cwd: process.cwd() });
+assert.ok(selectedVersion.stdout.includes(${JSON.stringify(packages[0].version)}));
 console.log("packed library, CLI and Pi adapter verified");
 `;
 		const result = await execute(

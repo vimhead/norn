@@ -15,6 +15,10 @@ import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { test, type TestContext } from "vitest";
+import {
+	writeLocalRuntime,
+	writeRuntimeConfiguration,
+} from "./helpers/local-runtime.ts";
 
 const runExecutable = promisify(execFile);
 const runCommand = promisify(exec);
@@ -85,8 +89,49 @@ process.stdout.write(JSON.stringify({ intro: process.argv[2] === "docs" ? "Curre
 	);
 });
 
+test("Cursor selects a project dependency from an ancestor config without Norn on PATH", async (context) => {
+	const fixture = await createFixture(context);
+	const { scriptPath } = await writeLocalRuntime({
+		packageRoot: join(fixture.root, "tooling/packages/owner"),
+	});
+	await writeRuntimeConfiguration({
+		directory: fixture.root,
+		packageRoot: "./tooling/packages/owner",
+	});
+	const result = await runHook({
+		cwd: fixture.cwd,
+		env: { PATH: "", NORN_EXECUTABLE: "" },
+	});
+	assert.equal(result.stderr, "");
+	const introduction = JSON.parse(result.stdout).additional_context;
+	assert.ok(introduction.includes(JSON.stringify(await realpath(scriptPath))));
+	assert.ok(introduction.includes(`Workspace: ${await realpath(fixture.cwd)}`));
+});
+
+test("Cursor reports broken configured dependencies without trying a PATH runtime", async (context) => {
+	const fixture = await createFixture(context);
+	await writeRuntimeConfiguration({
+		directory: fixture.root,
+		packageRoot: "./missing",
+	});
+	await writeExecutable(
+		join(fixture.root, "norn"),
+		'process.stdout.write(JSON.stringify({ intro: "Wrong runtime" }));',
+	);
+	const result = await runHook({
+		cwd: fixture.cwd,
+		env: {
+			PATH: `${fixture.root}${delimiter}${process.env.PATH ?? ""}`,
+			NORN_EXECUTABLE: "",
+		},
+	});
+	assert.deepEqual(JSON.parse(result.stdout), {});
+	assert.match(result.stderr, /package.json/);
+});
+
 test("Cursor hook passes explicit executable paths as executable names", async (context) => {
 	const fixture = await createFixture(context);
+	await writeFile(join(fixture.cwd, ".nornrc.json"), "invalid JSON");
 	const runtimeRoot = join(fixture.root, "other installation");
 	await mkdir(runtimeRoot);
 	const executable = join(runtimeRoot, "norn");
@@ -160,11 +205,13 @@ test("Cursor marketplace resolves a runnable sessionStart hook from a relocated 
 		join(installationRoot, ".cursor-plugin"),
 		{ recursive: true },
 	);
-	await cp(
-		join(packageRoot, "packages/core/src/host-introduction.mjs"),
-		join(installationRoot, "packages/core/src/host-introduction.mjs"),
-		{ recursive: true },
-	);
+	for (const module of ["host-introduction.mjs", "runtime-resolution.mjs"]) {
+		await cp(
+			join(packageRoot, "packages/core/src", module),
+			join(installationRoot, "packages/core/src", module),
+			{ recursive: true },
+		);
+	}
 	const marketplace = JSON.parse(
 		await readFile(
 			join(installationRoot, ".cursor-plugin/marketplace.json"),

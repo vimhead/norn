@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, vi, type TestContext } from "vitest";
@@ -17,6 +17,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import adapter from "../packages/pi-norn/src/index.ts";
 import { AGENT_RESPONSE_TOOL_NAME } from "@vimhead.dev/norn-core/agent-protocol";
+import {
+	writeLocalRuntime,
+	writeRuntimeConfiguration,
+} from "./helpers/local-runtime.ts";
 
 type AdapterFixture = {
 	cwd: string;
@@ -85,7 +89,7 @@ async function createAdapterFixture(
 					vi.spyOn(pi, "exec").mockImplementation(async (...args) => {
 						fixture.calls.push(args);
 						const result =
-							args[1][0] === "workflows"
+							args[1].at(-2) === "workflows"
 								? fixture.workflowsResult
 								: fixture.result;
 						if (result instanceof Error) throw result;
@@ -178,6 +182,58 @@ test("explicit executable paths are passed as executable names, never shell comm
 	fixture.flags.set("norn-executable", "/other installation/norn");
 	await fixture.start();
 	assert.equal(fixture.calls[0][0], "/other installation/norn");
+});
+
+test("project configuration selects local CLI argv while preserving session cwd and refreshes on reload", async (context) => {
+	const fixture = await createAdapterFixture(context);
+	const { scriptPath } = await writeLocalRuntime({
+		packageRoot: join(fixture.cwd, "tools with spaces/owner"),
+	});
+	await writeRuntimeConfiguration({
+		directory: fixture.cwd,
+		packageRoot: "./tools with spaces/owner",
+	});
+	await fixture.start();
+	const canonicalScript = await realpath(scriptPath);
+	assert.deepEqual(
+		fixture.calls,
+		["docs", "workflows"].map((group) => [
+			process.execPath,
+			[canonicalScript, group, "intro"],
+			{ cwd: fixture.cwd, timeout: 10_000 },
+		]),
+	);
+	assert.ok(
+		(await fixture.before("base"))?.systemPrompt?.includes(
+			"Current Norn introduction",
+		),
+	);
+	assert.equal(fixture.warnings.length, 0);
+	await writeRuntimeConfiguration({
+		directory: fixture.cwd,
+		packageRoot: "./missing",
+	});
+	await fixture.start();
+	assert.equal(await fixture.before("base"), undefined);
+	assert.equal(fixture.calls.length, 2);
+	assert.match(fixture.warnings[0][0], /package.json/);
+});
+
+test("untrusted projects ignore even malformed runtime configuration and invalidate trusted cached context", async (context) => {
+	const fixture = await createAdapterFixture(context);
+	await fixture.start();
+	fixture.isProjectTrusted = false;
+	assert.equal(await fixture.before("base"), undefined);
+	await writeFile(join(fixture.cwd, ".nornrc.json"), "invalid JSON");
+	await fixture.start();
+	assert.deepEqual(fixture.calls[2], [
+		"norn",
+		["docs", "intro"],
+		{ cwd: fixture.cwd, timeout: 10_000 },
+	]);
+	assert.equal(fixture.calls.length, 3);
+	assert.ok((await fixture.before("base"))?.systemPrompt);
+	assert.equal(fixture.warnings.length, 1);
 });
 
 test("registered native response tools exclude workers even with a cached introduction", async (context) => {

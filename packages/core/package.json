@@ -7,6 +7,7 @@
 		"./agent-protocol": "./src/agent-protocol.ts",
 		"./atomic-files": "./src/atomic-files.ts",
 		"./errors": "./src/errors.ts",
+		"./runtime-resolution": "./src/runtime-resolution.mjs",
 		"./workflow-transition": "./src/workflow-transition.ts"
 	}
 }
