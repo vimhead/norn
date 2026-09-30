@@ -21,6 +21,7 @@ import { gunzip, gzip } from "node:zlib";
 import type { NornRunCheckpoint } from "@vimhead.dev/norn";
 import { isNodeError } from "@vimhead.dev/norn-core/errors";
 import {
+	writeBytesAtomically,
 	writeJsonAtomically,
 	writeTextAtomically,
 } from "@vimhead.dev/norn-core/atomic-files";
@@ -191,7 +192,10 @@ export class NornRunStore {
 			createdAt: checkpoint.createdAt,
 			entries,
 		};
-		await writeJsonAtomically(this.snapshotPath(snapshot.id), snapshot);
+		await writeBytesAtomically(
+			this.snapshotPath(snapshot.id),
+			await gzipBuffer(Buffer.from(JSON.stringify(snapshot))),
+		);
 		return snapshot;
 	}
 
@@ -363,12 +367,25 @@ export class NornRunStore {
 	}
 
 	private async readSnapshot(id: string): Promise<RunSnapshotManifest> {
+		let compressed: Buffer;
+		try {
+			compressed = await readFile(this.snapshotPath(id));
+		} catch (error) {
+			if (!isNodeError(error) || error.code !== "ENOENT") throw error;
+			return parseRunSnapshotManifest(
+				JSON.parse(await readFile(this.getLegacySnapshotPath(id), "utf8")),
+			);
+		}
 		return parseRunSnapshotManifest(
-			JSON.parse(await readFile(this.snapshotPath(id), "utf8")),
+			JSON.parse((await gunzipBuffer(compressed)).toString("utf8")),
 		);
 	}
 
 	private snapshotPath(id: string): string {
+		return join(this.snapshotsRoot, `${id}.json.gz`);
+	}
+
+	private getLegacySnapshotPath(id: string): string {
 		return join(this.snapshotsRoot, `${id}.json`);
 	}
 
@@ -378,7 +395,11 @@ export class NornRunStore {
 
 	private assertCheckpointPathMatchesId(checkpoint: NornRunCheckpoint): void {
 		const expectedPath = this.snapshotRelativePath(checkpoint.id);
-		if (checkpoint.path !== expectedPath)
+		const legacyPath = relative(
+			this.runRoot,
+			this.getLegacySnapshotPath(checkpoint.id),
+		);
+		if (checkpoint.path !== expectedPath && checkpoint.path !== legacyPath)
 			throw new Error(
 				`Run checkpoint path does not match id: ${checkpoint.id}`,
 			);

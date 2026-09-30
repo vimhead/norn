@@ -14,6 +14,13 @@ export async function writeTextAtomically(
 	path: string,
 	content: string,
 ): Promise<void> {
+	await writeBytesAtomically(path, Buffer.from(content, "utf8"));
+}
+
+export async function writeBytesAtomically(
+	path: string,
+	content: Uint8Array,
+): Promise<void> {
 	await mkdir(dirname(path), { recursive: true });
 	let existingMode: number | undefined;
 	try {
@@ -23,7 +30,7 @@ export async function writeTextAtomically(
 	}
 	const tmpPath = `${path}.${randomUUID()}.tmp`;
 	try {
-		await writeFile(tmpPath, content, { encoding: "utf8", mode: existingMode });
+		await writeFile(tmpPath, content, { mode: existingMode });
 		if (existingMode !== undefined) await chmod(tmpPath, existingMode);
 		await rename(tmpPath, path);
 	} catch (error) {

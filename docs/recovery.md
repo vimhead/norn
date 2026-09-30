@@ -43,6 +43,8 @@ The [agent example's repair exercise](../examples/agent-then-analysis/README.md#
 
 ## Saved-run compatibility
 
+New checkpoints are compressed; CLI and client calls are unchanged. Existing uncompressed checkpoints remain readable and are not converted automatically. Older runtimes without compressed-checkpoint support cannot restore new checkpoints.
+
 Runs created before the complete-workflow API migration cannot be resumed or rolled back by this alpha. Their saved status remains inspectable, and existing files are preserved. Use the original runtime to continue those runs, or start a new run.
 
 ## Declared gates
