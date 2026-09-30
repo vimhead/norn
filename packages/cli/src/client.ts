@@ -9,6 +9,8 @@ import type {
 	NornWorkflowInspection,
 	NornRunCheckpoint,
 	NornRunInfo,
+	NornRunPruneOptions,
+	NornRunPruneResult,
 	NornRunMetrics,
 } from "@vimhead.dev/norn";
 import { loadNornProject } from "./workflow-loader.ts";
@@ -52,6 +54,7 @@ export type NornClient = {
 		stop(run: string): Promise<NornRunInfo>;
 		kill(run: string): Promise<NornRunInfo>;
 		delete(run: string): Promise<DeletedNornRunInfo>;
+		prune(options: NornRunPruneOptions): Promise<NornRunPruneResult>;
 		logs(
 			run: string,
 			options?: { readonly follow?: boolean },
@@ -169,6 +172,19 @@ export function createNornClient(input: NornClientInput = {}): NornClient {
 						run,
 					])
 				).deleted,
+			prune: async (options) =>
+				(
+					await processRunner.readJson<{ prune: NornRunPruneResult }>([
+						"runs",
+						"prune",
+						...(options.deleteRuns ? ["--delete-runs"] : []),
+						...(options.all ? ["--all"] : []),
+						...(options.olderThan === null
+							? []
+							: ["--older-than", options.olderThan]),
+						...(options.dryRun ? ["--dry-run"] : []),
+					])
+				).prune,
 			logs: (run, options) =>
 				processRunner.readJsonLines([
 					"runs",

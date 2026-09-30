@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { test } from "vitest";
-import type { NornRunInfo } from "@vimhead.dev/norn";
+import type { NornRunInfo, NornRunPruneResult } from "@vimhead.dev/norn";
 import { readProcessStdout } from "./helpers/process.ts";
 import {
 	collectDocumentationBundle,
@@ -392,6 +392,62 @@ export default [manifest_check, manifest_finish, manifest_dynamic, manifest_done
 			},
 			cwd: join(nativeResult.path, "worker"),
 		});
+		const nativeCheckpoints = (
+			await invoke(["runs", "checkpoints", nativeResult.id], projectRoot)
+		).checkpoints;
+		assert.ok(nativeCheckpoints.length > 0);
+		const prunePreview: NornRunPruneResult = (
+			await invoke(
+				["runs", "prune", "--older-than", "0h", "--dry-run"],
+				projectRoot,
+			)
+		).prune;
+		assert.equal(
+			prunePreview.runs.find((run) => run.id === nativeResult.id)?.status,
+			"planned",
+		);
+		assert.equal(
+			(await invoke(["runs", "checkpoints", nativeResult.id], projectRoot))
+				.checkpoints.length,
+			nativeCheckpoints.length,
+		);
+		const checkpointPrune: NornRunPruneResult = (
+			await invoke(["runs", "prune", "--older-than", "0h"], projectRoot)
+		).prune;
+		assert.equal(
+			checkpointPrune.runs.find((run) => run.id === nativeResult.id)?.status,
+			"pruned",
+		);
+		assert.deepEqual(
+			(await invoke(["runs", "checkpoints", nativeResult.id], projectRoot))
+				.checkpoints,
+			[],
+		);
+		assert.deepEqual(
+			(await invoke(["runs", "inspect", nativeResult.id], projectRoot)).run
+				.outcome,
+			nativeResult.outcome,
+		);
+		await access(join(nativeResult.paths.workspace, "state.sqlite"));
+		await assert.rejects(
+			invoke(
+				["runs", "rollback", nativeResult.id, nativeCheckpoints[0].id],
+				projectRoot,
+			),
+			(error) => {
+				assert.match(readProcessStdout(error), /history was pruned/);
+				return true;
+			},
+		);
+		const wholeRunPrune: NornRunPruneResult = (
+			await invoke(["runs", "prune", "--delete-runs", "--all"], projectRoot)
+		).prune;
+		assert.equal(
+			wholeRunPrune.runs.find((run) => run.id === nativeResult.id)?.status,
+			"pruned",
+		);
+		await assert.rejects(access(nativeResult.path), { code: "ENOENT" });
+
 		await writeFile(documentation.paths.index, "modified");
 		await assert.rejects(invoke(["docs", "inspect"]), (error) => {
 			assert.match(readProcessStdout(error), /cache is incomplete or modified/);

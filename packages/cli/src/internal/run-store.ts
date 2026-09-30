@@ -32,6 +32,7 @@ const SNAPSHOT_VERSION = 1;
 const CURRENT_DIR_NAME = "current";
 const STORE_DIR_NAME = "store";
 const CHECKPOINTS_FILE_NAME = "checkpoints.json";
+const PRUNED_HISTORY_FILE_NAME = "checkpoint-history-pruned.json";
 
 export function runCurrentRoot(runRoot: string): string {
 	return join(runRoot, CURRENT_DIR_NAME);
@@ -58,15 +59,18 @@ export class NornRunStore {
 	static async open(root: string): Promise<NornRunStore> {
 		const runStore = new NornRunStore(root);
 		await access(runStore.currentRoot, constants.R_OK | constants.W_OK);
-		await access(runStore.storeRoot, constants.R_OK | constants.W_OK);
+		if (!(await runStore.isCheckpointHistoryPruned()))
+			await access(runStore.storeRoot, constants.R_OK | constants.W_OK);
 		return runStore;
 	}
 
 	async currentSnapshotRef(): Promise<string> {
+		await this.assertCheckpointHistoryAvailable();
 		return readFile(this.currentRefPath, "utf8").then((value) => value.trim());
 	}
 
 	async snapshotCurrent(message: string): Promise<NornRunCheckpoint> {
+		await this.assertCheckpointHistoryAvailable();
 		const previous = await this.readCheckpointHistory();
 		const checkpoint = this.createCheckpoint(
 			message,
@@ -90,6 +94,7 @@ export class NornRunStore {
 		ref: string,
 		prepare: ((stagedRunRoot: string) => Promise<void>) | undefined,
 	): Promise<void> {
+		await this.assertCheckpointHistoryAvailable();
 		const checkpoint = (await this.listCheckpoints()).find(
 			(entry) => entry.id === ref,
 		);
@@ -108,7 +113,53 @@ export class NornRunStore {
 	}
 
 	async listCheckpoints(): Promise<NornRunCheckpoint[]> {
+		if (await this.isCheckpointHistoryPruned()) return [];
 		return (await this.readCheckpointHistory()).checkpoints;
+	}
+
+	async pruneCheckpointHistory(prunedAt: string): Promise<void> {
+		if (!(await this.isCheckpointHistoryPruned()))
+			await writeJsonAtomically(this.prunedHistoryPath, {
+				version: 1,
+				prunedAt,
+			});
+		await writeJsonAtomically(this.checkpointsPath, []);
+		await rm(this.storeRoot, { recursive: true, force: true });
+	}
+
+	private get prunedHistoryPath(): string {
+		return join(this.runRoot, PRUNED_HISTORY_FILE_NAME);
+	}
+
+	private async isCheckpointHistoryPruned(): Promise<boolean> {
+		let content: string;
+		try {
+			content = await readFile(this.prunedHistoryPath, "utf8");
+		} catch (error) {
+			if (isNodeError(error) && error.code === "ENOENT") return false;
+			throw error;
+		}
+		const marker: unknown = JSON.parse(content);
+		if (
+			!marker ||
+			typeof marker !== "object" ||
+			!("version" in marker) ||
+			marker.version !== 1 ||
+			!("prunedAt" in marker) ||
+			typeof marker.prunedAt !== "string" ||
+			!Number.isFinite(Date.parse(marker.prunedAt))
+		)
+			throw new Error(
+				`Invalid pruned checkpoint history marker: ${this.prunedHistoryPath}`,
+			);
+		return true;
+	}
+
+	private async assertCheckpointHistoryAvailable(): Promise<void> {
+		if (await this.isCheckpointHistoryPruned())
+			throw new Error(
+				`Checkpoint history was pruned for this run: ${this.runRoot}`,
+			);
 	}
 
 	private async readCheckpointHistory(): Promise<{

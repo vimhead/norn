@@ -19,6 +19,8 @@ Checkpoints are taken at run start, successful transitions, gate interruptions, 
 | `pendingResume`                     | IF retry is intended, THEN resume with no args. ELSE leave the restored boundary untouched.                                                                             | `norn runs resume <run> </dev/null`.                              | Try to override arbitrary saved inputs through resume.                      |
 | `running` with unhealthy inspection | IF the executor is no longer healthy, THEN inspect ownership and reconcile effects before recovery. ELSE monitor active execution.                                      | Check run health and command evidence before retry.               | Start a competing executor or equate stale status with successful delivery. |
 
+[Run pruning](cli.md#prune-run-storage) permanently removes recovery history while retaining current evidence by default. Pruned runs expose no checkpoints; rollback reports that the history was pruned.
+
 ## Source repair and rollback
 
 ```bash

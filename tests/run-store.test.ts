@@ -11,7 +11,7 @@ import { afterAll, test, vi, type TestContext } from "vitest";
 import { NornRunStore } from "../packages/cli/src/internal/run-store.ts";
 
 type FileSystemFault = {
-	operation: "writeFile" | "rename";
+	operation: "writeFile" | "rename" | "rm";
 	matches: (...args: unknown[]) => boolean;
 	triggered: boolean;
 };
@@ -38,6 +38,11 @@ const originalRename = fs.rename;
 vi.spyOn(fs, "rename").mockImplementation(async (...args) => {
 	throwInjectedFault("rename", args);
 	return originalRename(...args);
+});
+const originalRm = fs.rm;
+vi.spyOn(fs, "rm").mockImplementation(async (...args) => {
+	throwInjectedFault("rm", args);
+	return originalRm(...args);
 });
 syncBuiltinESMExports();
 afterAll(() => {
@@ -405,6 +410,97 @@ test("legacy checkpoints remain restorable alongside new compressed checkpoints"
 		await fs.readFile(join(fixture.root, fixture.checkpoint.path)),
 		legacyBytes,
 	);
+});
+
+test("failed prune marker publication leaves checkpoint history restorable", async (context) => {
+	const fixture = await createFixture(context);
+	const assertTriggered = failOperation(
+		context,
+		"rename",
+		(_source, destination) =>
+			destination === join(fixture.root, "checkpoint-history-pruned.json"),
+	);
+	await assert.rejects(
+		fixture.store.pruneCheckpointHistory("2026-01-01T00:00:00.000Z"),
+		/Injected/,
+	);
+	assertTriggered();
+	await assertCurrentUnchanged(fixture);
+	assert.deepEqual(await fixture.store.listCheckpoints(), [
+		fixture.first,
+		fixture.second,
+	]);
+	await fixture.store.restoreSnapshot(fixture.first.id, undefined);
+	assert.equal(await fs.readFile(fixture.evidencePath, "utf8"), "original");
+});
+
+for (const fault of ["history publication", "store deletion"]) {
+	test(`interrupted prune ${fault} cannot advertise partially deleted history and is retryable`, async (context) => {
+		const fixture = await createFixture(context);
+		const assertTriggered =
+			fault === "history publication"
+				? failOperation(
+						context,
+						"rename",
+						(_source, destination) =>
+							destination === join(fixture.root, "current/checkpoints.json"),
+					)
+				: failOperation(
+						context,
+						"rm",
+						(path) => path === join(fixture.root, "store"),
+					);
+		await assert.rejects(
+			fixture.store.pruneCheckpointHistory("2026-01-01T00:00:00.000Z"),
+			/Injected/,
+		);
+		assertTriggered();
+		assert.equal(
+			await fs.readFile(fixture.evidencePath, "utf8"),
+			"dirty evidence must survive failure",
+		);
+		const reopened = await NornRunStore.open(fixture.root);
+		assert.deepEqual(await reopened.listCheckpoints(), []);
+		await assert.rejects(
+			reopened.restoreSnapshot(fixture.first.id, undefined),
+			/history was pruned/,
+		);
+		activeFault = undefined;
+		await reopened.pruneCheckpointHistory("2026-01-02T00:00:00.000Z");
+		await assert.rejects(fs.access(join(fixture.root, "store")), {
+			code: "ENOENT",
+		});
+		assert.equal(
+			JSON.parse(
+				await fs.readFile(
+					join(fixture.root, "checkpoint-history-pruned.json"),
+					"utf8",
+				),
+			).prunedAt,
+			"2026-01-01T00:00:00.000Z",
+		);
+		assert.deepEqual(
+			JSON.parse(
+				await fs.readFile(
+					join(fixture.root, "current/checkpoints.json"),
+					"utf8",
+				),
+			),
+			[],
+		);
+	});
+}
+
+test("invalid pruning markers block access instead of silently disabling recovery", async (context) => {
+	const fixture = await createFixture(context);
+	await fs.writeFile(
+		join(fixture.root, "checkpoint-history-pruned.json"),
+		JSON.stringify({ version: 1, prunedAt: "invalid" }),
+	);
+	await assert.rejects(NornRunStore.open(fixture.root), /Invalid pruned/);
+	await assert.rejects(fixture.store.listCheckpoints(), /Invalid pruned/);
+	await fs.rm(join(fixture.root, "checkpoint-history-pruned.json"));
+	await assertCurrentUnchanged(fixture);
 });
 
 test("resume preparation errors happen before replacing current", async (context) => {

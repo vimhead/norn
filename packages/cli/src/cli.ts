@@ -50,6 +50,7 @@ import {
 import { readRunMetrics } from "./internal/metrics.ts";
 import { getRunLeaseOwner, NornRunLease } from "./internal/run-lease.ts";
 import { generateRunName } from "./internal/run-names.ts";
+import { NornRunPruner, parseRunPruneOptions } from "./internal/run-pruning.ts";
 import {
 	assertRunVersion,
 	getRunInfo,
@@ -434,6 +435,40 @@ const COMMANDS: readonly CliCommand[] = [
 		},
 	},
 	{
+		id: "runs.prune",
+		path: ["runs", "prune"],
+		description:
+			"Discard checkpoint history or entire failed/completed runs, preserving recent and nonterminal runs.",
+		usage:
+			"norn runs prune [--delete-runs] [--older-than <duration>|--all] [--dry-run]",
+		options: [
+			"--delete-runs: delete entire eligible runs instead of only checkpoint storage",
+			"--older-than <duration>: time since completion/failure; default 24h; units ms, s, m, h, d, w",
+			"--all: ignore age; requires --delete-runs; incompatible with --older-than",
+			"--dry-run: report eligible runs without changing files",
+		],
+		output:
+			"JSON object under prune with mode, dryRun, olderThan, and per-run planned/pruned/skipped/failed results. Any failed result sets a nonzero exit status.",
+		examples: [
+			"norn runs prune --dry-run",
+			"norn runs prune --older-than 7d",
+			"norn runs prune --delete-runs --all",
+		],
+		execute: async (args) => {
+			const options = parseRunPruneOptions(args);
+			const project = await findNornProject(process.cwd());
+			const pruner = new NornRunPruner({
+				projectRoot: project.projectRoot,
+				options,
+				now: new Date(),
+			});
+			const result = await pruner.prune();
+			writeJson({ prune: result });
+			if (result.runs.some((run) => run.status === "failed"))
+				process.exitCode = 1;
+		},
+	},
+	{
 		id: "runs.delete",
 		path: ["runs", "delete"],
 		description:
@@ -515,6 +550,7 @@ const HELP_COMMAND_ORDER = [
 	"runs.stop",
 	"runs.kill",
 	"runs.delete",
+	"runs.prune",
 	"project.init",
 	"project.inspect",
 	"pi",
@@ -545,6 +581,7 @@ const HUMAN_COMMAND_SUMMARIES: Readonly<Record<string, string>> = {
 	"runs.stop": "Stop a running run.",
 	"runs.kill": "Force-stop a running run.",
 	"runs.delete": "Delete an inactive run.",
+	"runs.prune": "Prune checkpoint storage or old failed/completed runs.",
 	"project.init": "Create a Norn project in the current directory.",
 	"project.inspect": "Inspect the Norn project.",
 	pi: "Run bundled Pi for authentication, providers, and model setup.",

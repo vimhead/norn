@@ -383,6 +383,26 @@ export type DeletedNornRunInfo = {
 	readonly path: string;
 };
 
+export type NornRunPruneOptions = {
+	readonly deleteRuns: boolean;
+	readonly all: boolean;
+	readonly olderThan: string | null;
+	readonly dryRun: boolean;
+};
+
+export type NornRunPruneResult = {
+	readonly mode: "checkpoints" | "runs";
+	readonly dryRun: boolean;
+	readonly olderThan: string | null;
+	readonly runs: readonly {
+		readonly id: string;
+		readonly name: string;
+		readonly path: string;
+		readonly status: "planned" | "pruned" | "skipped" | "failed";
+		readonly reason?: string;
+	}[];
+};
+
 export type NornRunCheckpoint = {
 	readonly id: string;
 	readonly path: string;

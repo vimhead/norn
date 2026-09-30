@@ -179,6 +179,31 @@ norn runs delete <run>
 
 `stop` signals SIGTERM; `kill` signals SIGKILL. Delete removes an inactive run and its evidence. Neither stopping nor deleting undoes external effects. Resume and rollback are documented in [recovery](recovery.md).
 
+## Prune run storage
+
+```bash
+norn runs prune --dry-run
+norn runs prune
+norn runs prune --older-than 7d
+norn runs prune --delete-runs
+norn runs prune --delete-runs --all --dry-run
+```
+
+Pruning is explicit and scoped to the current project. By default it discards all checkpoint manifests, saved file contents, and checkpoint references for failed or completed runs that finished more than 24 hours ago. Current workspace files, logs, sessions, state, and outcomes remain available. Pruned checkpoint history cannot be rolled back; checkpoint listing returns an empty list.
+
+`--older-than` accepts a non-negative number followed by `ms`, `s`, `m`, `h`, `d`, or `w`; age is measured from completion/failure, not run creation. `--delete-runs` removes eligible run directories and all their evidence instead. It preserves the age filter unless combined with `--all`. `--all` requires `--delete-runs` and cannot be combined with `--older-than`.
+
+Every mode preserves running, stopped, interrupted, pending-resume, and executor-owned runs. Eligibility is checked again under the existing run lease before deletion. `--dry-run` makes no filesystem changes.
+
+The JSON result under `prune` includes `mode`, `dryRun`, effective `olderThan` (`null` with `--all`), and `runs` with identity, status (`planned`, `pruned`, `skipped`, or `failed`), and an optional reason. Per-run failures produce a nonzero exit status; other eligible runs can still be pruned. Repeating checkpoint pruning safely completes an interrupted cleanup.
+
+| Decision                                                                                                                                                  | GOOD                                                            | BAD                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------- |
+| IF failed runs may need recovery, THEN retain their checkpoints or select an age beyond the repair window. ELSE prune after reviewing the dry-run result. | `runs prune --older-than 7d --dry-run` before deleting history. | Treat checkpoint pruning as reversible.                   |
+| IF entire runs will be deleted, THEN preserve unique outputs elsewhere first. ELSE keep current files with default pruning.                               | Export private commits before `--delete-runs`.                  | Assume completed means outputs were integrated elsewhere. |
+
+The JavaScript client exposes `client.runs.prune({ deleteRuns: false, all: false, olderThan: null, dryRun: true })`; `olderThan: null` uses the CLI default unless `all` is true.
+
 ## JavaScript client and other harnesses
 
 Claude Code, Pi, Codex, and other CLI-capable harnesses can invoke Norn without an

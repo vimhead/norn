@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type { NornRunHealth } from "@vimhead.dev/norn";
 import { isNodeError } from "@vimhead.dev/norn-core/errors";
 import { writeJsonAtomically } from "@vimhead.dev/norn-core/atomic-files";
@@ -66,6 +66,28 @@ export class NornRunLease {
 		const owner = await readRunLeaseOwner(this.ownerPath);
 		if (!owner || owner.token !== this.token)
 			throw new Error("Run lease was lost");
+	}
+
+	async deleteRunDirectory(): Promise<void> {
+		await this.assertOwned();
+		if (this.heartbeat) clearInterval(this.heartbeat);
+		await this.heartbeatChain;
+		await this.assertOwned();
+		const runRoot = dirname(this.lockRoot);
+		const retiredRoot = join(
+			dirname(dirname(runRoot)),
+			`.pruned-run-${randomUUID()}`,
+		);
+		await rename(runRoot, retiredRoot);
+		this.isReleased = true;
+		try {
+			await rm(retiredRoot, { recursive: true, force: true });
+		} catch (error) {
+			throw new Error(
+				`Run was removed from the run list but directory cleanup failed: ${retiredRoot}`,
+				{ cause: error },
+			);
+		}
 	}
 
 	async release(): Promise<void> {
