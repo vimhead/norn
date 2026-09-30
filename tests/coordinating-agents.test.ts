@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
+import {
+	getCurrentTools,
+	type AssistantMessage,
+	type Model,
+	type ToolCall,
+} from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import { AgentSession } from "@earendil-works/pi-coding-agent";
 import { test, vi, type TestContext } from "vitest";
@@ -86,7 +91,9 @@ async function createWorkflowFixture(
 				this.modelRuntime.hasConfiguredAuth = () => true;
 				let phase = 0;
 				this.agent.streamFunction = async (_model, request) => {
-					activeTools.push((request.tools ?? []).map((tool) => tool.name));
+					activeTools.push(
+						getCurrentTools(request.messages).map((tool) => tool.name),
+					);
 					const user = request.messages
 						.filter((message) => message.role === "user")
 						.at(-1);
@@ -102,7 +109,7 @@ async function createWorkflowFixture(
 					const label = prompt.match(/Pass label exactly as: (.+)/)?.[1];
 					assert.ok(runId && label);
 					if (label === failureLabel) throw new Error("Simulated model outage");
-					let call: { name: string; arguments: Record<string, unknown> };
+					let call: Pick<ToolCall, "name" | "arguments">;
 					if (input.isReportOnly) {
 						call = {
 							name: AGENT_RESPONSE_TOOL_NAME,

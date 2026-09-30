@@ -32,9 +32,7 @@ type AdapterFixture = {
 	calls: Parameters<ExtensionAPI["exec"]>[];
 	warnings: Parameters<ExtensionUIContext["notify"]>[];
 	start(): Promise<void>;
-	before(
-		systemPrompt: string,
-	): ReturnType<ExtensionRunner["emitBeforeAgentStart"]>;
+	before(systemPrompt: string): Promise<{ systemPrompt: string } | undefined>;
 };
 
 async function createAdapterFixture(
@@ -66,8 +64,16 @@ async function createAdapterFixture(
 		calls: [],
 		warnings: [],
 		start: () => runner.emit({ type: "session_start", reason: "startup" }),
-		before: (systemPrompt) =>
-			runner.emitBeforeAgentStart("task", undefined, systemPrompt, { cwd }),
+		before: async (systemPrompt) => {
+			const result = await runner.emitBeforeAgentStart("task", undefined, {
+				cwd,
+				forceSystemPrompt: systemPrompt,
+			});
+			const updatedPrompt = result.systemPromptOptions.forceSystemPrompt;
+			return updatedPrompt !== undefined && updatedPrompt !== systemPrompt
+				? { systemPrompt: updatedPrompt }
+				: undefined;
+		},
 	};
 	const loader = new DefaultResourceLoader({
 		cwd,
@@ -241,6 +247,7 @@ test("registered native response tools exclude workers even with a cached introd
 	fixture.tools = [
 		{
 			name: AGENT_RESPONSE_TOOL_NAME,
+			exposure: "direct",
 			description: "Structured worker response",
 			parameters: { type: "object" },
 			sourceInfo: {

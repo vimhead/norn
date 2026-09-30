@@ -1,7 +1,9 @@
+import assert from "node:assert/strict";
 import {
 	createAssistantMessageEventStream,
+	getCurrentTools,
 	type AssistantMessage,
-	type Context,
+	type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import {
 	getDocsPath,
@@ -9,7 +11,7 @@ import {
 	type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 
-function renderLastPrompt(context: Context): string {
+function renderLastPrompt(context: TranscriptContext): string {
 	const message = context.messages
 		.filter((message) => message.role === "user")
 		.at(-1);
@@ -41,9 +43,12 @@ export default function registerOfflineProvider(pi: ExtensionAPI): void {
 		streamSimple(model, context) {
 			const stream = createAssistantMessageEventStream();
 			const prompt = renderLastPrompt(context);
-			const responseTool = context.tools?.find(
+			const responseTool = getCurrentTools(context.messages).find(
 				(tool) => tool.name === "pi_workflows_agent_response",
 			);
+			const runId = prompt.match(/Pass runId exactly as: (.+)/)?.[1] ?? null;
+			const label = prompt.match(/Pass label exactly as: (.+)/)?.[1] ?? null;
+			if (responseTool) assert.ok(runId && label);
 			const message: AssistantMessage = {
 				role: "assistant",
 				api: model.api,
@@ -56,8 +61,8 @@ export default function registerOfflineProvider(pi: ExtensionAPI): void {
 								id: "offline-response",
 								name: responseTool.name,
 								arguments: {
-									runId: prompt.match(/Pass runId exactly as: (.+)/)?.[1],
-									label: prompt.match(/Pass label exactly as: (.+)/)?.[1],
+									runId,
+									label,
 									response: { ok: true },
 								},
 							},

@@ -1,5 +1,11 @@
 import { createStateTools } from "../examples/shared-state/state-tools.ts";
-import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
+import {
+	getCurrentSystemPrompt,
+	getCurrentTools,
+	type AssistantMessage,
+	type Model,
+	type ToolCall,
+} from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import {
 	AgentSession,
@@ -85,18 +91,16 @@ function lastRequest(captured: readonly CapturedRequest[]): CapturedRequest {
 function captureModelRequests(
 	session: AgentSession,
 	captured: CapturedRequest[],
-	resourceCalls: readonly {
-		name: string;
-		arguments: Record<string, unknown>;
-	}[] = [],
+	resourceCalls: readonly Pick<ToolCall, "name" | "arguments">[] = [],
 ) {
 	let nextCall = 0;
 	session.modelRuntime.hasConfiguredAuth = () => true;
 	session.agent.streamFunction = (_model, context) => {
-		assert.ok(context.systemPrompt);
-		const tools = context.tools ?? [];
+		const systemPrompt = getCurrentSystemPrompt(context.messages);
+		assert.ok(systemPrompt);
+		const tools = getCurrentTools(context.messages);
 		captured.push({
-			systemPrompt: context.systemPrompt,
+			systemPrompt,
 			tools: tools.map((tool) => tool.name),
 		});
 		const stream = new AssistantMessageEventStream();
@@ -567,7 +571,7 @@ test(
 		await state.set(hidden, "not attached");
 		const captured: CapturedRequest[] = [];
 		const nativeSessions: AgentSession[] = [];
-		const calls = [
+		const calls: Pick<ToolCall, "name" | "arguments">[] = [
 			{ name: "norn_state_list", arguments: { offset: 0, limit: 10000 } },
 			{
 				name: "norn_state_get",
