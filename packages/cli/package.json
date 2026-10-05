@@ -43,7 +43,7 @@
 		"@vimhead.dev/norn-core": "workspace:*"
 	},
 	"dependencies": {
-		"@earendil-works/pi-coding-agent": "0.99.1",
+		"@earendil-works/pi-coding-agent": "1.0.3",
 		"@vimhead.dev/norn": "workspace:*",
 		"jiti": "^2.7.0",
 		"typebox": "^1.3.34"

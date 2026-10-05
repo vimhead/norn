@@ -27,8 +27,8 @@
 		"*.{ts,tsx,js,mjs,cjs,json,jsonc,md,yaml,yml}": "prettier --write"
 	},
 	"devDependencies": {
-		"@earendil-works/pi-ai": "0.99.1",
-		"@earendil-works/pi-coding-agent": "0.99.1",
+		"@earendil-works/pi-ai": "1.0.3",
+		"@earendil-works/pi-coding-agent": "1.0.3",
 		"@types/node": "^26.2.0",
 		"@vimhead.dev/norn": "workspace:*",
 		"@vimhead.dev/norn-core": "workspace:*",
