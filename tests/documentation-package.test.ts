@@ -185,7 +185,7 @@ workflow({ name: "standalone", entrypoint: false, args: Type.Object({}), execute
   // @ts-expect-error Commands require cwd.
   context.commands.run({ label: "check", command: ["pwd"] });
   // @ts-expect-error Agent sessions require cwd.
-  context.agents.createSession({ label: "check" });
+  context.agents.createSession({ label: "check", models: [{ provider: "test", id: "test" }] });
   return context.run.complete();
 } });
 const client = createNornClient({ spawnCwd: process.cwd() });

@@ -186,6 +186,7 @@ async function processRound(input: {
 				await input.agents.createSession({
 					label: `round-${input.round}-worker-${worker}`,
 					cwd: input.cwd,
+					models: [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
 					customTools: queueTools,
 					tools: queueTools.map((tool) => tool.name),
 					systemPrompt: `Process at most one queued note using the attached

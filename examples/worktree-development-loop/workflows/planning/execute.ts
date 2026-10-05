@@ -15,6 +15,7 @@ export const planningWorkflow = developmentLoopScope.workflow({
 		const planning = await agents.prompt({
 			label: "planning",
 			cwd: repositoryPath,
+			models: [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
 			tools: ["read", "grep", "find", "ls"],
 			prompt: buildPlanningPrompt(args.task),
 			response: planningAgentResponseSchema,

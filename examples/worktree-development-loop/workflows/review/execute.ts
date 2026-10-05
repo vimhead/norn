@@ -37,6 +37,7 @@ export const reviewWorkflow = developmentLoopScope.workflow({
 		const review = await agents.prompt({
 			label: `review-${args.iteration}`,
 			cwd: repositoryPath,
+			models: [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
 			tools: ["read", "grep", "find", "ls", "bash"],
 			prompt: buildReviewPrompt(
 				args.task,

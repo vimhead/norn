@@ -42,6 +42,7 @@ Requires model access.`,
 		const draft = await agents.prompt({
 			label: "draft",
 			cwd: paths.workspace,
+			models: [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
 			tools: [],
 			maxAttempts: 2,
 			systemPrompt: `Summarize only the supplied source.
@@ -81,6 +82,7 @@ export const analyze = scope.workflow({
 		const analysis = await agents.prompt({
 			label: "analysis",
 			cwd: paths.workspace,
+			models: [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
 			tools: [],
 			maxAttempts: 2,
 			systemPrompt: `Assess the saved draft against its source only.

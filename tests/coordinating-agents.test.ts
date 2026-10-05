@@ -6,7 +6,6 @@ import { join } from "node:path";
 import {
 	getCurrentTools,
 	type AssistantMessage,
-	type Model,
 	type ToolCall,
 } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
@@ -24,18 +23,11 @@ import { NornEngine } from "../packages/cli/src/internal/engine.ts";
 import { getRunInfo } from "../packages/cli/src/internal/run-state.ts";
 import { loadNornProject } from "../packages/cli/src/workflow-loader.ts";
 
-const model: Model<"anthropic-messages"> = {
-	id: "offline",
-	name: "Offline queue agent",
-	provider: "offline-test",
-	api: "anthropic-messages",
-	baseUrl: "https://unused.invalid",
-	reasoning: false,
-	input: ["text"],
-	contextWindow: 128000,
-	maxTokens: 4096,
-	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-};
+import {
+	configureOfflineAgentModel,
+	offlineAgentModel as model,
+	offlineAgentModels,
+} from "./helpers/agent-model.ts";
 const notes = Array.from({ length: 4 }, (_, index) => ({
 	id: `note-${index}`,
 	text: `The team recorded source note ${index} for the release review.`,
@@ -54,6 +46,7 @@ async function createWorkflowFixture(
 	const agentDir = join(root, "agent");
 	const home = join(root, "home");
 	await mkdir(agentDir);
+	await configureOfflineAgentModel({ agentDir });
 	await mkdir(home);
 	await writeFile(
 		join(agentDir, "settings.json"),
@@ -80,7 +73,10 @@ async function createWorkflowFixture(
 	const createSpy = vi
 		.spyOn(NornAgentRunner.prototype, "createSession")
 		.mockImplementation(function (this: NornAgentRunner, options) {
-			return originalCreate.call(this, { ...options, model });
+			return originalCreate.call(this, {
+				...options,
+				models: offlineAgentModels,
+			});
 		});
 	const originalPrompt = AgentSession.prototype.prompt;
 	const promptSpy = vi

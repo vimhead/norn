@@ -22,7 +22,7 @@ installs its Pi dependency automatically; no separate Pi installation is needed.
 
 ## One prompt or a retained session
 
-Destructure `agents` from the [workflow context](workflows.md#define-a-workflow). `agents.prompt({ label, cwd, prompt, response, ...sessionOptions })` creates a Pi session for one prompt and returns the value described by the response schema, including any codec transformations—not `{ response, raw }`. You do not need to dispose this one-prompt session. See [schema input/output types](schemas.md#codecs-and-inputoutput-types).
+Destructure `agents` from the [workflow context](workflows.md#define-a-workflow). `agents.prompt({ label, cwd, models, prompt, response, ...sessionOptions })` creates a Pi session for one prompt and returns the value described by the response schema, including any codec transformations—not `{ response, raw }`. You do not need to dispose this one-prompt session. See [schema input/output types](schemas.md#codecs-and-inputoutput-types).
 
 Both session creation and one-prompt calls require an absolute `cwd`; choose from the workflow's [paths](persistence.md#filesystem-boundaries) or supply another prepared directory. For follow-up turns in the same conversation:
 
@@ -33,6 +33,10 @@ import { join } from "node:path";
 const agentSession = await agents.createSession({
   label: "implementation",
   cwd: paths.workspace,
+  models: [
+    { provider: "anthropic", id: "claude-sonnet-4-5" },
+    { provider: "openai-codex", id: "gpt-5.5" },
+  ],
   tools: ["read", "bash", "edit", "write"],
 });
 try {
@@ -81,6 +85,7 @@ Both session creation and one-shot prompting accept Pi `ToolDefinition` objects 
 const result = await agents.prompt({
   label: "lookup",
   cwd: paths.workspace,
+  models: [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
   customTools: [lookupTool],
   tools: ["read", lookupTool.name],
   prompt: "Look up the requested information and summarize it.",
@@ -99,7 +104,7 @@ return run.complete({ summary: result.summary });
 
 ## Prompts, tools, and resource loading
 
-Each session loads resources for its `cwd` and [Norn configuration](providers.md#norn-configuration). Installed provider extensions register before default-model selection. Both `agents.createSession` and `agents.prompt` accept per-session `model` and `thinkingLevel` overrides; omitted values use Pi's configured selection and defaults. Discoverable settings, skills, context files, and extensions can therefore affect it. It does **not** inherit the outer conversation or its in-memory tool registrations. Loaded extensions may change active tools; the requested tool list alone is not an adversarial restriction.
+Each session loads resources for its `cwd` and [Norn configuration](providers.md#norn-configuration). Both `agents.createSession` and `agents.prompt` require `models`: a non-empty ordered list of `{ provider, id }` references. The first registered model with configured provider credentials is selected for the session; missing models and unconfigured providers are skipped. If none qualify, session creation fails with the reasons. Configured credentials do not guarantee provider access, and inference failures do not select another model. `thinkingLevel` is optional and uses Pi's configured default when omitted. Discoverable settings, skills, context files, and extensions can affect the session. It does **not** inherit the outer conversation or its in-memory tool registrations. Loaded extensions may change active tools; the requested tool list alone is not an adversarial restriction.
 
 `systemPrompt` replaces the base prompt; `appendSystemPrompt` adds to resource-loader append content. Pi's default self-documentation block is absent with a custom base prompt. Context files and applicable skill advertisements can still be appended by Pi. Norn currently does not automatically inject a Norn authoring bootstrap.
 

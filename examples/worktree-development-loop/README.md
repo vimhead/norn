@@ -31,7 +31,7 @@ workflow:
 
 [Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this
 entire directory into a writable task directory, and `cd` into the copy. Git and
-Bash must be on `PATH`. Configure [authentication and a default model](../../docs/providers.md)
+Bash must be on `PATH`. Configure [authentication for the models declared in the workflows](../../docs/providers.md)
 before starting; this example makes live model calls.
 
 In [norn.project.json](norn.project.json), replace

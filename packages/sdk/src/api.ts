@@ -478,6 +478,11 @@ export type NornAgentBeforeSessionStartContext = {
 	readonly events: EventBus;
 };
 
+export type NornAgentModelReference = {
+	readonly provider: string;
+	readonly id: string;
+};
+
 export type NornAgentCreateSessionInput = {
 	readonly customTools?: readonly ToolDefinition[];
 	readonly label: string;
@@ -486,7 +491,10 @@ export type NornAgentCreateSessionInput = {
 	readonly beforeSessionStart?: (
 		context: NornAgentBeforeSessionStartContext,
 	) => MaybePromise<void>;
-	readonly model?: CreateAgentSessionOptions["model"];
+	readonly models: readonly [
+		NornAgentModelReference,
+		...NornAgentModelReference[],
+	];
 	readonly thinkingLevel?: CreateAgentSessionOptions["thinkingLevel"];
 	readonly systemPrompt?: string;
 	readonly appendSystemPrompt?: readonly string[];

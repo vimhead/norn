@@ -198,7 +198,11 @@ test("commands and agents reject missing or relative cwd rather than selecting a
 				);
 				await assert.rejects(
 					Reflect.apply(agents.createSession, undefined, [
-						{ label: "invalid", cwd },
+						{
+							label: "invalid",
+							cwd,
+							models: [{ provider: "test", id: "test" }],
+						},
 					]),
 					/cwd.*must be an absolute path/,
 				);

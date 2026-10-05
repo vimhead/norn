@@ -13,9 +13,9 @@ norn pi
 In the interactive session, use `/login` to authenticate. Open `/model`, highlight
 the desired model, and press **Ctrl+S** to save it as the startup default. Selecting
 a model is not the same as saving a startup default. Use `/quit` to exit.
-Configure these before launching Norn agents: detached execution cannot conduct
-interactive login. Authentication in the outer harness does not automatically
-authenticate a Norn agent's provider.
+Authenticate at least one provider referenced by an agent's `models` before
+launching it: detached execution cannot conduct interactive login. Authentication
+in the outer harness does not automatically authenticate a Norn agent's provider.
 
 ## Norn configuration
 

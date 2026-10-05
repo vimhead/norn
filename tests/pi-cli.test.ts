@@ -252,6 +252,7 @@ test.for(["default", "override"] as const)(
 			await runner.prompt({
 				label: "worker",
 				cwd: fixture.root,
+				models: [{ provider: "norn-offline", id: "fixture" }],
 				tools: [],
 				prompt: "Return ok",
 				response: Type.Object({ ok: Type.Boolean() }),

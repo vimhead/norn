@@ -23,6 +23,7 @@ const queueTools = createQueueTools({ queue });
 const agentSession = await agents.createSession({
   label: "summary-1",
   cwd: paths.workspace,
+  models: [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
   customTools: queueTools,
   tools: queueTools.map((tool) => tool.name),
 });
@@ -32,7 +33,7 @@ The entrypoint creates the queue with `create: true`; later steps reopen it with
 
 ## Run
 
-[Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this entire directory into a writable task directory, and enter it. Norn agents require [configured providers/authentication](../../docs/providers.md). The supplied four-note input normally uses two rounds: four agent prompts, up to two concurrently. Model/thinking settings come from the configured runtime and are not overridden.
+[Select the matching runtime](../../docs/cli.md#select-the-runtime), copy this entire directory into a writable task directory, and enter it. Norn agents require [configured providers/authentication](../../docs/providers.md). The supplied four-note input normally uses two rounds: four agent prompts, up to two concurrently. Models are declared in `plugin.ts`; the thinking level comes from the configured runtime.
 
 ```bash
 norn workflows inspect coordinatingAgents.start

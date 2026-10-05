@@ -14,6 +14,7 @@ const manifest_check = manifestScope.workflow({
 		const result = await agents.prompt({
 			label: "check",
 			cwd: paths.workspace,
+			models: [{ provider: "norn-offline", id: "fixture" }],
 			tools: [],
 			prompt: "Return ok",
 			response: Type.Object({ ok: Type.Boolean() }),

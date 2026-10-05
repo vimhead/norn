@@ -26,6 +26,7 @@ export const implementationWorkflow = developmentLoopScope.workflow({
 		const implementation = await agents.prompt({
 			label: `implementation-${args.iteration}`,
 			cwd: repositoryPath,
+			models: [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
 			tools: ["read", "grep", "find", "ls", "edit", "write", "bash"],
 			prompt: buildImplementationPrompt(
 				args.task,

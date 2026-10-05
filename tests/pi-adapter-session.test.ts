@@ -3,7 +3,6 @@ import {
 	getCurrentSystemPrompt,
 	getCurrentTools,
 	type AssistantMessage,
-	type Model,
 	type ToolCall,
 } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
@@ -44,19 +43,13 @@ import { NornAgentRunner } from "../packages/cli/src/internal/agents.ts";
 import { NornRunLogs } from "../packages/cli/src/internal/logs.ts";
 import { NornRunLogger } from "../packages/cli/src/internal/run-log.ts";
 import { initializeSharedState } from "./helpers/shared-state.ts";
+import {
+	configureOfflineAgentModel,
+	offlineAgentModel as model,
+	offlineAgentModels,
+} from "./helpers/agent-model.ts";
+
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const model: Model<"anthropic-messages"> = {
-	id: "offline",
-	name: "Offline test",
-	provider: "offline-test",
-	api: "anthropic-messages",
-	baseUrl: "https://unused.invalid",
-	reasoning: false,
-	input: ["text"],
-	contextWindow: 128000,
-	maxTokens: 4096,
-	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-};
 
 async function createFixture(context: TestContext) {
 	const root = await mkdtemp(join(tmpdir(), "norn-pi-adapter-"));
@@ -65,6 +58,7 @@ async function createFixture(context: TestContext) {
 	const agentDir = join(root, "agent");
 	await mkdir(cwd);
 	await mkdir(agentDir);
+	await configureOfflineAgentModel({ agentDir });
 	const home = join(root, "home");
 	await mkdir(home);
 	const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -477,7 +471,6 @@ test(
 			id: "native-adapter-test",
 			runRoot: join(fixture.root, "run"),
 			agentDir: fixture.agentDir,
-			model,
 			logs: new NornRunLogs(join(fixture.root, "logs"), files),
 			logger: new NornRunLogger({
 				manifestPath: join(fixture.root, "manifest.json"),
@@ -497,6 +490,7 @@ test(
 		const worker = await runner.createSession({
 			label: "restricted",
 			cwd: fixture.cwd,
+			models: offlineAgentModels,
 			tools: [],
 			systemPrompt: "SOURCE-ONLY ASSESSOR",
 		});
@@ -603,7 +597,6 @@ test(
 			id: "resource-sdk",
 			runRoot: join(fixture.root, "current"),
 			agentDir: fixture.agentDir,
-			model,
 			logs: new NornRunLogs(join(fixture.root, "current", "logs"), files),
 			logger: new NornRunLogger({
 				manifestPath: join(fixture.root, "current", "manifest.json"),
@@ -630,6 +623,7 @@ test(
 		const worker = await runner.createSession({
 			label: "writer",
 			cwd: fixture.root,
+			models: offlineAgentModels,
 			tools,
 			customTools,
 		});
@@ -663,6 +657,7 @@ test(
 		await runner.prompt({
 			label: "unattached",
 			cwd: fixture.cwd,
+			models: offlineAgentModels,
 			tools: [],
 			prompt: "Return the result",
 			response: Type.Object({ ok: Type.Boolean() }),
@@ -675,6 +670,7 @@ test(
 		await runner.prompt({
 			label: "selected-one-shot",
 			cwd: fixture.cwd,
+			models: offlineAgentModels,
 			tools: ["norn_state_get"],
 			customTools,
 			prompt: "Return the result",
@@ -690,6 +686,7 @@ test(
 			runner.createSession({
 				label: "broken-start",
 				cwd: fixture.cwd,
+				models: offlineAgentModels,
 				customTools,
 				beforeSessionStart() {
 					throw new Error("startup failure");
@@ -707,6 +704,7 @@ test(
 				runner.createSession({
 					label: "collision",
 					cwd: fixture.cwd,
+					models: offlineAgentModels,
 					tools: [],
 					customTools: [customTools[0], { ...customTools[0], name }],
 				}),
@@ -770,7 +768,6 @@ test(
 			id: "custom-tools",
 			runRoot: join(fixture.root, "run"),
 			agentDir: fixture.agentDir,
-			model,
 			logs: new NornRunLogs(join(fixture.root, "logs"), files),
 			logger: new NornRunLogger({
 				manifestPath: join(fixture.root, "manifest.json"),
@@ -813,6 +810,7 @@ test(
 				await runner.prompt({
 					label: "selection",
 					cwd: fixture.cwd,
+					models: offlineAgentModels,
 					tools: scenario.tools,
 					customTools,
 					prompt: "Read the draft if available and report success.",
@@ -836,6 +834,7 @@ test(
 		await runner.prompt({
 			label: "configured-defaults",
 			cwd: fixture.cwd,
+			models: offlineAgentModels,
 			customTools,
 			prompt: "Return the result.",
 			response: Type.Object({ ok: Type.Boolean() }),
@@ -855,6 +854,7 @@ test(
 			runner.createSession({
 				label: "extension-collision",
 				cwd: fixture.cwd,
+				models: offlineAgentModels,
 				customTools: [{ ...readDraft, name: "extra_tool" }],
 			}),
 			/Custom tool name collision: extra_tool/,

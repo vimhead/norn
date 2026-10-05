@@ -16,7 +16,6 @@ type NornExecutionContextInput = {
 	readonly id: string;
 	readonly runRoot: string;
 	readonly signal?: AbortSignal;
-	readonly model?: CreateAgentSessionOptions["model"];
 	readonly thinkingLevel?: CreateAgentSessionOptions["thinkingLevel"];
 	readonly agentDir?: string;
 	readonly responseCollector: NornAgentResponseCollector;
@@ -61,7 +60,6 @@ export class NornExecutionContext {
 			id: this.input.id,
 			runRoot: this.input.runRoot,
 			signal: this.input.signal,
-			model: this.input.model,
 			thinkingLevel: this.input.thinkingLevel,
 			agentDir: this.input.agentDir,
 			logs: this.input.logs,

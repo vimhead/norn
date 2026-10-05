@@ -29,6 +29,7 @@ through the CLI from any harness. Agents run on the bundled
        const draft = await agents.prompt({
          label: "draft",
          cwd: paths.workspace,
+         models: [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
          tools: [],
          systemPrompt: "Summarize the supplied text concisely.",
          prompt: args.text,
@@ -150,8 +151,8 @@ norn pi
 
 Inside the interactive session:
 
-1. Run `/login`, choose a provider, and complete its authentication flow.
-2. Run `/model`, highlight a model, and press **Ctrl+S** to save the startup default.
+1. Run `/login` and authenticate at least one provider declared in the workflow's `models`.
+2. Run `/model` to inspect provider/model IDs for `models`.
 3. Run `/quit`.
 
 Model-free workflows need no provider authentication. For other credential

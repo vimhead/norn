@@ -35,6 +35,7 @@ ordinary file copying.`,
 			await agents.prompt({
 				label: "copy",
 				cwd: paths.workspace,
+				models: [{ provider: "anthropic", id: "claude-sonnet-4-5" }],
 				customTools: stateTools,
 				tools: stateTools.map((tool) => tool.name),
 				systemPrompt: `Perform only the supplied copy task using attached

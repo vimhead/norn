@@ -6,9 +6,9 @@
 
 ## Setup and run
 
-[Install Norn](../../README.md#installation), including agent authentication and a
-default model. Git must be on `PATH`. No local SDK installation or compilation
-step is required.
+[Install Norn](../../README.md#installation), including authentication for the
+models declared in `plugin.ts`. Git must be on `PATH`. No local SDK installation
+or compilation step is required.
 
 Copy this directory to a writable task directory and `cd` into the copy, keeping
 [the runtime matched to the example](../../docs/cli.md#select-the-runtime).

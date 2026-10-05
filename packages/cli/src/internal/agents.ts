@@ -4,6 +4,7 @@ import {
 	createAgentSessionServices,
 	createEventBus,
 	type AgentSession,
+	type AgentSessionServices,
 	type CreateAgentSessionOptions,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
@@ -47,7 +48,6 @@ type NornAgentRunnerInput = {
 	readonly id: string;
 	readonly runRoot: string;
 	readonly signal?: AbortSignal;
-	readonly model?: CreateAgentSessionOptions["model"];
 	readonly thinkingLevel?: CreateAgentSessionOptions["thinkingLevel"];
 	readonly agentDir?: string;
 	readonly logs: NornRunLogs;
@@ -121,6 +121,7 @@ export class NornAgentRunner {
 					.extensions.flatMap((extension) => [...extension.tools.keys()]),
 			],
 		});
+		const model = this.selectModel({ models: agentInput.models, services });
 		let session: AgentSession | undefined;
 		try {
 			({ session } = await createAgentSessionFromServices({
@@ -128,7 +129,7 @@ export class NornAgentRunner {
 				sessionManager: SessionManager.create(cwd, sessionDir),
 				tools: withAgentResponseTool(agentInput.tools),
 				customTools: [this.responseToolFactory.create(), ...customTools],
-				model: agentInput.model ?? this.input.model,
+				model,
 				thinkingLevel: agentInput.thinkingLevel ?? this.input.thinkingLevel,
 			}));
 			await agentInput.beforeSessionStart?.({ events: eventBus });
@@ -137,6 +138,7 @@ export class NornAgentRunner {
 				type: "agent.spawned",
 				label: agentInput.label,
 				cwd,
+				model: { provider: model.provider, id: model.id },
 			});
 			return new CreatedNornAgentSession({
 				...this.input,
@@ -156,6 +158,44 @@ export class NornAgentRunner {
 				throw new AggregateError(errors, "Agent creation and cleanup failed");
 			throw error;
 		}
+	}
+
+	private selectModel(input: {
+		readonly models: NornAgentCreateSessionInput["models"];
+		readonly services: AgentSessionServices;
+	}): NonNullable<CreateAgentSessionOptions["model"]> {
+		if (!Array.isArray(input.models) || input.models.length === 0)
+			throw new Error("Agent models must be a non-empty ordered list");
+		for (const [index, reference] of input.models.entries()) {
+			if (
+				!reference ||
+				typeof reference.provider !== "string" ||
+				reference.provider.trim().length === 0 ||
+				typeof reference.id !== "string" ||
+				reference.id.trim().length === 0
+			)
+				throw new Error(
+					`Agent models[${index}] requires non-empty provider and id strings`,
+				);
+		}
+		const reasons: string[] = [];
+		for (const reference of input.models) {
+			const name = `${reference.provider}/${reference.id}`;
+			const model = input.services.modelRuntime.getModel(
+				reference.provider,
+				reference.id,
+			);
+			if (!model) {
+				reasons.push(`${name}: not registered`);
+				continue;
+			}
+			if (!input.services.modelRuntime.hasConfiguredAuth(reference.provider)) {
+				reasons.push(`${name}: no configured credentials`);
+				continue;
+			}
+			return model;
+		}
+		throw new Error(`No usable agent models:\n${reasons.join("\n")}`);
 	}
 
 	async prompt<ResponseSchema extends TSchema>(

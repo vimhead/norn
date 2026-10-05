@@ -122,7 +122,10 @@ function verifyAuthoringTypes(
 			// @ts-expect-error Commands require an explicit working directory.
 			context.commands.run({ label: "check", command: ["pwd"] });
 			// @ts-expect-error Agent sessions require an explicit working directory.
-			context.agents.createSession({ label: "check" });
+			context.agents.createSession({
+				label: "check",
+				models: [{ provider: "test", id: "test" }],
+			});
 			return context.run.complete();
 		},
 	});
